@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "skills": {
+    "cubeapm": {
+      "source": "piyush-gambhir/cubeapm-cli",
+      "sourceType": "github",
+      "computedHash": "65cfdc7a34ed334704e1dcc724a548e6be4b1403375e551123e6d82b69e04837"
+    },
+    "grafana": {
+      "source": "piyush-gambhir/grafana-cli",
+      "sourceType": "github",
+      "computedHash": "1927d87d11db6d3b6aed7856cbe4bdd34f0989ed30efe2333edf041899e2170d"
+    },
+    "jenkins": {
+      "source": "piyush-gambhir/jenkins-cli",
+      "sourceType": "github",
+      "computedHash": "a1e2a5901a06912fa4b3dea96d08f12b139192e9866054525daed38336c29296"
+    }
+  }
+}
