@@ -1,3 +1,22 @@
+# Folder-scoped credentials and install state — never commit these.
 .config/
 .claude/
 .agents/
+.env
+.env.*
+!.env.example
+
+# Team-specific infra knowledge. Each team fills in its own version from
+# the committed <topic>.example.md templates; the filled-in copies are
+# local-only so rca-assist can be distributed as a generic product.
+infra-knowledge/*.md
+!infra-knowledge/README.md
+!infra-knowledge/*.example.md
+
+# Local RCA artifacts written by the skill during investigations. They
+# often reference real service names, trace IDs, and timelines that
+# shouldn't be shared publicly. Commit them manually if sharing is desired.
+# Anchored to the repo root so skill-reference filenames starting with
+# "rca-" (like rca-doc-template.md) stay tracked.
+/RCA-*.md
+/rca-*.md
