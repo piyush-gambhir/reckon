@@ -35,6 +35,13 @@ direnv allow
 grafana login
 jenkins login
 cubeapm login
+
+# Seed the team-specific knowledge files from the committed templates
+cd infra-knowledge
+for f in *.example.md; do cp -n "$f" "${f/.example/}"; done
+cd ..
+# Then edit each infra-knowledge/<topic>.md with your real data — they're
+# gitignored so your service names, on-call contacts, etc. stay local.
 ```
 
 Verify all three connections:

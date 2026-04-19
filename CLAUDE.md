@@ -40,12 +40,14 @@ cubeapm traces services -o json
 
 ## RCA Workflow
 
-When investigating an incident, follow this general approach:
+For any investigation, invoke the **`rca-assist` skill** — it captures the disciplined cascade methodology and points at the right CLI at each step. Always consult [`infra-knowledge/`](infra-knowledge/) at the workspace root before querying anything; it holds service inventory, label conventions, server quirks, and latent issues the team already knows about.
+
+Quick reference (the skill expands on each step):
 
 ### 1. Assess the situation
 - Check **Grafana alerts**: `grafana alert rule list -o json` and `grafana alert silence list -o json`
 - Check **Jenkins build status**: `jenkins job list --recursive --status FAILURE -o json`
-- Check **CubeAPM services**: `cubeapm traces services -o json`
+- List **CubeAPM services**: `cubeapm metrics label-values service -o json` (note: `cubeapm traces services` fails against cube.spyne.ai — see [`infra-knowledge/server-quirks.md`](infra-knowledge/server-quirks.md))
 
 ### 2. Investigate errors (traces + logs)
 - Search error traces: `cubeapm traces search --service <svc> --status error --last 1h -o json`
