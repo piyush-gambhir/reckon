@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RCA Assist</title>
+  <meta name="description" content="A Claude Code workspace for AI-powered root cause analysis with Grafana, Jenkins, and CubeAPM CLIs." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    :root { --bg: #fafafa; --surface: #fff; --text: #0a0a0a; --text-muted: #6b6b6b; --text-subtle: #9a9a9a; --border: #ececec; --border-strong: #d4d4d4; --code-bg: #f3f3f3; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    code, .mono, pre { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    nav { position: sticky; top: 0; z-index: 50; background: rgba(250,250,250,0.85); backdrop-filter: saturate(180%) blur(12px); -webkit-backdrop-filter: saturate(180%) blur(12px); border-bottom: 1px solid var(--border); }
+    .nav-inner { max-width: 720px; margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .nav-brand { font-weight: 600; font-size: 14px; color: var(--text); text-decoration: none; letter-spacing: -0.01em; }
+    .nav-links { display: flex; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+    .nav-links::-webkit-scrollbar { display: none; }
+    .nav-links a { font-size: 13px; color: var(--text-muted); text-decoration: none; padding: 6px 10px; border-radius: 6px; transition: all .15s; white-space: nowrap; }
+    .nav-links a:hover { color: var(--text); background: var(--code-bg); }
+    header { padding: 80px 0 40px; }
+    header .cmd-tag { display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-subtle); background: var(--code-bg); padding: 4px 10px; border-radius: 20px; margin-bottom: 20px; }
+    header h1 { font-size: 40px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 16px; }
+    header .lede { font-size: 17px; color: var(--text-muted); max-width: 580px; line-height: 1.55; }
+    header .meta { margin-top: 24px; display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-subtle); }
+    header .meta span { display: inline-flex; align-items: center; gap: 6px; }
+    header .meta .dot { width: 4px; height: 4px; background: var(--text-subtle); border-radius: 50%; }
+    section { padding: 48px 0; border-top: 1px solid var(--border); scroll-margin-top: 64px; }
+    section h2 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 8px; }
+    section .section-lede { color: var(--text-muted); font-size: 15px; margin-bottom: 28px; max-width: 580px; }
+    .block { margin-top: 24px; }
+    .block:first-child { margin-top: 0; }
+    .block-label { font-size: 12px; font-weight: 500; color: var(--text-subtle); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
+    .code { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .code pre { padding: 16px 18px; overflow-x: auto; font-size: 13px; line-height: 1.7; color: var(--text); white-space: pre; }
+    .code .copy { position: absolute; top: 8px; right: 8px; padding: 4px 9px; font-size: 11px; font-family: 'Inter', sans-serif; background: var(--surface); color: var(--text-muted); border: 1px solid var(--border); border-radius: 5px; cursor: pointer; transition: all .15s; opacity: 0; }
+    .code:hover .copy { opacity: 1; }
+    .code .copy:hover { color: var(--text); border-color: var(--border-strong); }
+    .code .copy.copied { color: #15803d; border-color: #bbf7d0; opacity: 1; }
+    .cm { color: var(--text-subtle); }
+    .code-inline { background: var(--code-bg); border-radius: 4px; padding: 1px 6px; font-size: .88em; color: var(--text); }
+    .cmd-grid { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+    .cmd-row { display: grid; grid-template-columns: minmax(180px, 1fr) 2fr; gap: 24px; padding: 12px 16px; border-top: 1px solid var(--border); align-items: baseline; }
+    .cmd-row:first-child { border-top: none; }
+    .cmd-row code { font-size: 12.5px; color: var(--text); }
+    .cmd-row .desc-inline { font-size: 13px; color: var(--text-muted); }
+    .cmd-row .desc-inline a { color: var(--text); text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 2px; }
+    .cmd-row .desc-inline a:hover { text-decoration-color: var(--text); }
+    .info { margin-top: 24px; padding: 16px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 13.5px; color: var(--text-muted); line-height: 1.6; }
+    .info strong { color: var(--text); font-weight: 600; }
+    .repo-link { margin-top: 8px; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); text-decoration: none; transition: color .15s; }
+    .repo-link:hover { color: var(--text); }
+    .repo-link svg { width: 14px; height: 14px; }
+    footer { padding: 48px 0; border-top: 1px solid var(--border); margin-top: 32px; font-size: 13px; color: var(--text-subtle); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+    footer a { color: var(--text-muted); text-decoration: none; transition: color .15s; }
+    footer a:hover { color: var(--text); }
+    @media (max-width: 600px) {
+      header { padding: 56px 0 32px; }
+      header h1 { font-size: 30px; }
+      section { padding: 36px 0; }
+      .cmd-row { grid-template-columns: 1fr; gap: 4px; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="nav-inner">
+      <a href="#" class="nav-brand">RCA Assist</a>
+      <div class="nav-links">
+        <a href="#prereqs">Prereqs</a>
+        <a href="#setup">Setup</a>
+        <a href="#verify">Verify</a>
+        <a href="#workflow">Workflow</a>
+        <a href="https://github.com/piyush-gambhir/rca-assist" target="_blank" rel="noopener">GitHub ↗</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container">
+
+    <header>
+      <span class="cmd-tag">workspace</span>
+      <h1>AI-powered root<br/>cause analysis.</h1>
+      <p class="lede">A Claude Code workspace that wires Grafana, Jenkins, and CubeAPM CLIs together under isolated, folder-scoped credentials — so a coding agent can correlate signals across systems in a single session.</p>
+      <div class="meta">
+        <span><span class="dot"></span>MIT License</span>
+        <span><span class="dot"></span>Claude Code workspace</span>
+        <span><span class="dot"></span>direnv-based isolation</span>
+      </div>
+    </header>
+
+    <section id="prereqs">
+      <h2>Prerequisites</h2>
+      <p class="section-lede">RCA Assist composes three CLIs and uses direnv for credential isolation. Install them once, globally.</p>
+
+      <div class="block">
+        <div class="block-label">Tools</div>
+        <div class="cmd-grid">
+          <div class="cmd-row"><code>direnv</code><span class="desc-inline">Folder-scoped environment variables — <a href="https://direnv.net/" target="_blank" rel="noopener">direnv.net</a></span></div>
+          <div class="cmd-row"><code>grafana-cli</code><span class="desc-inline">Dashboards, datasources, alerts, annotations</span></div>
+          <div class="cmd-row"><code>jenkins-cli</code><span class="desc-inline">Jobs, builds, pipelines, logs, nodes</span></div>
+          <div class="cmd-row"><code>cubeapm-cli</code><span class="desc-inline">Distributed traces, PromQL metrics, LogsQL logs</span></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-label">Install direnv</div>
+        <div class="code">
+          <button class="copy" onclick="copyCode(this)">Copy</button>
+          <pre>brew install direnv           <span class="cm"># macOS</span>
+sudo apt install direnv       <span class="cm"># Ubuntu / Debian</span>
+
+<span class="cm"># Then add the hook to your shell rc file</span>
+eval "$(direnv hook zsh)"     <span class="cm"># or bash, fish</span></pre>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-label">Install the three CLIs</div>
+        <div class="code">
+          <button class="copy" onclick="copyCode(this)">Copy</button>
+          <pre>go install github.com/piyush-gambhir/grafana-cli@latest
+go install github.com/piyush-gambhir/jenkins-cli@latest
+go install github.com/piyush-gambhir/cubeapm-cli@latest</pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="setup">
+      <h2>Setup</h2>
+      <p class="section-lede">Clone the workspace, allow direnv, authenticate each CLI, and seed your team-specific knowledge files.</p>
+
+      <div class="block">
+        <div class="block-label">1. Clone the workspace</div>
+        <div class="code">
+          <button class="copy" onclick="copyCode(this)">Copy</button>
+          <pre>git clone https://github.com/piyush-gambhir/rca-assist.git
+cd rca-assist</pre>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-label">2. Allow direnv</div>
+        <div class="code">
+          <button class="copy" onclick="copyCode(this)">Copy</button>
+          <pre>direnv allow</pre>
+        </div>
+        <p style="font-size: 14px; color: var(--text-muted); margin-top: 8px;">
+          This loads the isolated credential environment defined in <code class="code-inline">.envrc</code>.
+        </p>
+      </div>
+
+      <div class="block">
+        <div class="block-label">3. Authenticate each tool</div>
+        <div class="code">
+          <button class="copy" onclick="copyCode(this)">Copy</button>
+          <pre>grafana login
+jenkins login
+cubeapm login</pre>
+        </div>
+        <p style="font-size: 14px; color: var(--text-muted); margin-top: 8px;">
+          Credentials land in <code class="code-inline">.config/</code> inside this directory — never in your global <code class="code-inline">~/.config/</code>.
+        </p>
+      </div>
+
+      <div class="block">
+        <div class="block-label">4. Seed team knowledge files</div>
+        <div class="code">
+          <button class="copy" onclick="copyCode(this)">Copy</button>
+          <pre>cd infra-knowledge
+for f in *.example.md; do cp -n "$f" "${f/.example/}"; done
+cd ..</pre>
+        </div>
+        <p style="font-size: 14px; color: var(--text-muted); margin-top: 8px;">
+          Then edit each <code class="code-inline">infra-knowledge/&lt;topic&gt;.md</code> with your real service names, on-call contacts, runbooks, etc. They're gitignored — your data stays local.
+        </p>
+      </div>
+    </section>
+
+    <section id="verify">
+      <h2>Verify</h2>
+      <p class="section-lede">Confirm all three connections are live before opening the workspace in Claude Code.</p>
+
+      <div class="code">
+        <button class="copy" onclick="copyCode(this)">Copy</button>
+        <pre>grafana user current -o json
+jenkins status -o json
+cubeapm traces services -o json</pre>
+      </div>
+
+      <div class="info">
+        <strong>How credentials are isolated.</strong>
+        <code class="code-inline">.envrc</code> sets <code class="code-inline">XDG_CONFIG_HOME</code> to <code class="code-inline">.config/</code> inside this directory. Each CLI reads its config from there, fully isolated from your global <code class="code-inline">~/.config/</code> profiles. Each clone of this repo can hold completely different credentials — useful for staging / prod / customer environments.
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Workflow</h2>
+      <p class="section-lede">Open the folder in Claude Code and ask the agent to investigate.</p>
+
+      <div class="block">
+        <div class="block-label">Open in Claude Code</div>
+        <div class="code">
+          <button class="copy" onclick="copyCode(this)">Copy</button>
+          <pre>cd rca-assist
+claude</pre>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-label">Example prompts</div>
+        <div class="cmd-grid">
+          <div class="cmd-row"><code>Investigate</code><span class="desc-inline">"Investigate the apdex drop on media-service over the last 30 min."</span></div>
+          <div class="cmd-row"><code>Correlate</code><span class="desc-inline">"Correlate the latest deploy of api-gateway with error spikes."</span></div>
+          <div class="cmd-row"><code>Bisect</code><span class="desc-inline">"Find the Jenkins build that introduced the latency regression."</span></div>
+          <div class="cmd-row"><code>Summarize</code><span class="desc-inline">"Summarize alerts firing right now and their likely root cause."</span></div>
+          <div class="cmd-row"><code>Document</code><span class="desc-inline">"Write an RCA doc for incident X using traces, metrics, and build history."</span></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-label">What the agent has access to</div>
+        <div class="cmd-grid">
+          <div class="cmd-row"><code>grafana</code><span class="desc-inline">Dashboards, datasources, alert rules, annotations</span></div>
+          <div class="cmd-row"><code>jenkins</code><span class="desc-inline">Job history, build logs, pipeline state, node health</span></div>
+          <div class="cmd-row"><code>cubeapm</code><span class="desc-inline">Trace search, PromQL metrics, LogsQL logs</span></div>
+          <div class="cmd-row"><code>infra-knowledge/</code><span class="desc-inline">Your team-specific service map, on-call, runbooks</span></div>
+          <div class="cmd-row"><code>skills/</code><span class="desc-inline">Reusable Claude Code skills for common RCA patterns</span></div>
+        </div>
+      </div>
+
+      <a href="https://github.com/piyush-gambhir/rca-assist" target="_blank" rel="noopener" class="repo-link" style="margin-top: 28px;">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.373 0 12c0 5.303 3.438 9.8 8.205 11.387.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.298 24 12c0-6.627-5.373-12-12-12"/></svg>
+        Full reference on github.com/piyush-gambhir/rca-assist ↗
+      </a>
+    </section>
+
+  </main>
+
+  <footer class="container">
+    <span>rca-assist · MIT License</span>
+    <a href="https://github.com/piyush-gambhir/rca-assist" target="_blank" rel="noopener">github.com/piyush-gambhir/rca-assist ↗</a>
+  </footer>
+
+  <script>
+    function copyCode(btn) {
+      const pre = btn.parentElement.querySelector('pre');
+      navigator.clipboard.writeText(pre.innerText).then(() => {
+        btn.textContent = 'Copied';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+      });
+    }
+  </script>
+</body>
+</html>
