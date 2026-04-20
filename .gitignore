@@ -20,3 +20,6 @@ infra-knowledge/*.md
 # "rca-" (like rca-doc-template.md) stay tracked.
 /RCA-*.md
 /rca-*.md
+
+# Cloudflare Pages local cache
+.wrangler/
