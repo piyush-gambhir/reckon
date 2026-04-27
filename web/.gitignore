@@ -1,0 +1,12 @@
+# Astro / Node build output
+dist/
+.astro/
+node_modules/
+
+# Wrangler / Cloudflare Pages local cache
+.wrangler/
+.dev.vars
+
+# Editor / OS
+.DS_Store
+*.log

@@ -2,6 +2,8 @@
 
 Root Cause Analysis assistant powered by Grafana, Jenkins, and CubeAPM CLIs.
 
+📖 **Docs site:** see [`web/`](web/) (Astro + Starlight, deployed to Cloudflare Pages). Run `cd web && npm install && npm run dev` for local preview.
+
 ## Overview
 
 `rca-assist` is a Claude Code workspace for investigating production incidents and performing root cause analysis. It wires together three observability and CI/CD tools under a single, isolated credential environment so a coding agent can correlate signals across systems in one session.

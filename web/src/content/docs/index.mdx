@@ -1,0 +1,57 @@
+---
+title: rca-assist
+description: A coding-agent workflow for production root-cause analysis. Drives Grafana, Jenkins, and CubeAPM CLIs through a disciplined cascade — from alert to written RCA.
+template: splash
+hero:
+  tagline: Turn an alert into a written RCA without leaving the terminal. The agent runs the cascade; you review the conclusions.
+  actions:
+    - text: Get started
+      link: /guides/installation/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/piyush-gambhir/rca-assist
+      icon: external
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## What it is
+
+`rca-assist` is a Claude Code workspace that turns a coding agent into a disciplined on-call engineer. When an alert fires, you hand the agent the alert text and it runs a cascade — symptom → service → endpoint → sub-span → downstream → trigger — using three CLI tools (`grafana`, `jenkins`, `cubeapm`) and writes a structured RCA at the end.
+
+It is **production-only** by design: each clone holds production credentials in `.env` and isolates them via `direnv`. If you need staging or UAT, use a separate clone so the agent never crosses environments mid-investigation.
+
+## Why a folder, not a SaaS
+
+<CardGrid stagger>
+  <Card title="Your data stays local" icon="seti:lock">
+    No service-name, trace ID, or customer identifier ever leaves your terminal. The skill is markdown; the credentials live in `.env`; investigations land in a gitignored `incidents/` folder.
+  </Card>
+  <Card title="Genericised methodology, team-specific facts" icon="open-book">
+    The skill captures the cascade pattern (works on any service / any stack). The team-specific facts — service inventory, slow queries, server quirks — live in `infra-knowledge/` so each team customises in one place.
+  </Card>
+  <Card title="Auditable by design" icon="document">
+    Every RCA cites the queries it ran. Every learning routes to skill, infra-knowledge, or memory with a paper trail back to the originating incident. Six months later you can still answer "why does the skill say this?"
+  </Card>
+  <Card title="Plug-in CLIs, not lock-in" icon="setting">
+    Built on the `grafana`, `jenkins`, and `cubeapm` CLIs — each is a standalone tool you can use without the skill. Replace any one with a different observability backend by writing a sibling CLI; the skill methodology survives.
+  </Card>
+</CardGrid>
+
+## How a typical session looks
+
+1. Alert fires in your channel: *`[#36517] [FIRING:1] Conversational AI | P2-Warning: Error Rate >3% (10min)`*.
+2. You paste the alert into the agent. It starts the cascade automatically.
+3. Agent identifies the failing endpoint, the upstream cause (e.g., a Twilio API rejection), confirms novelty over 30 days, and pinpoints recovery time.
+4. Agent writes the RCA + raw evidence into `incidents/<UTC-date>-<slug>/`. You review and ship it.
+5. Agent runs a post-incident self-review and routes any learnings into the skill or `infra-knowledge/` so the next on-call won't repeat the same mistakes.
+
+## Built on
+
+- **[CubeAPM CLI](https://github.com/piyush-gambhir/cubeapm-cli)** — distributed traces, PromQL metrics, LogsQL logs.
+- **[Grafana CLI](https://github.com/piyush-gambhir/grafana-cli)** — dashboards, datasources, alerts, annotations.
+- **[Jenkins CLI](https://github.com/piyush-gambhir/jenkins-cli)** — jobs, builds, pipelines, logs, nodes.
+- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — the agent runtime and skill loader.
+
+Want to try it on your stack? [Start here](/guides/installation/).
