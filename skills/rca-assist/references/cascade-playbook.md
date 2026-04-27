@@ -59,8 +59,27 @@ Per-level checklist. At each level, answer two questions: *where did the time/er
 - [ ] Scheduled job rate changes? (Compare CADENCE-* service rates across the window.)
 - [ ] Admin console activity? (Look for reprocess / bulk / admin GET/POST on the relevant screens in the minute preceding the spike.)
 - [ ] One-off bulk calls? (Search `root_name=~".*bulk.*"` or `.*reprocess.*` for a single call at incident start.)
-- [ ] Deploys? (`grafana annotation list` for `deploy` tag + `jenkins build list` for the service's deploy job.)
+- [ ] Deploys? (`grafana annotation list` for `deploy` tag + `jenkins build list` for the service's deploy job. Skip if the alert isn't a Grafana rule — see SKILL.md §6 #8 and `infra-knowledge/server-quirks.md` for workspace-specific notification-template patterns.)
 - [ ] Upstream-outage-induced retry storm? (Check upstream service's Apdex; if it dropped just before yours, retries are the story.)
+
+### Caller discovery for `/internal/` / service-to-service endpoints
+
+If the failing root_name is `/internal/`, `/private/`, `/api/internal/...`, or otherwise namespaced as service-to-service, identify the caller before writing the RCA. Try in order; each takes ~30s:
+
+1. **HTTP client spans pointing at the endpoint.** The most reliable when callers are OTel-instrumented:
+   ```
+   sum by (service) (rate(cube_apm_latency_count{env="PROD",span_kind="client",
+     span_name=~".*<svc>:.*<endpoint-path>.*"}[10m]))
+   ```
+   `span_name` for client spans on this stack uses `<METHOD> <SERVICE>:<root_name>` — search for the destination service substring.
+2. **Inbound `context.ip` / `context.userAgent` from a sample error log.** Multiple distinct IPs with `userAgent=node` means a Node service in the same VPC.
+3. **Resolve IP → service** via:
+   - `count by (service) (cube_apm_latency_count{env="PROD",hostname=~"ip-<dashed-ip>.*"})` (uses `hostname` label; tries `host.name` too with `"host.name"=~...`)
+   - Fall back to ops/infra: `kubectl get pods -A -o wide | grep <ip>` or `aws ecs describe-tasks`
+4. **Trace by `trace.id` from a fresh error log.** `cubeapm traces get <id>`. **Do this fast** — tail sampling on internal/low-volume routes drops traces within a few minutes.
+5. **If all four fail, that's still a finding.** Document it as: "Caller service is not currently observable in CubeAPM under any of `span_kind=client`, `hostname=`, `host.name=`, or retained traces." That tells the team a real instrumentation gap, not "we couldn't find it."
+
+This step is missed often because the obvious cause (e.g., a Twilio/upstream rejection) explains the *failure* completely, but you still want the caller identified for blast-radius assessment and for the post-fix verification ("did the caller's success rate recover too?").
 
 ## Level 7: close
 

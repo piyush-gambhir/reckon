@@ -175,6 +175,13 @@ A good RCA finishes with a single sentence a reader could restate: *"X happened 
 3. **Is the trace sampler hiding the real root span?** Low-volume endpoints often aren't retained. Don't conclude "no such call" from an empty trace search.
 4. **Is the alert's tolerance threshold realistic?** Apdex goes to 0.2 when every request is frustrated — check what absolute latency number that corresponds to for your endpoint's threshold.
 5. **Distinguish cause from effect.** Every downstream spike looks "caused" by the next level down, but the real cause might be a lateral caller change. Always do step 3.6 before declaring a root.
+6. **Don't trust fresh log buckets (~last 5 min) for recovery determination.** VictoriaLogs/CubeAPM ingestion can lag several minutes. A bucket that reads 0 right now may backfill to 20+ five minutes from now. Three concrete defenses, in order of preference:
+   - Cross-check with the equivalent **metric** (counter histograms ingest faster than logs and don't backfill the same way). If `cube_apm_latency_count{http_code=~"5.."}` shows continuing errors, trust that over a low log-hits bucket.
+   - **Re-query** the same `logs hits` once after ~5 minutes and confirm the bucket counts didn't move. If they did, treat the earlier read as provisional.
+   - Tag any near-realtime recovery claim in the RCA with the read time (e.g., *"last error log at 18:30 UTC, observed at 18:33 UTC"*) so a reader knows to discount it.
+   This is the single most common way an RCA gets the recovery time wrong; budget the extra 5 min before writing the document.
+7. **For `/internal/`, `/private/`, or service-to-service endpoints, identify the caller service before writing the RCA.** A failing endpoint with `userAgent=node` and an RFC1918 `context.ip` has *some* internal owner; finding it (or proving it's not APM-instrumented) is part of the RCA, not a follow-up. See cascade playbook Level 6 "caller discovery for internal endpoints".
+8. **Recognise the alert source before chasing the alert rule.** Not every notification corresponds to a Grafana alert rule — some come from CubeAPM-native alerting, some from the application itself, some from third parties (PagerDuty/Opsgenie composite policies). If the alert isn't in Grafana, `grafana alert rule list` and `grafana annotation list` are dead ends. Check `infra-knowledge/server-quirks.md` for the workspace's specific notification-template patterns (e.g., title prefixes that indicate CubeAPM-native vs Grafana-native), then go straight to the metric/log signal that the alert is built on.
 
 ## 7. Output: the RCA document
 
@@ -198,10 +205,35 @@ Optimize the document for: (a) the team that owns the service reads it once and 
 ## 8. What not to do
 
 - Do not concatenate unrelated screenshots or data dumps into the RCA — each number should be motivated by a question.
-- Do not speculate beyond the data. If you don't have logs from the service, say so; don't guess what the log said.
+- Do not speculate beyond the data. Before each sentence in the RCA, ask: *is this an observation, a derivation from observation, or a guess?* Guesses go in §7 (Unanswered Questions), not in §1 (Summary), §3 (Causal Chain), §5 (Why Recovery), or §6 (Root Causes). Phrases that should trigger you to re-check: *"likely"*, *"most likely"*, *"consistent with"*, *"could be"*, *"plausible candidates"*, *"suggests that"* — each is a tell that you're filling in for missing data.
 - Do not skip the unanswered-questions section. Leaving gaps implicit creates the illusion of a complete story and prevents follow-ups.
 - Do not recommend fixes without ranking them. "We should also look at X" is noise; "X is the highest-leverage fix because Y" is signal.
 - Do not use `cubeapm traces services` as a service inventory — it fails against some servers and is a poor list regardless. Use `cubeapm metrics label-values service` and the `infra-knowledge/services.md` file.
+- Do not declare recovery from a fresh log bucket alone (see Pitfall #6). Cross-check with metrics, or re-query after one ingestion window, before writing the recovery time into the RCA header.
+
+## 9. Post-incident self-review (mandatory before closing the loop)
+
+After the RCA file is written and the user has acknowledged it, do a short retrospective on the investigation itself. This is not optional — every incident should produce learnings. Skip it and the next on-call repeats the same mistakes.
+
+Ask, in order:
+
+1. **Did I correct any conclusion mid-investigation?** (Recovery time, root cause, blast radius.) If yes, *why* did I get it wrong the first time? Was it bad data, a missed cross-check, or a discipline lapse (speculation, premature closure)? Each correction is a candidate learning.
+2. **What took longer than it should have?** Wasted round-trips on the wrong tool, jq parse errors, dead-end queries against unsupported endpoints, hunting for things `infra-knowledge/` already documents.
+3. **What did the user have to ask for that I should have produced unprompted?** Caller identification, alert state confirmation, deploy correlation, etc.
+4. **What workspace knowledge would have saved me time?** Anything that's not in `infra-knowledge/` yet but should be.
+
+Then route each learning to the right home:
+
+| Kind of learning                                   | Goes in                                    |
+|----------------------------------------------------|--------------------------------------------|
+| Generic RCA discipline (any service, any stack)    | the `rca-assist` skill: SKILL.md §6 / §8 / cascade-playbook |
+| Workspace-specific quirk (CLI behavior, server bug, label gotcha) | `infra-knowledge/server-quirks.md` (or `metric-conventions.md` / `known-issues.md`) |
+| User preference / writing style / approval pattern | project memory as `feedback` type           |
+| New service relationship, slow query, fan-out fact | `infra-knowledge/services.md` / `known-issues.md` |
+
+Two-line minimum per learning: state the rule, then **why** (cite the actual numbers / timestamps / phrases from this incident as evidence), so a future reader knows whether it still applies.
+
+If nothing was learned — say so explicitly in your wrap-up message rather than skipping the step. Two clean RCAs in a row is a real signal; silent skipping is not.
 
 ## Reference files
 
