@@ -6,6 +6,8 @@ Root Cause Analysis assistant powered by Grafana, Jenkins, and CubeAPM CLIs.
 
 `rca-assist` is a Claude Code workspace for investigating production incidents and performing root cause analysis. It wires together three observability and CI/CD tools under a single, isolated credential environment so a coding agent can correlate signals across systems in one session.
 
+This clone is intended to be **production-only**. Put only production Grafana, Jenkins, and CubeAPM credentials in this workspace. If you ever need staging or UAT, use a separate clone so the agent never mixes environments during an RCA.
+
 **Tools available to the agent:**
 
 | CLI | Covers |
@@ -28,13 +30,20 @@ Root Cause Analysis assistant powered by Grafana, Jenkins, and CubeAPM CLIs.
 git clone https://github.com/piyush-gambhir/rca-assist.git
 cd rca-assist
 
-# Allow direnv to load the isolated credential environment
+# Seed folder-local credentials for all three CLIs
+cp -n .env.example .env
+# Then edit .env (or create .env.local) with your real Grafana, Jenkins,
+# and CubeAPM production credentials.
+
+# Allow direnv to load the isolated environment and repo-local secrets
 direnv allow
 
-# Authenticate each tool (credentials stored in .config/ within this directory)
-grafana login
-jenkins login
-cubeapm login
+# Optional fallback: if you prefer saved CLI profiles instead of env vars,
+# you can still authenticate each tool and their config will stay in .config/
+# within this directory.
+# grafana login
+# jenkins login
+# cubeapm login
 
 # Seed the team-specific knowledge files from the committed templates
 cd infra-knowledge
@@ -54,7 +63,12 @@ cubeapm traces services -o json
 
 ## How credentials are isolated
 
-`.envrc` sets `XDG_CONFIG_HOME` to `.config/` inside this directory. Each CLI reads its config from there, keeping credentials fully isolated from your global `~/.config/` profiles. You can have different credentials per clone of this repo.
+`.envrc` sets `XDG_CONFIG_HOME` to `.config/` inside this directory and also loads `.env` / `.env.local` when present. That gives you two repo-local authentication modes:
+
+- **Preferred:** store credentials in `.env` or `.env.local` and let direnv export them automatically whenever you enter this repo.
+- **Fallback:** run `grafana login`, `jenkins login`, or `cubeapm login` inside this directory to save per-repo CLI profiles under `.config/`.
+
+Either way, credentials stay isolated from your global `~/.config/` profiles. You can have different credentials per clone of this repo.
 
 Config files land at:
 - `.config/grafana-cli/config.yaml`

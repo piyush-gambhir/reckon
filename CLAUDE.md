@@ -10,20 +10,27 @@ This project is a workspace for spinning up a coding agent to investigate produc
 - **Jenkins CLI** (`jenkins`) -- jobs, builds, pipelines, logs, nodes
 - **CubeAPM CLI** (`cubeapm`) -- distributed traces, PromQL metrics, LogsQL logs
 
+This workspace is **production-only**. Keep only production credentials here. If the team wants staging or UAT investigation, use a different clone so the agent cannot cross wires between environments.
+
 ## Skills
 
 Skills are installed globally via `npx skills add`. See the `grafana`, `jenkins`, and `cubeapm` skills for full command references and workflows.
 
 ## Authentication
 
-This project uses **folder-specific credentials** via `.envrc` which sets `XDG_CONFIG_HOME` to `.config/` within this directory. Credentials stored here are isolated from your global CLI configs.
+This project uses **folder-specific credentials** via `.envrc`, which sets `XDG_CONFIG_HOME` to `.config/` within this directory and loads `.env` / `.env.local` if present. Environment variables are the preferred setup because they make the workspace usable immediately when you `cd` into it, without interactive CLI logins. Saved CLI profiles under `.config/` remain a fallback option.
 
-Make sure direnv is set up (`direnv allow`), then run login for each tool:
+Make sure direnv is set up (`direnv allow`), then either populate `.env` / `.env.local` from `.env.example` or run login for each tool:
 
 ```bash
-grafana login
-jenkins login
-cubeapm login
+cp -n .env.example .env
+$EDITOR .env
+direnv allow
+
+# Optional fallback if you prefer saved profiles:
+# grafana login
+# jenkins login
+# cubeapm login
 ```
 
 Config files are stored at:
