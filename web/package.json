@@ -1,0 +1,19 @@
+{
+  "name": "rca-assist-web",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Docs and landing site for rca-assist (powered by Astro + Starlight, deployed to Cloudflare Pages).",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.30.0",
+    "astro": "^5.0.0",
+    "sharp": "^0.33.0"
+  }
+}
