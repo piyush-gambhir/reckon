@@ -13,11 +13,21 @@ infra-knowledge/*.md
 !infra-knowledge/README.md
 !infra-knowledge/*.example.md
 
-# Local RCA artifacts written by the skill during investigations. They
-# often reference real service names, trace IDs, and timelines that
-# shouldn't be shared publicly. Commit them manually if sharing is desired.
-# Anchored to the repo root so skill-reference filenames starting with
-# "rca-" (like rca-doc-template.md) stay tracked.
+# Per-incident folders under incidents/<YYYY-MM-DD>-<slug>/. Each
+# contains the RCA writeup, original alert text, learnings, and raw
+# evidence (logs, metric snapshots) — all of which reference real
+# service names, trace IDs, IPs, and timelines that shouldn't be
+# shared publicly. The convention itself (incidents/README.md and
+# any incidents/*.example/ reference folders) stays tracked so the
+# layout travels with the skill.
+/incidents/*/
+!/incidents/*.example/
+!/incidents/*.example/**
+
+# Legacy: RCA artifacts that used to land at the repo root before the
+# incidents/ convention. Kept ignored for back-compat with older clones.
+# Anchored to root so skill-reference filenames starting with "rca-"
+# (like rca-doc-template.md) stay tracked.
 /RCA-*.md
 /rca-*.md
 

@@ -1,6 +1,6 @@
 # RCA document template
 
-Copy this skeleton to `RCA-<YYYY-MM-DD>-<slug>.md` at the workspace root. Fill in every section; if a section has nothing to say, write one honest sentence explaining why rather than deleting it.
+Copy this skeleton to `incidents/<YYYY-MM-DD>-<slug>/RCA.md` (folder convention in [`incidents/README.md`](../../../incidents/README.md)). Fill in every section; if a section has nothing to say, write one honest sentence explaining why rather than deleting it.
 
 ```markdown
 # RCA: <one-line headline, e.g. "<Service> Apdex drop to 0.21">
