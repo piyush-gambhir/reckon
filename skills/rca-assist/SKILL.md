@@ -183,9 +183,28 @@ A good RCA finishes with a single sentence a reader could restate: *"X happened 
 7. **For `/internal/`, `/private/`, or service-to-service endpoints, identify the caller service before writing the RCA.** A failing endpoint with `userAgent=node` and an RFC1918 `context.ip` has *some* internal owner; finding it (or proving it's not APM-instrumented) is part of the RCA, not a follow-up. See cascade playbook Level 6 "caller discovery for internal endpoints".
 8. **Recognise the alert source before chasing the alert rule.** Not every notification corresponds to a Grafana alert rule — some come from CubeAPM-native alerting, some from the application itself, some from third parties (PagerDuty/Opsgenie composite policies). If the alert isn't in Grafana, `grafana alert rule list` and `grafana annotation list` are dead ends. Check `infra-knowledge/server-quirks.md` for the workspace's specific notification-template patterns (e.g., title prefixes that indicate CubeAPM-native vs Grafana-native), then go straight to the metric/log signal that the alert is built on.
 
-## 7. Output: the RCA document
+## 7. Output: the incident folder
 
-Write the finished RCA to a file at the workspace root, named `RCA-<YYYY-MM-DD>-<slug>.md`. Use the template in [references/rca-doc-template.md](references/rca-doc-template.md).
+Each investigation creates a folder at `incidents/<YYYY-MM-DD>-<slug>/` (UTC date the incident *started*; slug is `<service>-<symptom>` or `<service>-<root-cause>`, hyphenated). The convention is documented in [`incidents/README.md`](../../incidents/README.md) at the workspace root. The folder is gitignored by default so real service names, trace IDs, and timelines stay local; commit individually only after redaction.
+
+Write the following files into the folder:
+
+```
+incidents/<YYYY-MM-DD>-<slug>/
+├── RCA.md                    # required. The writeup. Follows references/rca-doc-template.md.
+├── alert.txt                 # required when an alert kicked off the investigation. Verbatim notification text.
+├── learnings.md              # required. Per-incident retrospective — what you got wrong and where each lesson now lives (skill / infra-knowledge / project memory).
+└── evidence/                 # any raw output a future reader would need to verify a specific claim in RCA.md without re-running queries.
+    ├── error-log-sample.json
+    ├── error-message-counts.txt
+    ├── <signal>-hits-1m.txt
+    ├── <signal>-hits-30d.txt
+    └── ...
+```
+
+`RCA.md` is the single source of truth. `evidence/` is retention insurance — logs and traces in CubeAPM rotate, but the snapshot saved at write time will not. `learnings.md` is the audit trail tying §9's routing decisions back to the incident that motivated them, so a future reader of `SKILL.md` §6 #N can find the originating incident and judge whether the rule still applies.
+
+Use the writeup template in [references/rca-doc-template.md](references/rca-doc-template.md) for `RCA.md`.
 
 Required sections:
 
