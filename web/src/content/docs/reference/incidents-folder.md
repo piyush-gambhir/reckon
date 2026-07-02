@@ -18,16 +18,19 @@ incidents/<YYYY-MM-DD>-<short-slug>/
 
 ```
 incidents/<YYYY-MM-DD>-<slug>/
-├── RCA.md                          # required. The writeup.
-├── alert.txt                       # required when an alert kicked off the investigation.
-├── learnings.md                    # required. Per-incident retrospective with routing trail.
-└── evidence/                       # raw outputs that back specific claims in RCA.md.
-    ├── error-log-sample.json
-    ├── error-message-counts.txt
-    ├── <signal>-hits-1m.txt
-    ├── <signal>-hits-30d.txt
-    └── ...
+├── RCA.md                          # the only hard requirement. The writeup.
+├── alert.txt                       # when an alert kicked off the investigation: the verbatim text.
+├── learnings.md                    # the skill writes this on every investigation; a folder without it reads as "no retrospective happened".
+├── evidence/                       # raw outputs that back specific claims in RCA.md.
+│   ├── error-log-sample.json
+│   ├── error-message-counts.txt
+│   ├── <signal>-hits-1m.txt
+│   ├── <signal>-hits-30d.txt
+│   └── ...
+└── notes/                          # optional scratch notes kept out of the RCA.
 ```
+
+> `RCA.md` is the only strictly-required file (per `incidents/README.md`). In practice the skill also produces `alert.txt` (when an alert started it) and `learnings.md` on every run — treat those as expected, not optional.
 
 ## Why per-folder
 
@@ -46,17 +49,18 @@ If you want to share a specific incident publicly (postmortem, blog post, confer
 
 ## RCA.md structure
 
-The skill's writeup template (`skills/rca-assist/references/rca-doc-template.md`) defines ten sections. Required, in order:
+The skill's writeup template (`skills/rca-assist/references/rca-doc-template.md`) is a **header table plus ten numbered sections**. In order:
 
-1. Header table (date, window in both local and UTC, peak impact, services affected, trigger, latent contributors, auto-recovery y/n, data gaps).
-2. Incident summary (1–2 paragraphs an engineer could paste into a postmortem).
-3. Timeline (bucketed metric values; 2-min buckets for ~30 min windows).
-4. Causal chain diagram (ASCII arrows: symptom → service → endpoint → downstream → root).
-5. Evidence (one subsection per cascade level, with the queries inlined).
-6. Why recovery was automatic (or not).
-7. Root causes, ranked by leverage.
-8. Unanswered questions & data gaps.
-9. Recommendations: must-fix / should-fix / nice-to-have.
-10. Appendix: queries used (so the next on-call can re-run them).
+- **Header table** (date, window in both local and UTC, peak impact, services affected, trigger, latent contributors, auto-recovery y/n, data gaps).
+1. Incident summary (1–2 paragraphs an engineer could paste into a postmortem).
+2. Timeline (bucketed metric values; 2-min buckets for ~30 min windows).
+3. Causal chain diagram (ASCII arrows: symptom → service → endpoint → downstream → root).
+4. Evidence (one subsection per cascade level, with the queries inlined).
+5. Why recovery was automatic (or not).
+6. Root causes, ranked by leverage.
+7. Unanswered questions & data gaps.
+8. Recommendations: must-fix / should-fix / nice-to-have.
+9. Appendix: queries used (so the next on-call can re-run them).
+10. Reproducibility: how to re-run the whole investigation from scratch, including any login prerequisites.
 
 Optimised for two readers: the team that owns the service reads it once and knows what to do, *and* a future on-call searching for "apdex drop" finds it and learns the pattern.

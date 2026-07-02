@@ -33,3 +33,7 @@ infra-knowledge/*.md
 
 # Cloudflare Pages local cache
 .wrangler/
+
+# macOS Finder metadata — never commit. (incidents/.DS_Store encodes the names
+# of gitignored incident folders, so a stray `git add -A` could leak them.)
+.DS_Store

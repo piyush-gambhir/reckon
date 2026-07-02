@@ -2,7 +2,7 @@
 
 One folder per real incident. Each folder is the durable, on-disk record of an investigation: the alert that fired, the RCA document, the supporting evidence, and a short retrospective on what *this specific incident* taught the team.
 
-This folder is the Spyne-team analogue of `infra-knowledge/`: the **convention** is shared (this README, plus any `*.example/` reference folders) but the actual incident folders are **local-only**. They contain real service names, IPs, account IDs, trace IDs, and timelines that should not be published.
+This folder mirrors the `infra-knowledge/` split: the **convention** is shared (this README, plus any `*.example/` reference folders) but the actual incident folders are **local-only**. They contain real service names, IPs, account IDs, trace IDs, and timelines that should not be published.
 
 ## What's tracked vs ignored
 
@@ -20,7 +20,7 @@ incidents/<YYYY-MM-DD>-<short-slug>/
 
 - Date is the **UTC** date the incident *started*, not the date the alert fired (they can differ when an incident crosses midnight UTC).
 - Slug is a hyphenated phrase a teammate would type into search — usually `<service>-<symptom>` or `<service>-<root-cause>`.
-- Examples: `2026-04-27-conversational-ai-twilio-mismatch`, `2026-04-19-media-service-apdex`.
+- Examples: `2026-04-27-payments-gateway-mismatch`, `2026-04-19-search-api-apdex`.
 
 ## Folder layout
 

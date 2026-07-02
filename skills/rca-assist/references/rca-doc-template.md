@@ -120,17 +120,19 @@ A subsection per cascade level.
 
 ## 8. Recommendations
 
+Give each recommendation a **Status** so a later incident can tell what was actually done: `proposed` (default) · `ticketed <link>` · `shipped <date>` · `declined <reason>`. Before investigating a recurring symptom, grep prior RCAs for the affected service's open (`proposed`/`ticketed`) recommendations — an unshipped must-fix from a past incident is often the root cause of the next one.
+
 ### Must-fix
-1. <RC-1 remediation>
-2. <RC-2 remediation>
+1. <RC-1 remediation> — *Status: proposed*
+2. <RC-2 remediation> — *Status: proposed*
 
 ### Should-fix
-3. <RC-3 remediation>
-4. <architectural follow-up>
+3. <RC-3 remediation> — *Status: proposed*
+4. <architectural follow-up> — *Status: proposed*
 
 ### Nice-to-have (observability / process)
-5. <alerting improvement>
-6. <runbook / audit trail>
+5. <alerting improvement> — *Status: proposed*
+6. <runbook / audit trail> — *Status: proposed*
 
 ---
 

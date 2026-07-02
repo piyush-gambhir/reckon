@@ -7,11 +7,12 @@ The skill captures a *generic* RCA methodology. The *facts* about your environme
 
 ## What lives here
 
-The repo ships seven `*.example.md` templates. Each is a starting point for one kind of fact:
+The repo ships eight `*.example.md` templates. Each is a starting point for one kind of fact:
 
 | Template | Purpose |
 |---|---|
 | `services.example.md` | Canonical service-label values, owners, what each service does. |
+| `service-name-mapping.example.md` | Cross-tool name lookup (CubeAPM ↔ Grafana ↔ Jenkins ↔ Kafka consumer group ↔ K8s) + Grafana datasource UIDs. |
 | `metric-conventions.example.md` | Label names, value gotchas, which metrics to query. |
 | `server-quirks.example.md` | Reverse-proxy / API quirks the CLIs work around. |
 | `known-issues.example.md` | Pre-existing slow queries / fragile endpoints / latent bugs. |
@@ -31,9 +32,9 @@ $EDITOR services.md
 
 Before any cascade level runs, the skill checks `infra-knowledge/` for:
 
-- The canonical service spelling (`MEDIA-SERVICE` vs `Media-Service` — the wrong one looks like "no data").
+- The canonical service spelling (`EXAMPLE-SERVICE` vs `Example-Service` — the wrong one looks like "no data").
 - Whether a metric has known label gotchas (e.g., `service.version` is `UNSET` everywhere, so don't aggregate by it).
-- Whether the symptom matches a known latent issue ("`cadence_queue_video/select` runs at 200–900ms all day; if you see it slow, that's not new").
+- Whether the symptom matches a known latent issue ("`<some-slow-query>` runs at 200–900ms all day; if you see it slow, that's not new").
 - Whether a Jenkins job name maps to the suspected service for deploy correlation.
 
 A correctly-populated `services.md` typically saves 2–5 minutes per investigation. A correctly-populated `known-issues.md` prevents the wrong conclusion ("the DB query is suddenly slow!" → no, it's been slow all day; the volume is the new variable).
@@ -42,9 +43,9 @@ A correctly-populated `services.md` typically saves 2–5 minutes per investigat
 
 The skill's [post-incident self-review](/reference/post-incident-self-review/) explicitly asks *"what workspace knowledge would have saved me time?"* If a fact surfaces during an investigation that wasn't in `infra-knowledge/` yet, the skill writes it back. Examples that have landed in real workspaces:
 
-- A new service label (e.g., `CONVERSATIONAL_AI` uses an underscore where every other related service uses a hyphen) → `services.md`.
-- A CLI quirk (e.g., `cubeapm traces services` fails against this server because the reverse proxy strips a path prefix) → `server-quirks.md`.
-- A logs ingestion lag value (e.g., this team's VictoriaLogs backfills 5–20 min behind wall-clock) → `server-quirks.md`.
+- A new service label (e.g., a service that uses an underscore where every other related service uses a hyphen) → `services.md` / `service-name-mapping.md`.
+- A CLI quirk (e.g., a reverse proxy that strips a path prefix so a particular CLI endpoint needs a fallback) → `server-quirks.md`.
+- A logs ingestion lag value (e.g., your logs backend backfills several minutes behind wall-clock) → `server-quirks.md`.
 
 These accumulate over time and turn the workspace into a curated, team-specific knowledge base. The next on-call doesn't repeat the discovery work.
 

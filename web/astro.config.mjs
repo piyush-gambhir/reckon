@@ -8,7 +8,7 @@ export default defineConfig({
     starlight({
       title: 'rca-assist',
       description:
-        'A coding-agent workflow for production root-cause analysis. Drives Grafana, Jenkins, and CubeAPM CLIs through a disciplined cascade — from alert to written RCA.',
+        'A coding-agent workflow for production root-cause analysis. Drives Grafana, Jenkins, CubeAPM and a read-only ops toolbelt (aws, gh, kcat, rpk, mongosh, psql, mysql) through a disciplined cascade — from alert to written RCA.',
       social: {
         github: 'https://github.com/piyush-gambhir/rca-assist',
       },
