@@ -1,6 +1,6 @@
 # On-call and escalation
 
-Who to contact for what. Keep this concise — names and Slack handles only, no full org chart.
+Who to contact for what. Keep this concise — names and Slack handles only, no full org chart. Copy this file to `oncall.md` and fill in your team's real contacts and service groupings.
 
 ## Format
 
@@ -11,15 +11,15 @@ For each team / domain:
 
 ## Teams
 
-### Media / 360
+### <Domain A> (e.g. Media / Core)
 - Primary on-call: `<tbd>`
 - Team channel: `#<tbd>`
-- Services: `MEDIA-SERVICE`, `360-BACKEND`, `MEDIA-HANDLER`, `MEDIA-CONFIG`
+- Services: `EXAMPLE-SERVICE`, `EXAMPLE-BACKEND`, `EXAMPLE-WORKER`
 
-### Inventory / Dealer
+### <Domain B> (e.g. Inventory / Dealer)
 - Primary on-call: `<tbd>`
 - Team channel: `#<tbd>`
-- Services: `INVENTORY-APIS`, `DEALER-*`
+- Services: `EXAMPLE-APIS`, `EXAMPLE-*`
 
 ### Platform (DB / infra)
 - Primary on-call: `<tbd>`
