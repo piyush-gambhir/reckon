@@ -10,7 +10,7 @@ The most reliable way to learn `rca-assist` is to run it on a real alert. This p
 You paste the alert text directly into the agent:
 
 ```
-[#36517] [FIRING:1] Conversational AI | P2-Warning: Error Rate >3% (10min)
+[#NNNNN] [FIRING:1] Payments API | P2-Warning: Error Rate >3% (10min)
 ```
 
 The agent does **not** ask you to clarify. The skill picks up automatically because the title fits the trigger pattern (a service name, a severity, a symptom narrative).
@@ -19,19 +19,19 @@ The agent does **not** ask you to clarify. The skill picks up automatically beca
 
 The skill runs a six-level cascade. At each level it answers two questions: *where did the time/errors go* and *what fed this level with load or bad inputs*. It only descends when it can attribute quantitatively.
 
-1. **Frame.** Convert the alert into a tight question. Service label = `CONVERSATIONAL_AI` (verified against `cubeapm metrics label-values service`, since label spellings are inconsistent — there's also `CONVERSATIONAL-AI-BACKEND` and `CONVERSATIONAL-AI-BACKEND-CRON`).
+1. **Frame.** Convert the alert into a tight question. Service label = `PAYMENTS_API` (verified against `cubeapm metrics label-values service`, since label spellings are inconsistent — there might also be a `PAYMENTS-BACKEND` and `PAYMENTS-BACKEND-CRON`).
 2. **Service-wide signal.** Plot 5xx rate over the alert window + 30 min buffer. Confirms the symptom is real and bounds the window.
-3. **Endpoint attribution.** `topk` by `root_name` to find which endpoint owns the damage. In this incident, ~90% of 5xx came from `POST /conversation/internal/sms/v2/messages/outbound`.
-4. **Per-call vs volume.** Did per-call latency change, or just call volume? Both jumped 3–5×. Constant `From`/account pair across error logs ruled out a request-driven shift.
-5. **Sub-span / log evidence.** A single log query revealed the upstream cause: Twilio API rejecting outbound messages with *"Mismatch between the 'From' number +19786438481 and the account ACfea40b5ee787b06288092d836307a9e7"*. Stack trace points to `TwilioService.sendSms` and `SmsV2Service.sendOutbound`.
-6. **Trigger search.** A 30-day novelty check confirmed this Mismatch was first observed today at 17:52 UTC — strong evidence something changed.
+3. **Endpoint attribution.** `topk` by `root_name` to find which endpoint owns the damage. In this example, ~90% of 5xx came from `POST /payments/internal/v2/charges/submit`.
+4. **Per-call vs volume.** Did per-call latency change, or just call volume? Both jumped 3–5×. A constant merchant/account pair across error logs ruled out a request-driven shift.
+5. **Sub-span / log evidence.** A single log query revealed the upstream cause: the payment-gateway API rejecting submissions with *"Mismatch between merchant `MID_xxxxxxxx` and account `ACCT_xxxxxxxx`"*. Stack trace points to `GatewayService.charge` and `ChargeV2Service.submit`.
+6. **Trigger search.** A 30-day novelty check confirmed this mismatch was first observed today at 17:52 UTC — strong evidence something changed.
 
 ## What it writes
 
 The agent saves a structured RCA folder at `incidents/<UTC-date>-<slug>/`:
 
 ```
-incidents/2026-04-27-conversational-ai-twilio-mismatch/
+incidents/2026-04-27-payments-gateway-mismatch/
 ├── RCA.md                           # the writeup
 ├── alert.txt                        # original notification text
 ├── learnings.md                     # what this incident taught us, with routing trail
@@ -46,9 +46,9 @@ incidents/2026-04-27-conversational-ai-twilio-mismatch/
 
 ## Where you stay in the loop
 
-The agent does *not* take corrective action. It does not roll back a deploy, re-attach a Twilio number, or rotate a credential. It produces a written conclusion plus must-fix / should-fix / nice-to-have recommendations ranked by leverage. You read, you decide.
+The agent does *not* take corrective action. It does not roll back a deploy, re-attach a provider credential, or rotate a secret. It produces a written conclusion plus must-fix / should-fix / nice-to-have recommendations ranked by leverage. You read, you decide.
 
-It also surfaces what it *couldn't* close. If a question can only be answered by something outside the three CLIs (a Jenkins job not yet wired in, a Twilio audit log, a `kubectl get pods` lookup), it goes into the RCA's "Unanswered questions" section with a specific "what would close it" line. Implicit gaps look like complete stories; explicit gaps unblock follow-ups.
+It also surfaces what it *couldn't* close. If a question can only be answered by something none of the wired CLIs can reach (a provider's own audit log, a `kubectl get pods` lookup, a system not yet credentialed in this workspace), it goes into the RCA's "Unanswered questions" section with a specific "what would close it" line. Implicit gaps look like complete stories; explicit gaps unblock follow-ups.
 
 ## Post-incident self-review
 

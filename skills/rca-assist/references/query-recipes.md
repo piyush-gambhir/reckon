@@ -128,7 +128,7 @@ grafana alert rule list -o json | jq '.[] | select(.title | test("<PATTERN>"; "i
 
 **Recent builds for a service's deploy job:**
 ```
-jenkins build list <DEPLOY_JOB> -o json | head
+jenkins build list <DEPLOY_JOB> -o json | jq '.[:10]'
 ```
 
 **Build log for a specific build:**

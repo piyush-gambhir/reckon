@@ -29,10 +29,13 @@ List any systemic inconsistencies — duplicated/cased label values, missing `en
 
 ## Logs not shipped to CubeAPM
 
-If `cubeapm logs query --service <X>` returns nothing, verify the service actually ships logs:
+If `cubeapm logs query --service <X>` returns nothing, the service may not ship logs to CubeAPM. **Do not** decide this with `cubeapm logs field-values service.name` — on some deployments that endpoint returns an empty value set even when logs exist (see `server-quirks.md` / `metric-conventions.md`), so it will tell you *every* service ships no logs. Confirm ingestion the reliable way:
 
 ```
-cubeapm logs field-values service.name --last 2h | grep -i <X>
+# Is anything being ingested for this service at all?
+cubeapm logs hits --query 'service.name:<X>' --last 2h --step 15m -o json
+# If hits are non-zero, inspect one real record to learn the exact field names/values:
+cubeapm logs query 'service.name:<X>' --last 30m --limit 1 -o json | jq -s '.[0]'
 ```
 
-Services that don't appear in that list log somewhere else (CloudWatch, Loki, ELK, stdout). Don't conclude "no errors" from an empty CubeAPM log query — check the service's actual log destination.
+If hits stay zero across a wide window, the service likely logs somewhere else (CloudWatch, Loki, ELK, stdout). Don't conclude "no errors" from an empty CubeAPM log query — check the service's actual log destination.

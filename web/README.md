@@ -87,4 +87,4 @@ web/
 - Markdown / MDX out of the box — no JSX boilerplate to write content.
 - Built-in docs sidebar, search (Pagefind), dark mode, mobile responsive — none of which I'd want to maintain by hand.
 - Static output by default (no JS shipped unless a page opts in) — fast on Pages, friendly to scrapers / archive.org.
-- Single-repo: docs evolve in lockstep with `skills/rca-assist/SKILL.md` and `incidents/README.md`. The site can never drift from the skill it documents.
+- Single-repo: docs live alongside `skills/rca-assist/SKILL.md`, `CLAUDE.md`, and `README.md`, so drift is at least visible in the same diff. (Co-location doesn't *prevent* drift on its own — when you add a tool or change setup, update the docs in the same change. A quick `npm run build` link-check catches dead internal links.)

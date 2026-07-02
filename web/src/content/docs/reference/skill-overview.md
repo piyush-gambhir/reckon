@@ -30,8 +30,15 @@ The skill maintains a list of failure modes that have actually bitten real inves
 6. **Don't trust fresh log buckets for recovery determination.** Logs ingestion can lag several minutes; cross-check with the equivalent metric or re-query after one ingestion window.
 7. **For `/internal/` or service-to-service endpoints, identify the caller before writing the RCA.** A failing endpoint with `userAgent=node` and an RFC1918 `context.ip` has *some* internal owner; finding it (or proving it's not APM-instrumented) is part of the RCA.
 8. **Recognise the alert source before chasing the alert rule.** Not every notification is a Grafana alert. CubeAPM-native alerting, application-emitted alerts, and PagerDuty composite policies are dead ends if you `grafana alert rule list` for them.
+9. **Don't anchor on the previous RCA for the same endpoint.** A fan-out endpoint can hit a different dominant downstream each time it's stressed — recompute the sub-span attribution from scratch.
+10. **Discover the deployed branch from Jenkins**, don't assume `git log <default-branch>` is what production runs.
+11. **Inspect deploy *cause* and *params***, not just timestamp + result — a manual "override" deploy is a load-bearing signal.
+12. **Record negative findings** ("tested, falsified") instead of silently dropping the question.
+13. **Downgrade, don't delete** a root cause that the data didn't support — keep the reasoning.
+14. **Enumerate log datasources** (e.g. short-retention CubeAPM vs long-retention Loki) before assuming the obvious one covers your window.
+15. **Read a producer endpoint's branching switch** before assuming the default path fired.
 
-Pitfalls #6–#8 came directly from real on-call incidents and got back-ported. The pattern: any time the agent corrects a conclusion mid-investigation, the rule that would have prevented the mistake gets added here.
+This list grows: any time the agent corrects a conclusion mid-investigation, the rule that would have prevented the mistake gets back-ported here (pitfalls #6–#15 all came from real incidents). The canonical, fully-worded list is §6 of `skills/rca-assist/SKILL.md`.
 
 ## The post-incident self-review (§9 of SKILL.md)
 
@@ -52,3 +59,13 @@ Each learning routes by type:
 | New service relationship / slow query | `infra-knowledge/services.md` / `known-issues.md` |
 
 This is the mechanism that makes the workspace *sharper* after each incident. Generic lessons travel with the skill; team-specific lessons travel with the infra-knowledge folder; user-specific preferences travel with the user. The audit trail in each incident's `learnings.md` cites which of these each rule went into, so the rule can be re-evaluated later when the evidence changes.
+
+## Database safety
+
+The workspace can open **read-only** production database shells — `mongosh`, `psql`, `mysql` — for the rare case where the cascade narrows to a specific table, collection, or query. Because these clients can in principle write, the workspace defends in three layers, but **only the first actually denies writes across every access path**:
+
+1. **Role-level (the real guard).** The DB user in `.env` *must* be a true read-only role. This is your responsibility to provision; nothing in the workspace can enforce it, and a read-write role could still write through a non-libpq driver. This layer is mandatory.
+2. **Session-level (CLI clients only).** `.envrc` sets `PGOPTIONS=-c default_transaction_read_only=on` (honoured by `psql` as the session default) and writes a MySQL option file with `init-command=SET SESSION TRANSACTION READ ONLY` — apply it via `mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf"`. Mongo's `?readPreference=secondary` is read *routing*, not a write block. A session can still opt back into read-write, so this is defence-in-depth, not a substitute for layer 1.
+3. **Agent-level (per-clone convention).** The Claude Code allowlist should *not* pre-approve `psql`/`mysql`/`mongosh`, so every query prompts for approval. Keep the allowlist tight — a broad `Bash(python3 -c ...)` wildcard would let the agent reach a DB driver around the prompt.
+
+Operationally: **`EXPLAIN` before any non-trivial SELECT, `LIMIT` every SELECT** (default `LIMIT 100`), and read each query before approving it. The full contract is in `CLAUDE.md` ("Database safety contract") and the root `README.md` ("Database access — read this once").

@@ -15,6 +15,16 @@ The CLIs this skill expects to be available as sibling skills:
 - `grafana` — dashboards, alerts, annotations. Source of deploy markers and alert history.
 - `jenkins` — builds, pipelines. Confirms whether a deploy preceded the incident.
 
+These three are the spine of the cascade. The workspace also wires extended surfaces you reach for at specific cascade levels — see `CLAUDE.md` for exact commands:
+
+- **`gh`** — merged PRs, GitHub Actions runs, releases. Use at the deploy-correlation step (§4) for services that deploy via Actions, or to read the *intent* behind a change.
+- **`aws`** — CloudWatch / ALB / SQS / ECS. Use as a fallback when CubeAPM signals are thin (`host.name=UNSET`, uninstrumented callers, or the documented log-ingestion lag).
+- **`rpk` / `kcat`** — Kafka consumer-group lag and topic tails. Use for queue-lag symptoms at cascade Level 5; resolve service→consumer-group via `infra-knowledge/service-name-mapping.md`. Read-only by usage: never produce, and never consume with a group id (`-G`/`-g`) — joining a production consumer group rebalances it. See the Kafka safety contract in `CLAUDE.md` §5b.
+- **`kubectl`** — pod/deploy state, events, rollout history (read-only by usage: never `apply`/`delete`/`scale`/`exec`). Use when a service emits zero telemetry — first question is "was anything running?".
+- **`redis-cli`** — Redis diagnostics (`INFO`, `SLOWLOG GET`, `LATENCY`; never `FLUSH*`/`SET`/`DEL`). Use when a Redis-backed cache or queue is the suspected downstream.
+- **`mongosh` / `psql` / `mysql`** — read-only DB shells. Use only after the cascade narrows to a specific table/collection/query. **Re-read the Database safety contract in `CLAUDE.md` first: read-only role, `EXPLAIN` before any non-trivial SELECT, `LIMIT` always, and every call prompts for approval.**
+- **`es`** (optional) — Elasticsearch/ELK log stores, for services that don't ship logs to the APM (`es cluster health`, `es index list`, `es search query/count/sql`). Client-side read-only is enforced via `ES_READ_ONLY=true`.
+
 If any CLI isn't logged in, don't block — note the gap, continue with what's available, and include the gap in the RCA's "unanswered questions" section.
 
 ## 0. Before anything: read `infra-knowledge/`
@@ -25,9 +35,12 @@ Look for `infra-knowledge/` at the workspace root (typically `./infra-knowledge/
 - `metric-conventions.md` — label names, time-of-day gotchas, which metrics to query
 - `server-quirks.md` — reverse proxy or API quirks the CLIs have to work around
 - `known-issues.md` — queries or endpoints the team already knows are slow/fragile
+- `service-name-mapping.md` — cross-tool name lookup (CubeAPM label ↔ logs `service.name` ↔ Grafana folders ↔ Kafka consumer group ↔ Jenkins job); read it before any Kafka/Grafana/Jenkins name resolution
+- `bulk-endpoints.md` — endpoints that generate sustained downstream load; read it at trigger-hunting time (§3.6)
+- `deploy-pipelines.md` — per-service deploy job + deployed branch; read it at the deploy-correlation step (§4)
 - `oncall.md` — who to escalate to
 
-These files save you from rediscovering facts and prevent wrong conclusions (e.g., blaming "new" slowness on an incident when it's actually been slow all day). Do not fabricate content when files are missing — just note what's missing and move on.
+The authoritative list is `infra-knowledge/README.md`'s file table — read it and skim every file it names; the bullets above are the ones each investigation almost always needs. These files save you from rediscovering facts and prevent wrong conclusions (e.g., blaming "new" slowness on an incident when it's actually been slow all day). Do not fabricate content when files are missing — just note what's missing and move on.
 
 ## 1. Frame the question
 
@@ -39,6 +52,8 @@ Before touching any CLI, restate the question in a tight form:
 - **Severity / blast radius** if known
 
 If the user says "18:51–19:21" without a timezone, default to the team's timezone (see `infra-knowledge/services.md` or ask), and work in UTC internally because every CLI uses UTC.
+
+**Is the incident still ongoing?** Check whether the symptom metric is still degraded in the last 1–2 buckets. If it is, this is a live incident, not a post-mortem: surface mitigation candidates and the escalation path (`infra-knowledge/oncall.md`) up front, mark the RCA **preliminary**, and don't let a deep multi-level drill-down delay stabilization. The full cascade below still applies — but humans mitigating in parallel comes first. (This workspace is read-only, so you can investigate while others act.)
 
 ## 2. The cascade pattern
 
@@ -84,7 +99,7 @@ For Apdex-style alerts on a service:
  / sum(rate(cube_apm_apdex_calls_total{service="<SVC>"}[5m]))
 ```
 
-Expect values in [0, 1]. Plot this over the window + 30 min buffer each side so you see the baseline and recovery. If Apdex doesn't exist, fall back to p99 latency via `cube_apm_latency_bucket` or an error-rate metric.
+Expect values in [0, 1] in the normal case. Note CubeAPM weights penalty as `tolerated=1, frustrated=2` (see `infra-knowledge/metric-conventions.md`), so when frustrated calls dominate, `penalty` can exceed `calls` and this expression can read **negative** — that's a real "everything is frustrated" signal, not a bug. The sanity bound is `penalty ≤ 2×calls` (floor −1); a value below −1 means a label mismatch or counter reset, not a worse incident. Plot this over the window + 30 min buffer each side so you see the baseline and recovery. If Apdex doesn't exist, fall back to p99 latency via `cube_apm_latency_bucket` or an error-rate metric.
 
 ### 3.2 Attribute to an endpoint
 
@@ -148,11 +163,30 @@ If you need request-level evidence (who called, what headers, which auth subject
 
 Don't let missing trace data stop the RCA — it's common for bulk/infrequent endpoints not to be retained by tail sampling. Document it as a gap in the RCA and proceed.
 
+### 3.8 Read the code path
+
+Once the cascade has narrowed to one or two named services, **clone or check out the relevant repos and read the actual code path** before declaring the RCA done. Source answers questions that metrics often cannot:
+
+- **Caller identity when APM instrumentation is gappy.** Many services issue HTTP calls from non-instrumented contexts (queue pollers, Kafka consumers, cron workers); the `span_kind="client"` topk will be empty and the caller is invisible. The code still names the caller in plain `client.post(...)` form.
+- **The exact mechanism behind a slow DB op.** Whether an update is super-linear under concurrency because of a missing index, validators running on a deep schema, or the controller issuing several writes per request is visible in the model + repository + controller files in minutes; it is not visible in PromQL.
+- **Whether a recent deploy touches the hot path.** `git log <deployed-branch> --until="<incident-time>"` plus `git show --stat <last-commit>` in the cloned repo identifies the actual diff that shipped before the incident. Grafana annotations may lack `deploy` tags and `service.version` is often `UNSET`; the git history isn't.
+
+Practical recipe:
+
+1. Find the repo (`gh repo view <org>/<repo>`, or the SSH remote pattern documented in `infra-knowledge/deploy-pipelines.md`).
+2. Clone into the team's standard code dir if missing.
+3. Discover the deployed branch from Jenkins (`jenkins build get <job> <num> -o json` → `params.branch`), then `git log <branch> --until="<incident-time>" --format="%h %cd %s" --date=iso -10` to find tip-of-release at incident time.
+4. `git checkout <tip-sha>` so what you read is what was running.
+5. Trace the request path: router → controller → repository → model → schema.
+6. `git show --stat <tip-sha>` and `git log <tip>~5..<tip> -p -- <hot-path-files>` to see what the most recent merges changed on the hot path.
+
+This step is cheap, often closes multiple unanswered questions at once, and pulls vague "the data is inconclusive" gaps into concrete code-locatable findings. **Do this before shipping an RCA that has more than one unresolved question.**
+
 ## 4. Cross-reference with Grafana and Jenkins
 
 After you have a hypothesis, confirm or falsify it with the other CLIs:
 
-- **Grafana annotations** near the incident window — any `deploy` tag? Any alert that fired? Note: `grafana annotation list --from/--to` uses **epoch milliseconds**, not RFC3339. Convert with `date -j -f "%Y-%m-%dT%H:%M:%SZ" "2026-04-19T13:00:00Z" +%s` and multiply by 1000.
+- **Grafana annotations** near the incident window — any `deploy` tag? Any alert that fired? Note: `grafana annotation list --from/--to` uses **epoch milliseconds**, not RFC3339. Convert with `date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "2026-04-19T13:00:00Z" +%s` and multiply by 1000. The `-u` is required — without it BSD `date` parses the timestamp in local time and the epoch is off by your UTC offset. (BSD/macOS form; on GNU/Linux use `date -u -d "2026-04-19T13:00:00Z" +%s`, or `python3 -c 'import datetime,sys;print(int(datetime.datetime.fromisoformat(sys.argv[1]).timestamp()))' 2026-04-19T13:00:00+00:00` on either.)
 - **Grafana alert rules** — does an alert for the suspected service exist? What was its state?
 - **Jenkins builds** on the suspected service's deploy job during the window. Confirm whether a release shipped, and what commit range it covered.
 
@@ -182,6 +216,16 @@ A good RCA finishes with a single sentence a reader could restate: *"X happened 
    This is the single most common way an RCA gets the recovery time wrong; budget the extra 5 min before writing the document.
 7. **For `/internal/`, `/private/`, or service-to-service endpoints, identify the caller service before writing the RCA.** A failing endpoint with `userAgent=node` and an RFC1918 `context.ip` has *some* internal owner; finding it (or proving it's not APM-instrumented) is part of the RCA, not a follow-up. See cascade playbook Level 6 "caller discovery for internal endpoints".
 8. **Recognise the alert source before chasing the alert rule.** Not every notification corresponds to a Grafana alert rule — some come from CubeAPM-native alerting, some from the application itself, some from third parties (PagerDuty/Opsgenie composite policies). If the alert isn't in Grafana, `grafana alert rule list` and `grafana annotation list` are dead ends. Check `infra-knowledge/server-quirks.md` for the workspace's specific notification-template patterns (e.g., title prefixes that indicate CubeAPM-native vs Grafana-native), then go straight to the metric/log signal that the alert is built on.
+9. **Don't anchor on the previous RCA when you re-investigate the same endpoint.** A fan-out orchestrator can hit a *different* dominant downstream each time it's stressed. Always recompute the §3.4 sub-span topk from scratch, even when the headline endpoint matches a prior incident. The corpus contains two RCAs five weeks apart on the *same* endpoint with entirely different root downstreams (one DB engine, then another) — treating the prior RCA as a prior on the downstream wastes queries and risks anchoring on the wrong fix.
+10. **Don't assume `git log <default-branch>` shows what production is running — discover the deployed branch from Jenkins.** A service can deploy from `release`, `production`, a date-stamped branch, or whatever the team chose, and a local clone's default branch can be silently stale. Always pull the deployed branch from `jenkins build get <job> <num> -o json` → `params.branch` (see `infra-knowledge/deploy-pipelines.md`) before reading the diff. In one corpus incident the first RCA missed a deploy four hours before the incident because it read a 12-day-old default branch instead of the actual deployed branch.
+11. **Inspect deploy *cause* and *params*, not just timestamp + result.** A `SUCCESS` build with a description like "Weekend override by <user>" and a manual cause is a load-bearing signal even when the diff is small — the operator who triggered the deploy may also be the operator who initiated the bulk action that caused the burst. Pull `description`, `causes[].shortDescription`, and `params[]` from `jenkins build get` for every build inside the incident's lookback window.
+12. **For empty / negative findings, record the test result rather than dropping the question.** When a code-level hypothesis is tested against telemetry and falsified, write "Status: resolved — negative" in §7 with the evidence link. Don't quietly delete the question — it stops the next on-call re-running the same test and preserves why the corresponding root-cause headline was downgraded.
+13. **Downgrade, don't delete.** If a root cause turns out not to be supported by data, keep its entry in §6 with severity downgraded and a one-line note linking to the negative evidence. The reasoning ("we thought X, here's why we no longer think X") is itself useful to future readers.
+14. **Enumerate log datasources before assuming the obvious-named one covers everything.** A workspace often has more than one log surface with very different retention (e.g. `cubeapm logs` with short retention vs a Grafana Loki datasource retaining much longer) — for any RCA on a window older than the short surface's retention, those logs are *gone* and only the long one can answer. Run `grafana datasource list -o json | jq -r '.[] | "\(.type) \(.name)"'` once at investigation start and treat the result as the menu of forensic surfaces; check `infra-knowledge/server-quirks.md` for this workspace's actual retention numbers.
+15. **For a producer endpoint with multiple branches (`if mode === X` / `if action === Y`), read the branching switch BEFORE assuming the default path fired.** A bulk endpoint with two branches is *not* doing the same thing under both. The actual branch comes from request bodies in logs or the corresponding DB audit table. Don't write a caller chain off the default branch and stop.
+16. **Instant `metrics query` evaluates *now* — for a recovered or flapping incident, attribute with `--time <known-bad-ISO>`.** A `topk by (root_name)` / `sum by (span_name)` run after the symptom cleared reads the healthy steady-state and looks like "nothing wrong", and a live `sum/count` mean disagrees with the `query-range` history — an apparent contradiction that is really just recovery. Pin attribution to a bucket you've already confirmed was bad (the CLI supports `metrics query 'EXPR' --time <ISO>`). In `incidents/2026-06-25-conversational-ai-mongo-pool-starvation/`, the first instant attribution read a ~20 ms mean because an 89-minute choke had self-cleared ~10 minutes earlier; switching to `--time` at the peak resolved it.
+17. **Uniform slowness across *every* collection/operation of one datastore = connection-pool checkout wait, not a slow query.** When a trivial indexed lookup and a heavy aggregate on the *same* client both jump to the same multi-second latency, the time is being spent waiting for a pooled connection — a few slow ops are holding the pool and starving everything else — so diagnose at the pool/holder, not the individual query. Distinguish it from a degraded datastore by checking *other* services on the same cluster (if they're fine, it's this client's pool) and the op-rate (flat rate + ~1000× per-op latency ⇒ not volume; the holder is expensive-per-call, not high-call-count). Confirm the holder from logs (the operation whose connections "timed out") and code. In `incidents/2026-06-25-conversational-ai-mongo-pool-starvation/`, every Mongo collection read 6–36 s (even a `findOne` at ~10 ops/s) while 24+ other services saw 3–16 ms — but see #18 before concluding the obvious service is the cause.
+18. **When a shared datastore slows, profile its *other* tenants and separate supply-side from demand-side before naming a cause.** "Service X's DB latency exploded while 20+ other services are fine" does **not** mean X caused it — those others may be on *different* clusters. Find the services on the *same* cluster (co-moving latency at the same instant) and check their op-*rate*: if some client's rate **rose**, it's demand-side (find that caller); if **every** tenant's rate is **flat or collapses** while only latency rises, it's **supply-side — the datastore lost capacity** (failover, IOPS/burst-credit throttling, backup, index build, noisy neighbor), and the most-visible victim (the one with the heaviest/most-timeout-prone queries) is *not* the cause. Don't pin a server-side capacity event on the loudest victim. In the cited incident the first pass blamed a conversational report aggregate and declared the cluster "healthy for everyone else"; in fact a co-tenant doing 100→2 ops/s (97 % collapse, flat demand) proved a shared-mongod capacity event whose ultimate cause was unobservable from the available tooling — the aggregate was an amplifier, not the root. Corollary: if the datastore itself isn't monitored (no exporter series, no admin URI, no cloud metrics), say so and name exactly which metric source would close it — don't substitute the most-available victim's telemetry for the cause.
 
 ## 7. Output: the incident folder
 
@@ -206,18 +250,19 @@ incidents/<YYYY-MM-DD>-<slug>/
 
 Use the writeup template in [references/rca-doc-template.md](references/rca-doc-template.md) for `RCA.md`.
 
-Required sections:
+Required: a **header table** plus ten numbered sections.
 
-1. **Header table** — date, window (both local and UTC), peak impact number, services affected, triggered-by (one line), contributing latent issues, auto-recovery y/n, data gaps.
-2. **Incident summary** — 1–2 paragraphs a senior engineer could paste into a postmortem doc.
-3. **Timeline** — bucketed metric values showing the drop and recovery. 2-minute buckets for ~30 min windows.
-4. **Causal chain diagram** (ASCII arrows) — symptom → service → endpoint → downstream → root.
-5. **Evidence** — one subsection per cascade level with the actual numbers and queries that produced them.
-6. **Why recovery was automatic (or not).**
-7. **Root causes, ranked by leverage** — which fix prevents the most recurrence?
-8. **Unanswered questions & data gaps** — be explicit about what you couldn't close and what would close it.
-9. **Recommendations** — split into must-fix / should-fix / nice-to-have.
-10. **Appendix of queries used** — so the next on-call can re-run them.
+- **Header table** — date, window (both local and UTC), peak impact number, services affected, triggered-by (one line), contributing latent issues, auto-recovery y/n, data gaps.
+1. **Incident summary** — 1–2 paragraphs a senior engineer could paste into a postmortem doc.
+2. **Timeline** — bucketed metric values showing the drop and recovery. 2-minute buckets for ~30 min windows.
+3. **Causal chain diagram** (ASCII arrows) — symptom → service → endpoint → downstream → root.
+4. **Evidence** — one subsection per cascade level with the actual numbers and queries that produced them.
+5. **Why recovery was automatic (or not).**
+6. **Root causes, ranked by leverage** — which fix prevents the most recurrence?
+7. **Unanswered questions & data gaps** — be explicit about what you couldn't close and what would close it.
+8. **Recommendations** — split into must-fix / should-fix / nice-to-have.
+9. **Appendix of queries used** — so the next on-call can re-run them.
+10. **Reproducibility** — how to re-run the whole investigation from scratch, including any login prerequisites.
 
 Optimize the document for: (a) the team that owns the service reads it once and knows what to do; (b) a future on-call searching for `apdex drop` finds it and learns the pattern.
 
@@ -249,6 +294,8 @@ Then route each learning to the right home:
 | Workspace-specific quirk (CLI behavior, server bug, label gotcha) | `infra-knowledge/server-quirks.md` (or `metric-conventions.md` / `known-issues.md`) |
 | User preference / writing style / approval pattern | project memory as `feedback` type           |
 | New service relationship, slow query, fan-out fact | `infra-knowledge/services.md` / `known-issues.md` |
+
+**Redaction rule — read before editing SKILL.md.** This skill ships as a generic product (see §0: "It is generic on purpose"). Anything routed *into the skill body* must be tenant-agnostic: strip real service names, hostnames, SSH remotes, JWT/account identifiers, and dated incident specifics. Phrase the rule generically and cite the originating incident by folder path (`incidents/<date>-<slug>/`) rather than inlining the names — the concrete evidence lives in that folder's `learnings.md`. Team-specific facts belong in `infra-knowledge/`, never in the skill. (SKILL.md is one tracked file at `skills/rca-assist/`; the loaded `.claude/skills/rca-assist` is a symlink to it, so an edit here *is* the product edit — there is no second copy to sync.)
 
 Two-line minimum per learning: state the rule, then **why** (cite the actual numbers / timestamps / phrases from this incident as evidence), so a future reader knows whether it still applies.
 
