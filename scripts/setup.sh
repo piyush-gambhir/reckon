@@ -572,12 +572,12 @@ print_next_steps() {
   4. Verify every connection (one safe read per tool):
        grafana user current -o json
        jenkins status -o json
-       cubeapm traces services -o json
+       cubeapm metrics label-values service -o json
        aws sts get-caller-identity --output json
        gh auth status
        rpk cluster info --brokers "$KAFKA_BOOTSTRAP_SERVERS"
        psql -c "SHOW default_transaction_read_only;"   # must report 'on'
-       mysql -e "SELECT @@transaction_read_only;"      # must report 1
+       mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SELECT @@transaction_read_only;"  # must report 1
        mongosh "$MONGODB_URI" --eval 'db.runCommand({ping:1})'
   5. Read CLAUDE.md "Database safety contract" before any DB query.
 
