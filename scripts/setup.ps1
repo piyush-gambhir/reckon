@@ -123,14 +123,15 @@ function Install-Winget {
 function Install-GoCli {
     param(
         [Parameter(Mandatory)] [string] $Module,
-        [Parameter(Mandatory)] [string] $Bin
+        [Parameter(Mandatory)] [string] $Bin,
+        [Parameter(Mandatory)] [string] $Version
     )
     if (Test-Command $Bin) { Mark-Already $Bin; return }
     if (-not (Test-Command go)) {
         Mark-Failed "$Bin (go not installed)"
         return
     }
-    Write-Info "$Bin — installing via go install ($Module)..."
+    Write-Info "$Bin — installing via go install ($Module@$Version)..."
     try {
         # `go install` always writes "go: downloading ..." to stderr on a fresh
         # fetch; under EAP=Stop on Windows PowerShell 5.1 that stderr is wrapped
@@ -138,7 +139,7 @@ function Install-GoCli {
         # Continue around the native call and check $LASTEXITCODE only.
         $prevEAP = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
-        & go install "$Module@latest" 2>&1 | Out-Null
+        & go install "$Module@$Version" 2>&1 | Out-Null
         $ErrorActionPreference = $prevEAP
         if ($LASTEXITCODE -eq 0) {
             $gobin = (& go env GOPATH).Trim() + '\bin'
@@ -157,6 +158,19 @@ function Install-GoCli {
     }
 }
 
+function Protect-EnvFile {
+    param([Parameter(Mandatory)] [string] $Path)
+    if (-not (Test-Path $Path)) { return }
+    $acl = Get-Acl $Path
+    $acl.SetAccessRuleProtection($true, $false)
+    $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+        $identity, 'FullControl', 'Allow'
+    )
+    $acl.SetAccessRule($rule)
+    Set-Acl -Path $Path -AclObject $acl
+}
+
 # ---------------------------------------------------------------------------
 # Workspace setup
 # ---------------------------------------------------------------------------
@@ -173,6 +187,8 @@ function Setup-Workspace {
     } else {
         Write-Err '.env.example missing — are you running this from the repo root?'
     }
+    Protect-EnvFile (Join-Path (Get-Location) '.env')
+    Protect-EnvFile (Join-Path (Get-Location) '.env.local')
 
     if (Test-Path infra-knowledge) {
         $seeded = 0
@@ -254,10 +270,10 @@ function Main {
     Install-Winget -Id 'GoLang.Go' -Bin 'go'
 
     Write-Header 'Custom CLIs (grafana / jenkins / cubeapm / es)'
-    Install-GoCli -Module 'github.com/piyush-gambhir/grafana-cli' -Bin 'grafana'
-    Install-GoCli -Module 'github.com/piyush-gambhir/jenkins-cli' -Bin 'jenkins'
-    Install-GoCli -Module 'github.com/piyush-gambhir/cubeapm-cli' -Bin 'cubeapm'
-    Install-GoCli -Module 'github.com/piyush-gambhir/es-cli'      -Bin 'es'
+    Install-GoCli -Module 'github.com/piyush-gambhir/grafana-cli' -Bin 'grafana' -Version 'v0.2.2'
+    Install-GoCli -Module 'github.com/piyush-gambhir/jenkins-cli' -Bin 'jenkins' -Version 'v0.2.2'
+    Install-GoCli -Module 'github.com/piyush-gambhir/cubeapm-cli' -Bin 'cubeapm' -Version 'v0.2.2'
+    Install-GoCli -Module 'github.com/piyush-gambhir/es-cli'      -Bin 'es' -Version 'v0.1.2'
 
     Setup-Workspace
 

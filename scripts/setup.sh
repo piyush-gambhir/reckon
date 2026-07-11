@@ -139,29 +139,50 @@ brew_install_keg() {
 }
 
 # Install a binary into a user-writable location.
-# Args: <url> <archive-type: zip|tar.gz|none> <bin-name-in-archive> <final-bin-name>
+# Args: <url> <archive-type: zip|tar.gz|none> <bin-name-in-archive>
+#       <final-bin-name> [checksum-manifest-url]
 download_install_bin() {
-    local url="$1" archive="$2" inner="$3" final="$4"
-    local target_dir tmp
+    local url="$1" archive="$2" inner="$3" final="$4" checksum_url="${5:-}"
+    local target_dir tmp package_name package_file
     target_dir="${HOME}/.local/bin"
     mkdir -p "$target_dir"
     tmp="$(mktemp -d)"
     trap 'rm -rf "$tmp"' RETURN
 
+    package_name="${url##*/}"
+    case "$archive" in
+        zip) package_file="$tmp/pkg.zip" ;;
+        tar.gz) package_file="$tmp/pkg.tar.gz" ;;
+        none) package_file="$tmp/$final" ;;
+        *) return 1 ;;
+    esac
+    curl -fsSL "$url" -o "$package_file" || return 1
+
+    if [ -n "$checksum_url" ]; then
+        local expected actual
+        curl -fsSL "$checksum_url" -o "$tmp/checksums.txt" || return 1
+        expected="$(awk -v name="$package_name" '$2 == name || $2 == "*" name {print $1; exit}' "$tmp/checksums.txt")"
+        [ -n "$expected" ] || { err "checksum for $package_name not found"; return 1; }
+        if have sha256sum; then
+            actual="$(sha256sum "$package_file" | awk '{print $1}')"
+        else
+            actual="$(shasum -a 256 "$package_file" | awk '{print $1}')"
+        fi
+        [ "$actual" = "$expected" ] || { err "checksum mismatch for $package_name"; return 1; }
+    fi
+
     case "$archive" in
         zip)
-            ( cd "$tmp" && curl -fsSL "$url" -o pkg.zip && unzip -q pkg.zip ) || return 1
+            ( cd "$tmp" && unzip -q pkg.zip ) || return 1
             install -m 0755 "$tmp/$inner" "$target_dir/$final" || return 1
             ;;
         tar.gz)
-            ( cd "$tmp" && curl -fsSL "$url" -o pkg.tar.gz && tar -xzf pkg.tar.gz ) || return 1
+            ( cd "$tmp" && tar -xzf pkg.tar.gz ) || return 1
             install -m 0755 "$tmp/$inner" "$target_dir/$final" || return 1
             ;;
         none)
-            curl -fsSL "$url" -o "$target_dir/$final" || return 1
-            chmod +x "$target_dir/$final"
+            install -m 0755 "$package_file" "$target_dir/$final" || return 1
             ;;
-        *) return 1 ;;
     esac
 
     case ":$PATH:" in
@@ -218,21 +239,14 @@ install_aws() {
             brew_install awscli && mark_installed aws || mark_failed aws
             ;;
         linux)
-            # Use AWS's official v2 installer — distro packages are often v1.
-            local url tmp
-            case "$ARCH" in
-                amd64) url="https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" ;;
-                arm64) url="https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" ;;
-                *) mark_skipped aws; return ;;
-            esac
-            tmp="$(mktemp -d)"
-            if ( cd "$tmp" && curl -fsSL "$url" -o awscliv2.zip && unzip -q awscliv2.zip \
-                 && $SUDO ./aws/install --update >/dev/null 2>&1 ); then
+            # Prefer the distribution's signed package over executing an
+            # unverified upstream installer as root.
+            if [ -n "$PKG" ] && pkg_install awscli awscli; then
                 mark_installed aws
             else
-                mark_failed aws
+                mark_skipped aws
+                warn "Install AWS CLI v2 manually and verify its PGP signature per AWS documentation."
             fi
-            rm -rf "$tmp"
             ;;
     esac
 }
@@ -306,13 +320,14 @@ install_rpk() {
             brew_install redpanda-data/tap/redpanda && mark_installed rpk || mark_failed rpk
             ;;
         linux)
-            local url
+            local url checksum_url version="v26.1.12"
             case "$ARCH" in
-                amd64) url="https://github.com/redpanda-data/redpanda/releases/latest/download/rpk-linux-amd64.zip" ;;
-                arm64) url="https://github.com/redpanda-data/redpanda/releases/latest/download/rpk-linux-arm64.zip" ;;
+                amd64) url="https://github.com/redpanda-data/redpanda/releases/download/${version}/rpk-linux-amd64.zip" ;;
+                arm64) url="https://github.com/redpanda-data/redpanda/releases/download/${version}/rpk-linux-arm64.zip" ;;
                 *) mark_skipped rpk; return ;;
             esac
-            if download_install_bin "$url" zip rpk rpk; then
+            checksum_url="https://github.com/redpanda-data/redpanda/releases/download/${version}/rpk_26.1.12_checksums.txt"
+            if download_install_bin "$url" zip rpk rpk "$checksum_url"; then
                 mark_installed rpk
             else
                 mark_failed rpk
@@ -327,27 +342,14 @@ install_mongosh() {
     case "$PLATFORM" in
         macos) brew_install mongosh && mark_installed mongosh || mark_failed mongosh ;;
         linux)
-            # Use upstream tarball — covers all distros and the latest version.
-            local url tmp arch_seg
-            case "$ARCH" in
-                amd64) arch_seg="x64" ;;
-                arm64) arch_seg="arm64" ;;
-                *) mark_skipped mongosh; return ;;
-            esac
-            url="https://downloads.mongodb.com/compass/mongosh-2.3.0-linux-${arch_seg}.tgz"
-            tmp="$(mktemp -d)"
-            if ( cd "$tmp" && curl -fsSL "$url" -o mongosh.tgz && tar -xzf mongosh.tgz ); then
-                mkdir -p "$HOME/.local/bin"
-                if install -m 0755 "$tmp"/mongosh-*/bin/mongosh "$HOME/.local/bin/mongosh"; then
-                    install -m 0755 "$tmp"/mongosh-*/bin/mongosh_crypt_v1.so "$HOME/.local/bin/" 2>/dev/null || true
-                    mark_installed mongosh
-                else
-                    mark_failed mongosh
-                fi
+            # Use a repository-signed package if configured; never execute an
+            # archive that MongoDB does not publish a detached checksum for.
+            if [ -n "$PKG" ] && pkg_install mongodb-mongosh mongodb-mongosh; then
+                mark_installed mongosh
             else
-                mark_failed mongosh
+                mark_skipped mongosh
+                warn "Configure MongoDB's signed package repository, then install mongodb-mongosh."
             fi
-            rm -rf "$tmp"
             ;;
     esac
 }
@@ -413,11 +415,24 @@ install_kubectl() {
             esac
             local ver
             ver="$(curl -fsSL https://dl.k8s.io/release/stable.txt 2>/dev/null)" || { mark_failed kubectl; return; }
-            if download_install_bin "https://dl.k8s.io/release/${ver}/bin/linux/${arch}/kubectl" none kubectl kubectl; then
+            local url checksum expected actual tmp
+            url="https://dl.k8s.io/release/${ver}/bin/linux/${arch}/kubectl"
+            tmp="$(mktemp -d)"
+            if curl -fsSL "$url" -o "$tmp/kubectl" \
+               && curl -fsSL "${url}.sha256" -o "$tmp/kubectl.sha256"; then
+                expected="$(tr -d '[:space:]' < "$tmp/kubectl.sha256")"
+                if have sha256sum; then actual="$(sha256sum "$tmp/kubectl" | awk '{print $1}')";
+                else actual="$(shasum -a 256 "$tmp/kubectl" | awk '{print $1}')"; fi
+            else
+                actual="download-failed"; expected=""
+            fi
+            if [ -n "$expected" ] && [ "$actual" = "$expected" ] \
+               && install -D -m 0755 "$tmp/kubectl" "$HOME/.local/bin/kubectl"; then
                 mark_installed kubectl
             else
                 mark_failed kubectl
             fi
+            rm -rf "$tmp"
             ;;
     esac
 }
@@ -446,10 +461,10 @@ install_redis_cli() {
 # -----------------------------------------------------------------------------
 
 install_go_cli() {
-    local module="$1" bin="$2"
+    local module="$1" bin="$2" version="$3"
     if have "$bin"; then mark_already "$bin"; return; fi
-    info "$bin — installing via go install ($module)..."
-    if go install "${module}@latest" >/dev/null 2>&1; then
+    info "$bin — installing via go install (${module}@${version})..."
+    if go install "${module}@${version}" >/dev/null 2>&1; then
         if have "$bin"; then
             mark_installed "$bin"
         else
@@ -522,12 +537,16 @@ setup_workspace() {
     if [ -f .env ] || [ -f .env.local ]; then
         ok ".env or .env.local already exists — leaving alone"
     elif [ -f .env.example ]; then
-        cp -n .env.example .env
+        (umask 077 && cp -n .env.example .env)
         ok ".env created from .env.example"
         warn "EDIT .env with real production credentials before using any CLI"
     else
         err ".env.example missing — are you running this from the repo root?"
     fi
+
+    # Correct permissions on both newly-created and pre-existing credential files.
+    [ ! -f .env ] || chmod 0600 .env
+    [ ! -f .env.local ] || chmod 0600 .env.local
 
     if [ -d infra-knowledge ]; then
         local seeded=0
@@ -621,10 +640,10 @@ main() {
     install_redis_cli
 
     header "Custom CLIs (grafana / jenkins / cubeapm / es)"
-    install_go_cli github.com/piyush-gambhir/grafana-cli grafana
-    install_go_cli github.com/piyush-gambhir/jenkins-cli jenkins
-    install_go_cli github.com/piyush-gambhir/cubeapm-cli cubeapm
-    install_go_cli github.com/piyush-gambhir/es-cli es
+    install_go_cli github.com/piyush-gambhir/grafana-cli grafana v0.2.2
+    install_go_cli github.com/piyush-gambhir/jenkins-cli jenkins v0.2.2
+    install_go_cli github.com/piyush-gambhir/cubeapm-cli cubeapm v0.2.2
+    install_go_cli github.com/piyush-gambhir/es-cli es v0.1.2
 
     setup_workspace
 
