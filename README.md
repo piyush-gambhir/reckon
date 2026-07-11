@@ -33,8 +33,8 @@ This clone is intended to be **production-only**. Put only production Grafana, J
 | Platform | How tools are installed | direnv | Notes |
 |---|---|---|---|
 | macOS (Apple Silicon or Intel) | Homebrew + `go install` | ✓ native | First-class; all tools available (12 CLIs + direnv + jq). |
-| Linux Debian/Ubuntu (`apt`) | apt + upstream installers (aws/rpk/mongosh) + `go install` | ✓ native | First-class; all tools available (12 CLIs + direnv + jq). |
-| Linux Fedora/RHEL family (`dnf`) | dnf + upstream installers + `go install` | ✓ native | First-class; all tools available (12 CLIs + direnv + jq). |
+| Linux Debian/Ubuntu (`apt`) | signed packages + verified rpk/kubectl downloads + pinned `go install` | ✓ native | Some tools require their vendor's signed package repository. |
+| Linux Fedora/RHEL family (`dnf`) | signed packages + verified rpk/kubectl downloads + pinned `go install` | ✓ native | Some tools require their vendor's signed package repository. |
 | Other Linux (Arch, openSUSE, Alpine, …) | manual install | ✓ native | Use the manual command list per tool. |
 | Windows + WSL2 *(recommended for Windows users)* | inherits Linux path inside WSL | ✓ native | First-class — run `bash scripts/setup.sh` inside WSL. |
 | Windows native (PowerShell) | winget + `go install` | ✗ — use [`scripts/activate.ps1`](scripts/activate.ps1) | Partial: `direnv`, `kcat`, `rpk` have no native Windows port. |
@@ -61,7 +61,7 @@ cd rca-assist
 bash scripts/setup.sh
 ```
 
-The same `scripts/setup.sh` auto-detects the distro via `/etc/os-release` and dispatches to `apt` or `dnf`. Tools without good distro packages (AWS CLI v2, `rpk`, `mongosh`) are downloaded from upstream and installed under `~/.local/bin` — make sure that's on your `$PATH`. Other distros (Arch, openSUSE, Alpine) print a "manual install required" message; install the equivalent packages by hand.
+The same `scripts/setup.sh` auto-detects the distro via `/etc/os-release` and dispatches to `apt` or `dnf`. It verifies checksums for pinned `rpk` and `kubectl` downloads and uses signed package repositories for AWS CLI and mongosh; when a trusted repository is unavailable it fails closed with manual verification guidance. Other distros print a "manual install required" message.
 
 > **Hooking direnv into your shell** (one-time): add `eval "$(direnv hook bash)"` to `~/.bashrc` (or the zsh equivalent to `~/.zshrc`). Without this, `.envrc` won't auto-load when you `cd` into the repo.
 
