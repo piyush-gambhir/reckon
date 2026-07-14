@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    rca-assist setup for Windows (native PowerShell).
+    reckon setup for Windows (native PowerShell).
 
 .DESCRIPTION
     Installs every CLI that has a working native Windows port via winget,
@@ -242,7 +242,7 @@ function Main {
     Set-Location $repoRoot
 
     Write-Host ''
-    Write-Host '=== rca-assist setup (Windows) ===' -ForegroundColor White -BackgroundColor DarkGray
+    Write-Host '=== reckon setup (Windows) ===' -ForegroundColor White -BackgroundColor DarkGray
     Write-Host "Repo: $repoRoot"
 
     Test-Preflight

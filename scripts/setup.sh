@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# rca-assist setup — installs every CLI the workspace needs.
+# reckon setup — installs every CLI the workspace needs.
 #
 # Supported platforms:
 #   - macOS (Homebrew)
@@ -398,6 +398,54 @@ install_mysql() {
     esac
 }
 
+install_clickhouse() {
+    have clickhouse && { mark_already clickhouse; return; }
+    info "clickhouse — installing client..."
+    case "$PLATFORM" in
+        macos)
+            brew_install clickhouse && mark_installed clickhouse || mark_failed clickhouse
+            ;;
+        linux)
+            case "$PKG" in
+                apt)
+                    # Use ClickHouse's signed vendor repository. Install only
+                    # the client package; this workspace never runs a server.
+                    local deb_arch
+                    deb_arch="$(dpkg --print-architecture)"
+                    if ( $SUDO apt-get update -qq >/dev/null 2>&1 \
+                         && $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+                              apt-transport-https ca-certificates curl gnupg >/dev/null 2>&1 \
+                         && { [ -f /usr/share/keyrings/clickhouse-keyring.gpg ] \
+                              || curl -fsSL https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key \
+                                   | $SUDO gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg; } \
+                         && echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg arch=${deb_arch}] https://packages.clickhouse.com/deb stable main" \
+                              | $SUDO tee /etc/apt/sources.list.d/clickhouse.list >/dev/null \
+                         && pkg_install clickhouse-client clickhouse-client ); then
+                        mark_installed clickhouse
+                    else
+                        mark_failed clickhouse
+                    fi
+                    ;;
+                dnf)
+                    # The vendor repo enables signed repository-metadata checks.
+                    if $SUDO dnf install -y -q 'dnf-command(config-manager)' >/dev/null 2>&1 \
+                       && { [ -f /etc/yum.repos.d/clickhouse.repo ] \
+                            || $SUDO dnf config-manager --add-repo https://packages.clickhouse.com/rpm/clickhouse.repo >/dev/null 2>&1; } \
+                       && pkg_install clickhouse-client clickhouse-client; then
+                        mark_installed clickhouse
+                    else
+                        mark_failed clickhouse
+                    fi
+                    ;;
+                *)
+                    mark_skipped clickhouse
+                    warn "Install the official ClickHouse client package or verified official binary."
+                    ;;
+            esac
+            ;;
+    esac
+}
+
 install_kubectl() {
     have kubectl && { mark_already kubectl; return; }
     info "kubectl — installing..."
@@ -610,7 +658,7 @@ EOF
 main() {
     cd "$(cd "$(dirname "$0")" && pwd)/.."
 
-    printf "%s=== rca-assist setup ===%s\n" "$C_BOLD" "$C_RESET"
+    printf "%s=== reckon setup ===%s\n" "$C_BOLD" "$C_RESET"
     printf "Repo: %s\n" "$(pwd)"
 
     detect_platform
@@ -634,6 +682,7 @@ main() {
     install_mongosh
     install_psql
     install_mysql
+    install_clickhouse
 
     header "Kubernetes & cache"
     install_kubectl

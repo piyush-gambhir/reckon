@@ -1,0 +1,43 @@
+---
+title: Jenkins
+description: Correlate Jenkins jobs, builds, pipelines, and logs with an incident window.
+---
+
+## What it covers in an RCA
+
+Jenkins provides deployment and CI evidence: failed jobs establish change
+context, build history supplies timestamps, and console logs can identify the
+deployed revision or a failed rollout step.
+
+## Credentials
+
+The preferred environment wiring is:
+
+```bash
+JENKINS_URL=https://jenkins.example.com
+JENKINS_USER=readonly-bot
+JENKINS_TOKEN=replace_me
+```
+
+If `JENKINS_USERNAME` is set and `JENKINS_USER` is not, `.envrc` exports it as
+`JENKINS_USER`. The CLI honors the repo-local `XDG_CONFIG_HOME`; `jenkins login`
+stores a fallback profile at `.config/jenkins-cli/config.yaml`.
+
+## Read-only contract
+
+Never trigger a Jenkins build from this workspace. Jobs, builds, logs,
+pipelines, and nodes are investigation evidence only.
+
+## Key commands
+
+```bash
+jenkins status -o json
+jenkins job list --recursive --status FAILURE -o json
+jenkins build list <deploy-job> -o json
+jenkins build log <job> <number>
+```
+
+## Links
+
+- [Jenkins documentation](https://www.jenkins.io/doc/)
+- [jenkins-cli source](https://github.com/piyush-gambhir/jenkins-cli)

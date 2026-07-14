@@ -1,0 +1,89 @@
+---
+title: Connections & credentials
+description: Isolate production credentials, CLI profiles, and read-only safety settings per clone.
+---
+
+reckon uses folder-specific credentials. On macOS and Linux, `.envrc` pins
+`XDG_CONFIG_HOME` to `.config/` inside the clone and loads `.env` and
+`.env.local`. On native Windows, dot-source `scripts/activate.ps1` to apply the
+same workspace-local environment to the current PowerShell session.
+
+## Preferred: environment credentials
+
+Setup seeds `.env` from `.env.example`. Populate it with production-only
+credentials, then allow direnv:
+
+```bash
+$EDITOR .env
+direnv allow
+```
+
+Kafka and database clients read credentials directly from this environment.
+The workspace also derives the `RPK_*` settings from the configured `KAFKA_*`
+values and points AWS at repo-local config files.
+
+## Fallback: saved CLI profiles
+
+Interactive profiles remain available for tools that support them:
+
+```bash
+grafana login
+jenkins login
+cubeapm login
+aws configure
+gh auth login
+```
+
+Their state stays under the clone:
+
+- `.config/grafana-cli/config.yaml`
+- `.config/jenkins-cli/config.yaml`
+- `.config/cubeapm-cli/config.yaml`
+- `.config/aws/{config,credentials}`
+- `.config/gh/{config.yml,hosts.yml}`
+
+<Callout type="info">
+  Use a separate clone for every environment. The local config root lets each
+  clone carry different credentials without falling back to global profiles.
+</Callout>
+
+## The read-only contract
+
+Isolation prevents credential mix-ups; it does not make a privileged credential
+safe. The actual write barrier is a read-only database role or Kafka principal.
+The workspace layers client defaults and agent rules on top:
+
+- PostgreSQL receives `default_transaction_read_only=on` through `PGOPTIONS`.
+- MySQL receives a read-only session init command through
+  `$XDG_CONFIG_HOME/mysql/my.cnf`; always pass that file to `mysql`.
+- ClickHouse requires a server-side `readonly=1` user profile and `--readonly=1`
+  on every client invocation; it activates when `CLICKHOUSE_HOST` is set.
+- MongoDB uses secondary read preference, which is routing—not authorization.
+- `kcat`, `rpk`, `kubectl`, and `redis-cli` are read-only by documented usage,
+  so only the approved read-shaped commands are allowed.
+- Every `psql`, `mysql`, `mongosh`, and `clickhouse` query should still prompt for approval.
+
+<Callout type="warn">
+  For database work, re-read the Database safety contract in `CLAUDE.md`.
+  `EXPLAIN` non-trivial reads first, put a `LIMIT` on every `SELECT`, and invoke
+  MySQL as `mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf"`.
+</Callout>
+
+## Verify connections
+
+Use one safe read per tool before an investigation. These checks also expose a
+wrong profile or missing environment variable early:
+
+```bash
+grafana user current -o json
+jenkins status -o json
+cubeapm metrics label-values service -o json
+aws sts get-caller-identity --output json
+gh auth status
+rpk cluster info
+kubectl get ns
+redis-cli -u "$REDIS_URL" PING
+```
+
+Database and Kafka verification commands are documented in `README.md`; review
+their safety notes before running them against production.

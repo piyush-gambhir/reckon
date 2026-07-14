@@ -40,4 +40,4 @@ Every entry should have: **the symptom**, **the cause**, **the workaround**.
 
 ## Folder-scoped credentials (this workspace)
 
-`rca-assist` is configured to use this directory's `.config/` via direnv (`export XDG_CONFIG_HOME="$(pwd)/.config"`). Every CLI reads/writes its config there, keeping credentials isolated from your global setup. If a CLI isn't seeing a session, confirm `direnv allow` ran and that `echo $XDG_CONFIG_HOME` points inside this workspace.
+`reckon` is configured to use this directory's `.config/` via direnv (`export XDG_CONFIG_HOME="$(pwd)/.config"`). Every CLI reads/writes its config there, keeping credentials isolated from your global setup. If a CLI isn't seeing a session, confirm `direnv allow` ran and that `echo $XDG_CONFIG_HOME` points inside this workspace.

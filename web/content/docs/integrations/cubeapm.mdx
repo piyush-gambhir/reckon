@@ -1,0 +1,55 @@
+---
+title: CubeAPM
+description: Query CubeAPM traces, PromQL metrics, LogsQL logs, and service dependencies during an RCA.
+---
+
+## What it covers in an RCA
+
+CubeAPM is the primary application-telemetry integration: use it to inventory
+services, find error traces, inspect a trace waterfall, correlate logs, measure
+error and latency signals, and map dependency propagation.
+
+## Credentials
+
+The preferred environment wiring is:
+
+```bash
+CUBEAPM_SERVER=cube.example.com
+CUBEAPM_EMAIL=user@example.com
+CUBEAPM_PASSWORD=replace_me
+```
+
+`CUBEAPM_HOST=https://cube.example.com` is an optional full-URL alias; `.envrc`
+maps it to `CUBEAPM_SERVER` when that variable is not already set. Deployments
+that differ from the defaults may also set `CUBEAPM_QUERY_PORT`,
+`CUBEAPM_INGEST_PORT`, and `CUBEAPM_ADMIN_PORT`.
+
+The CLI honors the repo-local `XDG_CONFIG_HOME`. Running `cubeapm login` stores
+the fallback profile at `.config/cubeapm-cli/config.yaml`.
+
+## Read-only contract
+
+This production-only workspace uses CubeAPM for telemetry reads. Keep the
+integration to the query commands below, start broad, narrow by service and time
+range, and use `-o json` when an agent will parse the output.
+
+## Key commands
+
+Use metric label values—not `traces services`—as the canonical service
+inventory:
+
+```bash
+cubeapm metrics label-values service -o json
+cubeapm traces search --service <svc> --status error --last 1h -o json
+cubeapm traces get <trace-id> -o json
+cubeapm logs query 'error' --service <svc> --last 1h -o json
+cubeapm logs hits --query 'level:error' --last 6h --step 15m -o json
+cubeapm metrics query 'rate(http_requests_total{status=~"5.."}[5m])' -o json
+cubeapm metrics query 'histogram_quantile(0.99, sum by (le) (rate(http_duration_seconds_bucket[5m])))' -o json
+cubeapm traces dependencies --last 1h -o json
+```
+
+## Links
+
+- [CubeAPM documentation](https://docs.cubeapm.com/)
+- [cubeapm-cli source](https://github.com/piyush-gambhir/cubeapm-cli)

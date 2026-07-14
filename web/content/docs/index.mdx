@@ -1,0 +1,55 @@
+---
+title: Introduction
+description: A production-only agent workspace for cross-system root-cause analysis.
+---
+
+**reckon** is an agent workspace for investigating production incidents and
+performing root-cause analysis. It wires together twelve read-only
+observability, CI/CD, and infrastructure CLIs—plus optional Elasticsearch
+access—inside one isolated credential environment.
+
+It is not a single CLI or installable binary. Clone the workspace, run its
+idempotent setup script, add production credentials, and launch Claude Code,
+Codex CLI, OpenCode, or another runtime that follows `AGENTS.md`. The agent can
+then correlate signals across systems in one session instead of investigating
+each tool in isolation.
+
+<Callout type="warn">
+  This workspace is **production-only**. Put only production credentials in a
+  clone. Use a separate clone for staging or UAT so an investigation cannot mix
+  environments.
+</Callout>
+
+## The toolbelt
+
+- **Observability** — Grafana for alerts, dashboards, datasources, and
+  annotations; CubeAPM for distributed traces, PromQL metrics, and LogsQL logs;
+  AWS for CloudWatch and infrastructure signals; and optional `es` for
+  Elasticsearch/ELK log stores.
+- **CI/CD and change context** — Jenkins for jobs, builds, pipelines, and logs;
+  GitHub CLI for pull requests, Actions runs, releases, and issues.
+- **Queues and infrastructure** — `kcat` and `rpk` for Kafka metadata, messages,
+  and consumer lag; `kubectl` for Kubernetes state and events; `redis-cli` for
+  cache diagnostics.
+- **Databases** — `mongosh`, `psql`, and `mysql` for narrowly scoped,
+  approval-gated production reads after observability has identified a suspect.
+
+## How an investigation works
+
+The workspace guides an agent through a broad-to-narrow cascade: assess alerts
+and failures, inspect traces and logs, check metrics, correlate deployments,
+map dependencies, then consult queues, infrastructure, caches, or databases
+only where the evidence points. Findings and raw evidence are persisted under
+`incidents/<YYYY-MM-DD>-<slug>/`.
+
+<Cards>
+  <Card title="Setup" href="/docs/installation" description="Clone the workspace and install the toolbelt on macOS, Linux, or Windows with WSL2." />
+  <Card title="Connections & credentials" href="/docs/connections" description="Keep production credentials and CLI profiles isolated inside the clone." />
+  <Card title="Quick start" href="/docs/quickstart" description="Launch an agent and run a disciplined cross-tool investigation." />
+  <Card title="Tool belt" href="/docs/toolbelt" description="See every wired CLI and the evidence each one covers." />
+</Cards>
+
+<Callout type="info">
+  **Independent project.** Not affiliated with the vendors of the wired tools;
+  all trademarks belong to their owners.
+</Callout>

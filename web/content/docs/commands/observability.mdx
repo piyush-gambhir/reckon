@@ -1,0 +1,87 @@
+---
+title: Observability
+description: Investigate alerts, telemetry, cloud infrastructure, and log-store evidence.
+---
+
+Start with Grafana and CubeAPM. Add AWS when application telemetry is thin or
+cannot explain the infrastructure symptom; use optional `es` when the service's
+logs are stored in Elasticsearch instead of CubeAPM.
+
+## Grafana: alerts and change markers
+
+```bash
+grafana alert rule list -o json
+grafana alert silence list -o json
+grafana annotation list --tags deploy -o json
+grafana datasource list -o json
+```
+
+Alert rules establish the active symptom. Silences explain missing
+notifications, deploy annotations provide correlation points, and datasource
+health shows whether an apparent data gap is itself an observability problem.
+
+## CubeAPM: services, traces, logs, and metrics
+
+Use metric label values as the canonical service inventory:
+
+```bash
+cubeapm metrics label-values service -o json
+```
+
+Then narrow to the affected service and time window:
+
+```bash
+cubeapm traces search --service <svc> --status error --last 1h -o json
+cubeapm traces get <trace-id> -o json
+cubeapm logs query 'error' --service <svc> --last 1h -o json
+cubeapm logs hits --query 'level:error' --last 6h --step 15m -o json
+```
+
+Cross-check the symptom with PromQL and map propagation between services:
+
+```bash
+cubeapm metrics query 'rate(http_requests_total{status=~"5.."}[5m])' -o json
+cubeapm metrics query 'histogram_quantile(0.99, sum by (le) (rate(http_duration_seconds_bucket[5m])))' -o json
+cubeapm metrics query 'up' -o json
+cubeapm traces dependencies --last 1h -o json
+```
+
+<Callout type="info">
+  Quote PromQL and LogsQL expressions so the shell preserves braces,
+  parentheses, regex operators, and range selectors. Use `-o json` when the
+  agent will parse the result.
+</Callout>
+
+## AWS: infrastructure corroboration
+
+Use AWS when CubeAPM data is missing, delayed, or weakly attributed:
+
+```bash
+aws cloudwatch get-metric-statistics --namespace AWS/ApplicationELB --metric-name HTTPCode_Target_5XX_Count --start-time <ISO> --end-time <ISO> --period 60 --statistics Sum --output json
+aws sqs get-queue-attributes --queue-url <url> --attribute-names ApproximateNumberOfMessages,ApproximateAgeOfOldestMessage --output json
+aws ecs describe-services --cluster <cluster> --services <service> --output json | jq '.services[].events[:20]'
+aws logs filter-log-events --log-group-name <group> --start-time <epoch-ms> --end-time <epoch-ms> --filter-pattern '"ERROR"' --output json
+```
+
+These reads can confirm load balancer 5xx responses, queue depth and message
+age, ECS service events, or CloudWatch errors during the same incident window.
+
+## Elasticsearch: optional log store
+
+When `ES_URL` is configured, `.envrc` exports `ES_READ_ONLY=true` and the
+optional `es` CLI refuses mutating commands client-side.
+
+```bash
+es cluster health -o json
+es index list -o json | jq -r '.[].index' | grep -i <svc>
+es search query <index> -f - --size 20 --sort '@timestamp:desc' -o json
+es search sql --query 'SELECT "@timestamp", message FROM "<index>" WHERE message LIKE '\''%error%'\'' ORDER BY "@timestamp" DESC LIMIT 20' -o json
+```
+
+Pass a Query DSL body to `es search query` through stdin with `-f -`. Keep
+searches bounded by an incident time range and a result size.
+
+<Callout type="warn">
+  The optional Elasticsearch guard is client-side defence-in-depth. Keep the
+  connected credential read-only and use this workspace only for investigation.
+</Callout>

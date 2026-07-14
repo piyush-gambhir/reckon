@@ -1,0 +1,44 @@
+---
+title: Redis
+description: Inspect Redis health, memory, latency, slow commands, and keyspace size without mutating production.
+---
+
+## What it covers in an RCA
+
+Use Redis when a cache or Redis-backed queue is suspect. Its diagnostic reads
+show memory and client pressure, command statistics, slow commands, recent
+latency, and keyspace size.
+
+## Credentials
+
+`redis-cli` connects directly through the optional URL in `.env`:
+
+```bash
+REDIS_URL='rediss://:password@redis.example.com:6380/0'
+```
+
+Every documented command passes that value with `-u "$REDIS_URL"`.
+
+## Read-only contract
+
+Use only `INFO`, `SLOWLOG GET`, `LATENCY`, `DBSIZE`, and `SCAN`. Use `SCAN`,
+never `KEYS *`, for production key inspection.
+
+<Callout type="warn">
+  Never run `FLUSHALL`, `FLUSHDB`, `SET`, `DEL`, `EXPIRE`, or `CONFIG SET`.
+</Callout>
+
+## Key commands
+
+```bash
+redis-cli -u "$REDIS_URL" PING
+redis-cli -u "$REDIS_URL" INFO memory
+redis-cli -u "$REDIS_URL" INFO stats
+redis-cli -u "$REDIS_URL" SLOWLOG GET 20
+redis-cli -u "$REDIS_URL" LATENCY LATEST
+redis-cli -u "$REDIS_URL" DBSIZE
+```
+
+## Links
+
+- [Redis CLI documentation](https://redis.io/docs/latest/develop/tools/cli/)

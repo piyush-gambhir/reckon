@@ -1,0 +1,45 @@
+---
+title: GitHub
+description: Use the gh CLI to correlate pull requests, Actions runs, and releases with production symptoms.
+---
+
+## What it covers in an RCA
+
+GitHub supplies code and deployment context when a service deploys through
+Actions or when a recent change's intent and scope matter. Merges, failed runs,
+and releases are correlation points until telemetry establishes a mechanism.
+
+## Credentials
+
+A fine-grained token with `repo:read` and `actions:read` is sufficient:
+
+```bash
+GH_TOKEN=replace_me
+GITHUB_TOKEN=ghp_...
+GH_HOST=github.com
+```
+
+`GITHUB_TOKEN` is an alias: `.envrc` maps it to `GH_TOKEN` when `GH_TOKEN` is not
+already set. Set `GH_HOST` for GitHub Enterprise. The CLI honors repo-local
+`XDG_CONFIG_HOME`; `gh auth login` stores its profile under
+`.config/gh/{config.yml,hosts.yml}`.
+
+## Read-only contract
+
+Use a read-scoped token and keep the workspace to the pull-request, run, release,
+and authentication reads below. This workspace observes production and does not
+turn change correlation into a write or mitigation action.
+
+## Key commands
+
+```bash
+gh auth status
+gh pr list --search "merged:>=<ISO> closed" --json number,title,mergedAt,author,url
+gh pr view <num> --json title,body,files,mergedAt
+gh run list --workflow <wf> --status failure --json status,conclusion,createdAt,url
+gh release list --limit 10 --json tagName,publishedAt,name
+```
+
+## Links
+
+- [GitHub CLI manual](https://cli.github.com/manual/)

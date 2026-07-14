@@ -1,0 +1,40 @@
+---
+title: Overview
+description: Read-only investigation workflows grouped by operational domain.
+---
+
+reckon does not add a wrapper command. The agent calls each wired CLI
+directly, using the workspace's isolated credentials and the command contract in
+`CLAUDE.md`.
+
+## Groups
+
+<Cards>
+  <Card title="Observability" href="/docs/commands/observability" description="Grafana alerts, CubeAPM telemetry, AWS infrastructure signals, and optional Elasticsearch logs." />
+  <Card title="CI/CD" href="/docs/commands/ci-cd" description="Jenkins build evidence and GitHub change context." />
+  <Card title="Data & infrastructure" href="/docs/commands/data-and-infra" description="Kafka, Kubernetes, Redis, MongoDB, PostgreSQL, and MySQL diagnostics." />
+</Cards>
+
+## Investigation order
+
+1. Read `infra-knowledge/` for the service inventory, label conventions,
+   deployment-specific quirks, and known issues.
+2. Assess Grafana alerts, Jenkins failures, and the CubeAPM service inventory.
+3. Narrow the incident with traces, logs, metrics, deployment history, and
+   dependency evidence.
+4. Use AWS, GitHub, Kafka, Kubernetes, Redis, Elasticsearch, or a database only
+   where the earlier signals point.
+5. Correlate timestamps and write evidence under
+   `incidents/<YYYY-MM-DD>-<slug>/`.
+
+<Callout type="info">
+  This is a curated investigation surface, not exhaustive upstream CLI
+  documentation. Use each installed tool's `--help` when you need syntax beyond
+  the grounded workflows shown here.
+</Callout>
+
+<Callout type="warn">
+  Humans mitigate; this workspace observes. Do not expand a diagnosis into
+  builds, writes, deploys, scaling, queue production, consumer-group joins, or
+  database mutations.
+</Callout>

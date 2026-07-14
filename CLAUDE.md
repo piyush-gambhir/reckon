@@ -1,6 +1,6 @@
-# RCA Assist
+# reckon
 
-Root Cause Analysis assistant powered by Grafana, Jenkins, and CubeAPM — plus a read-only ops toolbelt (aws, gh, kcat, rpk, mongosh, psql, mysql).
+reckon is an agent workspace for talking to your infrastructure, powered by Grafana, Jenkins, and CubeAPM — plus a read-only ops toolbelt (aws, gh, kcat, rpk, mongosh, psql, mysql, clickhouse client).
 
 ## Purpose
 
@@ -25,19 +25,20 @@ This project is a workspace for spinning up a coding agent to investigate produc
 - **mongosh** -- MongoDB shell (Atlas-compatible)
 - **psql** -- PostgreSQL shell
 - **mysql** -- MySQL shell
+- **ClickHouse** (`clickhouse client`) -- analytics/event tables and system diagnostics. Wired when `CLICKHOUSE_HOST` is set in `.env`; requires a server-side `readonly=1` user profile and `--readonly=1` on every invocation.
 
-**Optional log store**
+**Optional integrations**
 - **es** ([es-cli](https://github.com/piyush-gambhir/es-cli)) -- Elasticsearch/ELK: cluster health, index state, Query DSL / SQL search. Only wired when `ES_URL` is set in `.env`. `.envrc` exports `ES_READ_ONLY=true`, which the CLI enforces client-side — mutating commands are refused before any request is sent.
 
 This workspace is **production-only**. Keep only production credentials here. If the team wants staging or UAT investigation, use a different clone so the agent cannot cross wires between environments.
 
 ## Database safety contract
 
-The DB clients can in principle modify data. The layers below are defence-in-depth; **only layer 1 actually denies writes across every access path**, so it is mandatory, not optional. Before issuing any DB query, confirm:
-1. **The DB user in `.env` is a true read-only role.** This is the user's responsibility, not the CLI's, and it is the real write barrier. PGOPTIONS/option-files/readPreference below only narrow the CLI paths; a read-write role can still write through a non-libpq driver (e.g. `python3 -c` with psycopg2/pymysql) — so refuse, at the approval prompt, any query that opts back into read-write (`SET ... READ WRITE`, `SET default_transaction_read_only=off`, `BEGIN READ WRITE`).
-2. **Session-level read-only is set as a default (Postgres + MySQL).** `.envrc` sets `PGOPTIONS=-c default_transaction_read_only=on` (libpq honours it for `psql`) and writes a MySQL option file at `$XDG_CONFIG_HOME/mysql/my.cnf` with `init-command=SET SESSION TRANSACTION READ ONLY` (used when you invoke `mysql --defaults-extra-file=...`). These block *accidental* writes but a session can opt back in — see layer 1. Verify: `psql -c "SHOW default_transaction_read_only;"` → `on`; `mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SELECT @@transaction_read_only;"` → `1`.
+The DB clients (`mongosh`, `psql`, `mysql`, and `clickhouse client`) can in principle modify data. The layers below are defence-in-depth; **only layer 1 actually denies writes across every access path**, so it is mandatory, not optional. Before issuing any DB query, confirm:
+1. **The DB user in `.env` is a true read-only role.** This is the user's responsibility, not the CLI's, and it is the real write barrier. For ClickHouse, the user MUST have a server-side profile with `readonly=1`. PGOPTIONS/option-files/readPreference/client flags below only narrow the CLI paths; a read-write role can still write through another driver (e.g. `python3 -c` with psycopg2/pymysql/clickhouse-connect) — so refuse, at the approval prompt, any query that opts back into read-write (`SET ... READ WRITE`, `SET default_transaction_read_only=off`, `BEGIN READ WRITE`, or a ClickHouse invocation without `--readonly=1`).
+2. **Session-level read-only is applied on every CLI path (Postgres + MySQL + ClickHouse).** `.envrc` sets `PGOPTIONS=-c default_transaction_read_only=on` (libpq honours it for `psql`) and writes a MySQL option file at `$XDG_CONFIG_HOME/mysql/my.cnf` with `init-command=SET SESSION TRANSACTION READ ONLY` (used when you invoke `mysql --defaults-extra-file=...`). Every ClickHouse command MUST include `--readonly=1`; unlike the connection defaults, this is deliberately explicit at each invocation. These block *accidental* writes but do not replace layer 1. Verify: `psql -c "SHOW default_transaction_read_only;"` → `on`; `mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SELECT @@transaction_read_only;"` → `1`; ClickHouse queries include `--readonly=1`.
 3. **Mongo URIs carry `?readPreference=secondary`.** This is request *routing*, not authorization — it steers reads to secondaries but does not reject writes. The read-only Atlas role (layer 1) is what prevents writes.
-4. **Each `psql` / `mysql` / `mongosh` call prompts for permission.** The allowlist deliberately omits these. Don't pre-approve them — read each query before approving. The friction *is* the safety mechanism. (This holds only as long as no broad `Bash(python3 -c ...)` or similar wildcard re-opens a write path around the CLIs — keep the allowlist tight.)
+4. **Each `psql` / `mysql` / `mongosh` / `clickhouse` call prompts for permission.** The allowlist deliberately omits these. Don't pre-approve them — read each query before approving. The friction *is* the safety mechanism. (This holds only as long as no broad `Bash(python3 -c ...)` or similar wildcard re-opens a write path around the CLIs — keep the allowlist tight.)
 5. **Use `EXPLAIN` / `EXPLAIN ANALYZE` before any non-trivial SELECT.** Production tables can be huge; an unbounded scan is a real outage source even with a read-only role.
 6. **Set `LIMIT` on every SELECT.** Default to `LIMIT 100`; raise only when you've seen the row count first.
 
@@ -64,7 +65,7 @@ direnv allow
 # gh auth login                # writes .config/gh/hosts.yml
 ```
 
-`grafana`, `jenkins`, `cubeapm`, and `gh` honour `XDG_CONFIG_HOME` so their state lands inside `.config/` automatically. `aws` does not, so `.envrc` also exports `AWS_CONFIG_FILE` and `AWS_SHARED_CREDENTIALS_FILE` to point inside the workspace. Kafka and DB tools (`kcat`, `rpk`, `mongosh`, `psql`, `mysql`) read credentials directly from env vars in `.env`.
+`grafana`, `jenkins`, `cubeapm`, and `gh` honour `XDG_CONFIG_HOME` so their state lands inside `.config/` automatically. `aws` does not, so `.envrc` also exports `AWS_CONFIG_FILE` and `AWS_SHARED_CREDENTIALS_FILE` to point inside the workspace. Kafka and DB tools (`kcat`, `rpk`, `mongosh`, `psql`, `mysql`, and `clickhouse client`) read credentials directly from env vars in `.env`.
 
 Config files are stored at:
 - `.config/grafana-cli/config.yaml`
@@ -90,6 +91,7 @@ mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SELECT CURRENT_U
 kubectl version --client -o json && kubectl get ns   # second command needs a seeded KUBECONFIG
 redis-cli -u "$REDIS_URL" PING
 es cluster health -o json                            # optional — only if ES_URL is set
+clickhouse client --host "$CLICKHOUSE_HOST" --port "$CLICKHOUSE_PORT" --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --secure --readonly=1 --query "SELECT 1"
 ```
 
 ## RCA Workflow
@@ -121,6 +123,22 @@ Use when `cubeapm logs hits` stays zero across a wide window and the service's l
   ```
 - Search (Query DSL, same body shape): `es search query <index> -f - --size 20 --sort '@timestamp:desc' -o json`
 - Or SQL when simpler: `es search sql --query 'SELECT "@timestamp", message FROM "<index>" WHERE message LIKE '\''%error%'\'' ORDER BY "@timestamp" DESC LIMIT 20' -o json`
+
+### 2c. Query ClickHouse analytics/event data
+Use this database connection when `CLICKHOUSE_HOST` is set and the incident points to analytics or event tables, ClickHouse ingestion volume, or slow ClickHouse queries. The real write barrier is the user's server-side `readonly=1` profile; the client-side barrier is `--readonly=1` on every invocation, and `clickhouse` is deliberately not pre-approved.
+
+Use this command shape for every query (add `--database "$CLICKHOUSE_DATABASE"` when the optional database is set):
+```bash
+clickhouse client --host "$CLICKHOUSE_HOST" --port "$CLICKHOUSE_PORT" --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --secure --readonly=1 --query '<SQL>'
+```
+
+Run `EXPLAIN indexes = 1` before every non-trivial `SELECT`, then run the bounded query. Every `SELECT`, including system-table diagnostics, MUST have a `LIMIT` (default `LIMIT 100`).
+
+- Discover analytics/event tables: `SELECT database, name, engine, total_rows, total_bytes FROM system.tables WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA') ORDER BY total_rows DESC LIMIT 100`
+- Inspect recent slow queries in `system.query_log`: `SELECT event_time, query_duration_ms, read_rows, read_bytes, query FROM system.query_log WHERE type = 'QueryFinish' AND event_time >= now() - INTERVAL 1 HOUR ORDER BY query_duration_ms DESC LIMIT 100`
+- Check current ingestion activity in `system.metrics`: `SELECT metric, value FROM system.metrics WHERE metric ILIKE '%Insert%' ORDER BY metric LIMIT 100`
+- Check cumulative ingestion volume in `system.events`: `SELECT event, value FROM system.events WHERE event IN ('InsertedRows', 'InsertedBytes') ORDER BY event LIMIT 100`
+- Sample a narrowed event table only after `EXPLAIN`: `SELECT * FROM <database>.<event_table> WHERE <timestamp_column> >= '<from-ISO>' AND <timestamp_column> <= '<to-ISO>' ORDER BY <timestamp_column> DESC LIMIT 100`
 
 ### 3. Check metrics
 - Error rate: `cubeapm metrics query 'rate(http_requests_total{status=~"5.."}[5m])' -o json`
