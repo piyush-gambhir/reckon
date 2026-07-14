@@ -1,0 +1,48 @@
+---
+title: Tool belt
+description: The observability, CI/CD, messaging, infrastructure, cache, and database CLIs wired into reckon.
+---
+
+reckon installs and configures a set of existing CLIs under one isolated
+workspace. The agent selects among them as an investigation narrows; reckon
+does not wrap them in a new binary.
+
+| CLI | Evidence it covers |
+|---|---|
+| `grafana` | Dashboards, datasources, alerts, annotations |
+| `jenkins` | Jobs, builds, pipelines, logs, nodes |
+| `cubeapm` | Distributed traces, PromQL metrics, LogsQL logs |
+| `aws` | CloudWatch metrics and logs, ALB/ELB, ECS, SQS, RDS, S3 |
+| `gh` | Pull requests, GitHub Actions runs, releases, issues |
+| `kcat` | Kafka metadata and group-less topic reads |
+| `rpk` | Kafka consumer-group lag and cluster information |
+| `kubectl` | Pod and deployment state, events, rollout history |
+| `redis-cli` | Redis `INFO`, `SLOWLOG`, `LATENCY`, `DBSIZE`, and `SCAN` diagnostics |
+| `mongosh` | MongoDB diagnostics through a read-only database role |
+| `psql` | PostgreSQL diagnostics through a read-only database role |
+| `mysql` | MySQL diagnostics through a read-only database role and option file |
+| `clickhouse client` | ClickHouse tables, slow queries, metrics, events, and bounded exploratory reads through a read-only role and `--readonly=1` |
+| `es` *(optional)* | Elasticsearch/ELK cluster health, index state, Query DSL, and SQL search |
+
+`direnv` provides the folder-local environment and `jq` supports structured
+output processing.
+
+## Signal routing
+
+<Cards>
+  <Card title="Integration guides" href="/docs/integrations" description="See credential wiring, safety contracts, key commands, and upstream links for every tool." />
+  <Card title="Observability" href="/docs/commands/observability" description="Assess alerts, traces, metrics, logs, cloud signals, and optional ELK evidence." />
+  <Card title="CI/CD" href="/docs/commands/ci-cd" description="Correlate incident windows with Jenkins builds, pull requests, Actions runs, and releases." />
+  <Card title="Data & infrastructure" href="/docs/commands/data-and-infra" description="Inspect Kafka, Kubernetes, Redis, MongoDB, PostgreSQL, MySQL, and ClickHouse safely." />
+</Cards>
+
+<Callout type="info">
+  For machine parsing, use `-o json` with the custom Grafana, Jenkins, and
+  CubeAPM CLIs. Other tools keep their own documented output flags and formats.
+</Callout>
+
+<Callout type="warn">
+  “Read-only” is a combination of credential permissions, client safeguards,
+  approved command shapes, and agent approval prompts. Several upstream tools
+  can mutate production when used outside this contract.
+</Callout>

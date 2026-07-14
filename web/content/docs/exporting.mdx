@@ -1,0 +1,59 @@
+---
+title: Exporting RCAs
+description: Render incident RCA Markdown documents as shareable PDF reports.
+---
+
+## Why export an RCA?
+
+An RCA is easiest to investigate and maintain as Markdown, but a PDF is useful
+when sharing a finished postmortem with stakeholders who need a stable,
+portable report with its tables, timelines, code blocks, and evidence links.
+
+## Export a Markdown document
+
+Pass an RCA Markdown file and, optionally, an output path:
+
+```bash
+bash scripts/export-rca-pdf.sh PATH_TO_RCA_MD OPTIONAL_OUTPUT_PDF
+```
+
+Without an output path, the exporter writes a PDF beside the Markdown file. An
+existing PDF is preserved unless you add `--force`:
+
+```bash
+bash scripts/export-rca-pdf.sh incidents/2026-04-19-search-api-apdex/RCA.md --force
+```
+
+## Export an incident folder
+
+Pass an incident directory to select its `RCA.md` automatically. The default
+output is `RCA.pdf` in that same directory:
+
+```bash
+bash scripts/export-rca-pdf.sh incidents/SOME_DIR
+```
+
+## Rendering engines
+
+The exporter first looks for `pandoc` and then checks PDF engines in this
+order: `weasyprint`, `wkhtmltopdf`, `tectonic`, and `xelatex`. If Pandoc or all
+of those engines are unavailable, it uses `npx --yes md-to-pdf` when Node.js
+and `npx` are installed. If neither route is available, it prints an install
+hint and exits without creating a PDF.
+
+On macOS, install the preferred route with:
+
+```bash
+brew install pandoc weasyprint
+```
+
+On Debian or Ubuntu, use:
+
+```bash
+sudo apt-get install pandoc weasyprint
+```
+
+<Callout type="info">
+  Generated PDFs belong in `incidents/SOME_DIR/`, which is gitignored, rather
+  than at the repository root.
+</Callout>

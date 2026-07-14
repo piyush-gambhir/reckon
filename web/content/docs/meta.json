@@ -1,0 +1,15 @@
+{
+  "title": "Documentation",
+  "pages": [
+    "index",
+    "installation",
+    "connections",
+    "quickstart",
+    "toolbelt",
+    "agents",
+    "exporting",
+    "---Reference---",
+    "integrations",
+    "commands"
+  ]
+}

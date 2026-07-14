@@ -1,0 +1,4 @@
+{
+  "title": "Commands",
+  "pages": ["index", "observability", "ci-cd", "data-and-infra"]
+}

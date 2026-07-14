@@ -1,0 +1,54 @@
+---
+title: AWS
+description: Use the AWS CLI to corroborate application telemetry with CloudWatch and infrastructure signals.
+---
+
+## What it covers in an RCA
+
+AWS fills infrastructure gaps when CubeAPM data is missing, delayed, or weakly
+attributed. It can confirm load-balancer 5xx responses, SQS backlog, ECS service
+events, and CloudWatch log errors in the incident window.
+
+## Credentials
+
+Use a read-only IAM user or SSO-assumed role. The environment supports:
+
+```bash
+AWS_ACCESS_KEY_ID=AKIAxxxxxxxxxxxxxxxx
+AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+AWS_REGION=ap-south-1
+AWS_SESSION_TOKEN=xxxxxxxxxxxxxxxx
+AWS_PROFILE=rca-readonly
+```
+
+`AWS_SESSION_TOKEN` is only needed for SSO or STS credentials, and `AWS_PROFILE`
+is only needed for a named profile. Because AWS CLI does not honor
+`XDG_CONFIG_HOME`, `.envrc` explicitly sets:
+
+```bash
+AWS_CONFIG_FILE="$XDG_CONFIG_HOME/aws/config"
+AWS_SHARED_CREDENTIALS_FILE="$XDG_CONFIG_HOME/aws/credentials"
+```
+
+Running `aws configure` in the workspace therefore writes
+`.config/aws/{config,credentials}`.
+
+## Read-only contract
+
+The configured IAM identity should be read-only. reckon uses AWS for
+production evidence gathering, with the commands below limited to identity,
+metric, queue-attribute, service-description, and log reads.
+
+## Key commands
+
+```bash
+aws sts get-caller-identity --output json
+aws cloudwatch get-metric-statistics --namespace AWS/ApplicationELB --metric-name HTTPCode_Target_5XX_Count --start-time <ISO> --end-time <ISO> --period 60 --statistics Sum --output json
+aws sqs get-queue-attributes --queue-url <url> --attribute-names ApproximateNumberOfMessages,ApproximateAgeOfOldestMessage --output json
+aws ecs describe-services --cluster <c> --services <s> --output json | jq '.services[].events[:20]'
+aws logs filter-log-events --log-group-name <lg> --start-time <epoch-ms> --end-time <epoch-ms> --filter-pattern '"ERROR"' --output json
+```
+
+## Links
+
+- [AWS CLI User Guide](https://docs.aws.amazon.com/cli/latest/userguide/)

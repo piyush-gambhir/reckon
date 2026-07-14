@@ -1,0 +1,64 @@
+---
+title: Agents
+description: Runtime guidance, investigation behavior, and production safety boundaries for coding agents.
+---
+
+reckon is runtime-agnostic. The workspace gives a coding agent the tool
+inventory, credential context, infrastructure knowledge, investigation method,
+and safety contract needed to perform a production RCA.
+
+## Supported runtime paths
+
+| Runtime | Workspace guide |
+|---|---|
+| Claude Code | `CLAUDE.md` plus the repo-local `rca-assist` skill |
+| Codex CLI | `AGENTS.md`, which points to the canonical guide and skill |
+| OpenCode and other compatible agents | `AGENTS.md` |
+
+Launch with `scripts/agent.sh`, or select `claude`, `codex`, or `opencode`
+explicitly. Subscription logins require no API key in this workspace; API-key
+billing reads `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` from `.env`.
+
+## Investigation behavior
+
+The agent should:
+
+- consult `infra-knowledge/` before querying;
+- start broad and narrow only when evidence identifies a service or subsystem;
+- use explicit time windows and correlate timestamps across systems;
+- prefer structured output, including `-o json` for Grafana, Jenkins, and
+  CubeAPM commands;
+- distinguish facts, correlation, inference, and uncertainty;
+- persist the RCA and evidence under `incidents/<YYYY-MM-DD>-<slug>/`.
+
+## Hard safety boundaries
+
+- Never write to a database.
+- Never trigger a Jenkins build.
+- Never produce to Kafka or consume with a group id.
+- Never run `kubectl apply`, `delete`, `scale`, `edit`, `exec`, or
+  `port-forward`.
+- Never run Redis write, delete, flush, expiry, or configuration mutations.
+- Keep database approval prompts enabled; `EXPLAIN` non-trivial reads first and
+  apply `LIMIT` to every `SELECT`.
+- Always invoke MySQL with
+  `--defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf"`.
+
+<Callout type="warn">
+  Client defaults are defence-in-depth. True read-only database roles and
+  read-only Kafka ACLs are the real server-side enforcement. Do not place
+  privileged production credentials in this workspace.
+</Callout>
+
+## Runtime approvals
+
+Claude Code's local allowlist deliberately omits `psql`, `mysql`, and `mongosh`
+so every database query can be reviewed. Other runtimes should use equivalent
+untrusted or on-request approval modes and must not run full-auto against this
+workspace.
+
+<Callout type="info">
+  `AGENTS.md` exists to carry the same database safety contract, RCA workflow,
+  and tool guidance into runtimes that do not load Claude Code skills
+  automatically.
+</Callout>

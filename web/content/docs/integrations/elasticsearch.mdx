@@ -1,0 +1,52 @@
+---
+title: Elasticsearch
+description: Query an optional Elasticsearch or ELK log store with the read-only es CLI.
+---
+
+## What it covers in an RCA
+
+Use Elasticsearch when a service sends logs to ES instead of CubeAPM. The
+optional integration can check cluster health, locate a service's index, count
+errors in a time window, and search with Query DSL or SQL.
+
+## Credentials
+
+The integration is wired only when `ES_URL` is set. Basic authentication uses:
+
+```bash
+ES_URL=https://elasticsearch.example.com:9200
+ES_USERNAME=rca-readonly
+ES_PASSWORD=xxxxxxxxxxxxxxxx
+```
+
+API-key authentication can be used instead:
+
+```bash
+ES_API_KEY_ID=xxxxxxxx
+ES_API_KEY=xxxxxxxxxxxxxxxx
+```
+
+`.envrc` exports `ES_READ_ONLY=true` by default.
+
+## Read-only contract
+
+With `ES_READ_ONLY=true`, `es` refuses mutating commands before sending a
+request. That is client-side defence-in-depth; the connected Elasticsearch role
+or API key should also be read-only. Keep searches bounded by the incident time
+range and result size.
+
+## Key commands
+
+```bash
+es cluster health -o json
+es index list -o json | jq -r '.[].index' | grep -i <svc>
+echo '{"query":{"bool":{"must":[{"match":{"level":"error"}},{"range":{"@timestamp":{"gte":"<ISO>","lte":"<ISO>"}}}]}}}' \
+  | es search count <index> -f - -o json
+es search query <index> -f - --size 20 --sort '@timestamp:desc' -o json
+es search sql --query 'SELECT "@timestamp", message FROM "<index>" WHERE message LIKE '\''%error%'\'' ORDER BY "@timestamp" DESC LIMIT 20' -o json
+```
+
+## Links
+
+- [Elasticsearch documentation](https://www.elastic.co/docs/reference/elasticsearch)
+- [es-cli source](https://github.com/piyush-gambhir/es-cli)

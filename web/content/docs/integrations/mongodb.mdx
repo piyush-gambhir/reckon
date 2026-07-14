@@ -1,0 +1,47 @@
+---
+title: MongoDB
+description: Run narrowly scoped MongoDB diagnostics through a read-only role with mongosh.
+---
+
+## What it covers in an RCA
+
+Use MongoDB only after earlier evidence identifies a collection or database
+query as the suspect. `mongosh` can verify liveness, show currently running
+operations, inspect replica-set state and server connection counters, and return
+a bounded collection sample.
+
+## Credentials
+
+MongoDB reads its Atlas-style URI directly from `.env`:
+
+```bash
+MONGODB_URI='mongodb+srv://rca-readonly:xxxxxxxxxxxx@cluster.example.mongodb.net/?readPreference=secondary&retryWrites=false'
+```
+
+The value must be single-quoted because the URI contains `&`, which the shell
+would otherwise treat as an operator.
+
+## Read-only contract
+
+The user in `MONGODB_URI` must be a true read-only database role; that is the
+real write barrier. `readPreference=secondary` is read routing, not
+authorization, and does not reject writes. Every `mongosh` call must remain
+approval-gated so the proposed query can be reviewed.
+
+For the shared database contract, use `EXPLAIN` / `EXPLAIN ANALYZE` before any
+non-trivial `SELECT` and put `LIMIT` on every `SELECT`; MongoDB collection
+samples are likewise bounded with `.limit(...)`.
+
+## Key commands
+
+```bash
+mongosh "$MONGODB_URI" --eval 'db.runCommand({ping:1})'
+mongosh "$MONGODB_URI" --eval 'db.currentOp({active:true, secs_running:{$gt:1}})'
+mongosh "$MONGODB_URI" --eval 'rs.status()'
+mongosh "$MONGODB_URI" --eval 'db.serverStatus().connections'
+mongosh "$MONGODB_URI" --eval 'db.<coll>.find({<filter>}).limit(10).toArray()'
+```
+
+## Links
+
+- [MongoDB Shell documentation](https://www.mongodb.com/docs/mongodb-shell/)

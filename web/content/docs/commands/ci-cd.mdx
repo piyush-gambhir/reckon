@@ -1,0 +1,57 @@
+---
+title: CI/CD
+description: Correlate production symptoms with Jenkins builds and GitHub changes.
+---
+
+Deployment evidence turns “the errors started after a change” into a timestamped
+hypothesis. Use Jenkins for job and build history; use GitHub for pull-request
+intent, Actions runs, and releases.
+
+## Jenkins
+
+Assess failed jobs, then inspect the deploy job that overlaps the incident:
+
+```bash
+jenkins job list --recursive --status FAILURE -o json
+jenkins build list <deploy-job> -o json
+jenkins build log <job> <number>
+```
+
+Compare build start and completion times with the Grafana alert, CubeAPM error
+rate, and trace window. Build logs can confirm the deployed revision or expose a
+failed rollout step.
+
+<Callout type="warn">
+  Never trigger a Jenkins build from this workspace. Jobs, builds, logs,
+  pipelines, and nodes are investigation evidence only.
+</Callout>
+
+## GitHub
+
+Use GitHub when the service deploys through Actions or when a recent change's
+intent and scope matter:
+
+```bash
+gh pr list --search "merged:>=<ISO> closed" --json number,title,mergedAt,author,url
+gh pr view <number> --json title,body,files,mergedAt
+gh run list --workflow <workflow> --status failure --json status,conclusion,createdAt,url
+gh release list --limit 10 --json tagName,publishedAt,name
+```
+
+Start with the incident window, not a broad repository history. A matching merge
+or release is a correlation point until telemetry and build evidence show how it
+caused the symptom.
+
+## Correlation checklist
+
+- Does the build or release timestamp precede the first bad metric?
+- Do the affected traces exercise code changed by the pull request?
+- Did Kubernetes events or ECS service events show rollout instability?
+- Did the dependency graph move the failure into a downstream service?
+- Does a rollback or later build align with recovery?
+
+<Callout type="info">
+  Treat temporal proximity as a hypothesis. The RCA should identify the
+  mechanism connecting the change to the observed failure, or state that the
+  evidence remains inconclusive.
+</Callout>
