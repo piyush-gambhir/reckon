@@ -1,0 +1,71 @@
+---
+title: Kafka
+description: Inspect Kafka metadata, group-less topic messages, and consumer lag with kcat and rpk.
+---
+
+## What it covers in an RCA
+
+Use Kafka when a consumer is slow, lagging, or stuck; when a dead-letter topic
+is suspected; or when a Kafka-connected service is misbehaving. `kcat` exposes
+cluster metadata and bounded topic tails, while `rpk` exposes consumer-group lag
+and cluster or topic state.
+
+## Credentials
+
+Both clients are wired from the same environment values:
+
+```bash
+KAFKA_BOOTSTRAP_SERVERS=broker1.example.com:9092,broker2.example.com:9092
+KAFKA_SECURITY_PROTOCOL=SASL_SSL
+KAFKA_SASL_MECHANISM=SCRAM-SHA-512
+KAFKA_SASL_USERNAME=rca-readonly
+KAFKA_SASL_PASSWORD=replace_me
+```
+
+`kcat` receives these through the documented `-b` and `-X` flags. `rpk` reads
+`RPK_*` variables, so `.envrc` derives `RPK_BROKERS`, `RPK_USER`, `RPK_PASS`,
+`RPK_SASL_MECHANISM`, and, for TLS protocols, `RPK_TLS_ENABLED` from the
+configured `KAFKA_*` values.
+
+For MSK IAM, the environment example uses `SASL_SSL` with
+`KAFKA_SASL_MECHANISM=AWS_MSK_IAM` and AWS credentials resolving to the
+appropriate role.
+
+## Read-only contract
+
+`kcat` and `rpk` have no read-only mode. The real barrier is a broker principal
+limited to `Describe` and `Read`; for MSK IAM, allow `kafka-cluster:Connect`,
+`Describe*`, and `ReadData`, with no `WriteData`, `Create*`, `Delete*`, or
+`Alter*`.
+
+Only use `kcat -L` / `-C` / `-Q`, `rpk cluster info`, `rpk topic
+list/describe/consume`, and `rpk group list/describe`. Never use `kcat -P`,
+`rpk topic produce/create/delete/alter-config`, or `rpk group delete/seek`.
+
+<Callout type="warn">
+  Never use `kcat -G <group>` or `rpk topic consume -g <group>`. A group-id read
+  joins the production consumer group, triggers a rebalance, and commits
+  offsets. Always consume group-less.
+</Callout>
+
+## Key commands
+
+```bash
+kcat -L -b "$KAFKA_BOOTSTRAP_SERVERS" -X security.protocol=$KAFKA_SECURITY_PROTOCOL \
+     -X sasl.mechanism=$KAFKA_SASL_MECHANISM -X sasl.username=$KAFKA_SASL_USERNAME \
+     -X sasl.password=$KAFKA_SASL_PASSWORD -t <topic> -J | jq
+
+kcat -C -b "$KAFKA_BOOTSTRAP_SERVERS" -X security.protocol=$KAFKA_SECURITY_PROTOCOL \
+     -X sasl.mechanism=$KAFKA_SASL_MECHANISM -X sasl.username=$KAFKA_SASL_USERNAME \
+     -X sasl.password=$KAFKA_SASL_PASSWORD -t <topic> -o -10 -e -q
+
+rpk cluster info
+rpk group describe <consumer-group> --brokers "$KAFKA_BOOTSTRAP_SERVERS"
+rpk group list --brokers "$KAFKA_BOOTSTRAP_SERVERS"
+rpk topic describe <topic> --brokers "$KAFKA_BOOTSTRAP_SERVERS"
+```
+
+## Links
+
+- [kcat documentation and source](https://github.com/edenhill/kcat)
+- [rpk command reference](https://docs.redpanda.com/current/reference/rpk/)

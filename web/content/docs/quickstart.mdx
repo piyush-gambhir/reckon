@@ -1,0 +1,77 @@
+---
+title: Quick start
+description: Launch an agent runtime and carry out a cross-tool production investigation.
+---
+
+## 1. Prepare the clone
+
+After [setup](/docs/installation), fill `.env` with production credentials and
+edit the seeded `infra-knowledge/*.md` files. The agent consults this knowledge
+before querying so it understands service names, data locations, known quirks,
+and existing issues.
+
+```bash
+$EDITOR .env
+direnv allow
+```
+
+## 2. Launch an agent
+
+The launcher auto-detects Claude Code, Codex CLI, then OpenCode:
+
+```bash
+scripts/agent.sh
+```
+
+Or choose a runtime explicitly:
+
+```bash
+scripts/agent.sh claude
+scripts/agent.sh codex
+scripts/agent.sh opencode
+```
+
+Keep approval prompts on. Claude Code reads `CLAUDE.md` and the repo-local RCA
+skill; Codex, OpenCode, and other compatible runtimes read `AGENTS.md` and the
+same canonical safety contract.
+
+## 3. Describe the incident
+
+Give the agent a service, symptom, and narrow UTC window when possible:
+
+```text
+The checkout service latency spiked from 14:30 to 14:50 UTC.
+Find the cause and write the RCA with supporting evidence.
+```
+
+The agent starts broad, then follows the evidence across alert state, failed
+builds, traces, logs, metrics, deployments, dependencies, queues, Kubernetes,
+caches, and databases as needed.
+
+## 4. Review the evidence
+
+A completed investigation is written to:
+
+```text
+incidents/<YYYY-MM-DD>-<slug>/
+├── RCA.md
+├── alert.txt
+├── learnings.md
+└── evidence/
+```
+
+The date is the UTC date the incident began. The RCA should distinguish
+evidence from inference, state uncertainty explicitly, and preserve the raw
+outputs needed to reproduce its conclusion.
+
+<Callout type="warn">
+  The agent investigates only. It must not trigger Jenkins builds, produce to
+  Kafka, join a production consumer group, mutate a database, or run mutating
+  Kubernetes and Redis commands.
+</Callout>
+
+<Cards>
+  <Card title="Tool belt" href="/docs/toolbelt" description="Choose the right evidence source for each incident signal." />
+  <Card title="Command workflows" href="/docs/commands" description="Use grounded read-only commands grouped by operational domain." />
+  <Card title="Agents" href="/docs/agents" description="Understand runtime guides, safety boundaries, and investigation behavior." />
+</Cards>

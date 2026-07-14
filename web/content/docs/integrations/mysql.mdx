@@ -1,0 +1,57 @@
+---
+title: MySQL
+description: Inspect MySQL sessions, plans, engine state, and replication through a read-only role and workspace option file.
+---
+
+## What it covers in an RCA
+
+Use MySQL only after observability identifies a database query or table as the
+suspect. The client can verify session safety, inspect active and slow sessions,
+show InnoDB engine state, explain a query, and inspect replica status.
+
+## Credentials
+
+The workspace environment contains:
+
+```bash
+MYSQL_HOST=db.example.com
+MYSQL_TCP_PORT=3306
+MYSQL_USER=rca_readonly
+MYSQL_PWD=replace_me
+MYSQL_DATABASE=app_production
+```
+
+The MySQL client reads `MYSQL_HOST`, `MYSQL_TCP_PORT`, and `MYSQL_PWD` from the
+environment, but not `MYSQL_USER` or `MYSQL_DATABASE`. `.envrc` writes the user,
+database, and `init-command=SET SESSION TRANSACTION READ ONLY` to
+`$XDG_CONFIG_HOME/mysql/my.cnf`.
+
+## Read-only contract
+
+`MYSQL_USER` must be a true read-only database role; it is the real write
+barrier. The option file only blocks accidental writes and supplies the intended
+user and database. Always invoke the client as:
+
+```bash
+mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf"
+```
+
+A bare `mysql` omits the session safeguard and intended role. Every call must
+prompt for permission. Use `EXPLAIN` or `EXPLAIN ANALYZE` before any non-trivial
+`SELECT`, and put `LIMIT` on every `SELECT`, defaulting to `LIMIT 100`.
+
+## Key commands
+
+```bash
+mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SELECT @@transaction_read_only;"
+mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SELECT id, user, host, db, command, time, state, LEFT(info, 200) AS query FROM information_schema.processlist WHERE command != 'Sleep' ORDER BY time DESC LIMIT 20;"
+mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SHOW ENGINE INNODB STATUS\G"
+mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "EXPLAIN <query>;"
+mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SHOW REPLICA STATUS\G"
+```
+
+The transaction check must report `1`.
+
+## Links
+
+- [MySQL client documentation](https://dev.mysql.com/doc/refman/8.0/en/mysql.html)

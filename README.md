@@ -1,12 +1,12 @@
-# rca-assist
+# reckon
 
-Root Cause Analysis assistant powered by Grafana, Jenkins, and CubeAPM — plus a read-only ops toolbelt (aws, gh, kcat, rpk, mongosh, psql, mysql).
+An agent workspace for talking to your infrastructure — investigating incidents, running RCAs, and understanding production behavior with a read-only ops toolbelt.
 
-📖 **Docs site:** see [`web/`](web/) (Astro + Starlight, deployed to Cloudflare Pages). Run `cd web && npm install && npm run dev` for local preview.
+📖 **Docs site:** see [`web/`](web/) (Next.js + Fumadocs, static-exported to Cloudflare Pages). Run `cd web && pnpm install && pnpm dev` for local preview.
 
 ## Overview
 
-`rca-assist` is an agent workspace for investigating production incidents and performing root cause analysis. It wires together twelve read-only observability, CI/CD, and infrastructure CLIs (plus an optional thirteenth, `es`, for ES/ELK log stores — see the table below) under a single, isolated credential environment so a coding agent can correlate signals across systems in one session. It runs under **Claude Code** (subscription or API key), **Codex CLI** (ChatGPT subscription or API key), or any agent runtime that reads `AGENTS.md` — see [Agent runtimes](#agent-runtimes).
+`reckon` is an agent workspace for talking to your infrastructure — investigating incidents, running RCAs, and understanding production behavior. It wires together twelve read-only observability, CI/CD, and infrastructure CLIs, including `clickhouse client` for analytics and event data, plus optional `es` for ES/ELK logs, under a single isolated credential environment so a coding agent can correlate signals across systems in one session. It runs under **Claude Code** (subscription or API key), **Codex CLI** (ChatGPT subscription or API key), or any agent runtime that reads `AGENTS.md` — see [Agent runtimes](#agent-runtimes).
 
 This clone is intended to be **production-only**. Put only production Grafana, Jenkins, and CubeAPM credentials in this workspace. If you ever need staging or UAT, use a separate clone so the agent never mixes environments during an RCA.
 
@@ -26,6 +26,7 @@ This clone is intended to be **production-only**. Put only production Grafana, J
 | [`mongosh`](https://www.mongodb.com/docs/mongodb-shell/) | MongoDB shell — read-only DB role required |
 | [`psql`](https://www.postgresql.org/docs/current/app-psql.html) | PostgreSQL shell — read-only DB role required |
 | [`mysql`](https://dev.mysql.com/doc/refman/8.0/en/mysql.html) | MySQL shell — read-only DB role required |
+| [`clickhouse client`](https://clickhouse.com/docs/integrations/clickhouse_client) | ClickHouse client — analytics/event tables and system diagnostics; read-only DB role + `--readonly=1` required. Activates when `CLICKHOUSE_HOST` is set. |
 | [`es`](https://github.com/piyush-gambhir/es-cli) *(optional)* | Elasticsearch/ELK log stores — cluster health, index state, Query DSL/SQL search. Client-side read-only enforced via `ES_READ_ONLY=true` from `.envrc`. |
 
 ## Platform support
@@ -46,8 +47,8 @@ The setup scripts are **idempotent** — every install function checks whether t
 ### macOS
 
 ```bash
-git clone https://github.com/piyush-gambhir/rca-assist.git
-cd rca-assist
+git clone https://github.com/piyush-gambhir/reckon.git
+cd reckon
 bash scripts/setup.sh
 ```
 
@@ -56,8 +57,8 @@ Requires [Homebrew](https://brew.sh/). `scripts/setup.sh` installs missing tools
 ### Linux (Debian/Ubuntu or Fedora/RHEL family)
 
 ```bash
-git clone https://github.com/piyush-gambhir/rca-assist.git
-cd rca-assist
+git clone https://github.com/piyush-gambhir/reckon.git
+cd reckon
 bash scripts/setup.sh
 ```
 
@@ -73,16 +74,16 @@ The same `scripts/setup.sh` auto-detects the distro via `/etc/os-release` and di
 # One-time WSL setup (PowerShell as Administrator):
 wsl --install
 # Reboot, then inside WSL:
-git clone https://github.com/piyush-gambhir/rca-assist.git
-cd rca-assist
+git clone https://github.com/piyush-gambhir/reckon.git
+cd reckon
 bash scripts/setup.sh
 ```
 
-**Native PowerShell (partial support):** if WSL isn't an option, `scripts/setup.ps1` installs 9 of the 13 tools natively — 6 via winget (`aws`, `gh`, `mongosh`, `psql`, `mysql`, `kubectl`) and 3 via `go install` (`grafana`, `jenkins`, `cubeapm`); `direnv`, `kcat`, `rpk`, and `redis-cli` have no clean Windows port and need WSL2. Note that the winget `psql`/`mysql` packages install the full server bundles and may not place the client on `PATH` — see [`scripts/setup.ps1`](scripts/setup.ps1) comments. Then `scripts/activate.ps1` is the direnv replacement — dot-source it once per PowerShell session to load `.env` and apply the safety env vars.
+**Native PowerShell (partial support):** if WSL isn't an option, `scripts/setup.ps1` installs 9 of the 14 tools natively — 6 via winget (`aws`, `gh`, `mongosh`, `psql`, `mysql`, `kubectl`) and 3 via `go install` (`grafana`, `jenkins`, `cubeapm`); `direnv`, `kcat`, `rpk`, and `redis-cli` have no clean Windows port and need WSL2. Note that the winget `psql`/`mysql` packages install the full server bundles and may not place the client on `PATH` — see [`scripts/setup.ps1`](scripts/setup.ps1) comments. Then `scripts/activate.ps1` is the direnv replacement — dot-source it once per PowerShell session to load `.env` and apply the safety env vars.
 
 ```powershell
-git clone https://github.com/piyush-gambhir/rca-assist.git
-cd rca-assist
+git clone https://github.com/piyush-gambhir/reckon.git
+cd reckon
 .\scripts\setup.ps1
 notepad .env                      # fill in real credentials
 . .\scripts\activate.ps1          # NOTE the leading dot+space
@@ -91,7 +92,7 @@ notepad .env                      # fill in real credentials
 To auto-activate `.env` in every PowerShell session inside this folder, add to your `$PROFILE`:
 
 ```powershell
-if ($PWD.Path -like '*\rca-assist*') { . .\scripts\activate.ps1 }
+if ($PWD.Path -like '*\reckon*') { . .\scripts\activate.ps1 }
 ```
 
 ### Manual install (any platform)
@@ -126,6 +127,7 @@ mongosh "$MONGODB_URI" --eval 'db.runCommand({ping:1})'
 psql -c "SELECT current_user, current_database(), pg_is_in_recovery();"
 mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SELECT CURRENT_USER(), DATABASE(), @@transaction_read_only;"
 es cluster health -o json                      # optional — only if ES_URL is set
+clickhouse client --host "$CLICKHOUSE_HOST" --port "$CLICKHOUSE_PORT" --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --secure --readonly=1 --query "SELECT 1"
 ```
 
 > **DB safety check:** The Postgres command should report `pg_is_in_recovery = t` (you're on a replica) and `SHOW default_transaction_read_only` should be `on`; the MySQL command should report `@@transaction_read_only = 1`. If Postgres isn't read-only, `.envrc` didn't reload — run `direnv allow`. If **MySQL** isn't read-only, you almost certainly ran a bare `mysql` instead of `mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf"` — the mysql client has no read-only env var, so the option file is the only thing that applies it.
@@ -148,7 +150,7 @@ Config files land at:
 - `.config/aws/{config,credentials}`
 - `.config/gh/{config.yml,hosts.yml}`
 
-Kafka and database tools (`kcat`, `rpk`, `mongosh`, `psql`, `mysql`) don't have a saved-profile mode here — they read credentials directly from the env vars you set in `.env`.
+Kafka and database tools (`kcat`, `rpk`, `mongosh`, `psql`, `mysql`, and `clickhouse client`) don't have a saved-profile mode here — they read credentials directly from the env vars you set in `.env`.
 
 ### Kafka access — read this once
 
@@ -182,7 +184,7 @@ A zero-dependency local web UI for browsing your RCA corpus — incident list wi
 node ui/serve.mjs        # → http://localhost:7777
 ```
 
-It binds `127.0.0.1` only and serves the gitignored `incidents/` folder read-only — nothing leaves the machine. (The Astro site under [`web/`](web/) remains the *product documentation*; the UI is for *your incident data*.)
+It binds `127.0.0.1` only and serves the gitignored `incidents/` folder read-only — nothing leaves the machine. (The docs site under [`web/`](web/) remains the *product documentation*; the UI is for *your incident data*.)
 
 ## Agent runtimes
 

@@ -1,0 +1,56 @@
+---
+title: PostgreSQL
+description: Inspect PostgreSQL queries, locks, plans, and replication through a read-only role with psql.
+---
+
+## What it covers in an RCA
+
+Use PostgreSQL only after observability evidence points to a table or query.
+`psql` can confirm session safety, inspect active queries and waits, identify
+ungranted locks, examine a slow plan, and measure replication lag.
+
+## Credentials
+
+libpq reads the standard PostgreSQL environment values:
+
+```bash
+PGHOST=db.example.com
+PGPORT=5432
+PGUSER=rca_readonly
+PGPASSWORD=replace_me
+PGDATABASE=app_production
+PGSSLMODE=require
+```
+
+Unless `.env` overrides it, `.envrc` also exports:
+
+```bash
+PGOPTIONS='-c statement_timeout=30s -c default_transaction_read_only=on'
+```
+
+## Read-only contract
+
+`PGUSER` must be a true read-only database role; it is the only barrier that
+denies writes across every access path. `PGOPTIONS` makes read-only the session
+default and adds a 30-second statement timeout, but a session can opt back into
+read-write, so refuse `SET ... READ WRITE`,
+`SET default_transaction_read_only=off`, and `BEGIN READ WRITE`.
+
+Every `psql` call must prompt for permission. Use `EXPLAIN` or `EXPLAIN ANALYZE`
+before any non-trivial `SELECT`, and set `LIMIT` on every `SELECT`, defaulting to
+`LIMIT 100`. `EXPLAIN ANALYZE` executes the query, so confirm read-only intent
+before using it.
+
+## Key commands
+
+```bash
+psql -c "SHOW default_transaction_read_only;"
+psql -c "SELECT pid, state, wait_event_type, wait_event, now()-query_start AS dur, query FROM pg_stat_activity WHERE state != 'idle' ORDER BY dur DESC LIMIT 20;"
+psql -c "EXPLAIN (ANALYZE, BUFFERS) <query>;"
+```
+
+The first command must report `on`.
+
+## Links
+
+- [psql documentation](https://www.postgresql.org/docs/current/app-psql.html)

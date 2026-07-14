@@ -1,0 +1,48 @@
+---
+title: ClickHouse
+description: Inspect ClickHouse analytics and event data through a read-only user and client session.
+---
+
+## What it covers in an RCA
+
+ClickHouse is a database connection for listing tables, inspecting slow queries
+in `system.query_log`, and reading `system.metrics` or `system.events` during
+an incident.
+
+## Credentials
+
+The connection activates when `CLICKHOUSE_HOST` is set in `.env`:
+
+```bash
+CLICKHOUSE_HOST='<host>'
+CLICKHOUSE_PORT=9440
+CLICKHOUSE_USER='<read-only-user>'
+CLICKHOUSE_PASSWORD='<password>'
+CLICKHOUSE_DATABASE='<optional-database>'
+CLICKHOUSE_SECURE=1
+```
+
+`CLICKHOUSE_PORT` defaults to `9440` for the TLS native protocol.
+`CLICKHOUSE_DATABASE` is optional, and `CLICKHOUSE_SECURE` defaults to `1`.
+
+## Read-only contract
+
+Invoke the standard `clickhouse client` binary with `--readonly=1` as a
+client-side guard. The real write barrier is a read-only ClickHouse user/profile
+with server-side `readonly=1`, mirroring the database safety contract used for
+the other databases in this workspace. Always use `LIMIT` on exploratory
+queries.
+
+## Key commands
+
+```bash
+clickhouse client --readonly=1 --query "SELECT 1"
+clickhouse client --readonly=1 --query "SHOW TABLES"
+clickhouse client --readonly=1 --query "SELECT event_time, query_duration_ms, read_rows, query FROM system.query_log WHERE type = 'QueryFinish' ORDER BY query_duration_ms DESC LIMIT 20"
+clickhouse client --readonly=1 --query "SELECT metric, value, description FROM system.metrics ORDER BY metric LIMIT 100"
+clickhouse client --readonly=1 --query "SELECT event, value, description FROM system.events ORDER BY event LIMIT 100"
+```
+
+## Links
+
+- [ClickHouse client documentation](https://clickhouse.com/docs/interfaces/cli)

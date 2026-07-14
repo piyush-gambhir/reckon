@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Windows direnv-replacement for rca-assist.
+    Windows direnv-replacement for reckon.
 
 .DESCRIPTION
     PowerShell does not have direnv. This script does what .envrc does on
@@ -20,7 +20,7 @@
 .NOTES
     To auto-activate every time you open PowerShell in this repo, add to
     your $PROFILE something like:
-        if ($PWD.Path -like '*\rca-assist*') { . .\scripts\activate.ps1 }
+        if ($PWD.Path -like '*\reckon*') { . .\scripts\activate.ps1 }
 #>
 
 $ErrorActionPreference = 'Stop'
@@ -96,6 +96,13 @@ if ($env:MYSQL_HOST) {
     if ($env:MYSQL_DATABASE) { $myLines += "database=$($env:MYSQL_DATABASE)" }
     Set-Content -Path (Join-Path $myDir 'my.cnf') -Value $myLines -Encoding ASCII
 }
+# ClickHouse: only apply defaults when the connection is configured.
+# Every client invocation must still pass --readonly=1 explicitly; the
+# server-side readonly=1 user profile remains the real write barrier.
+if ($env:CLICKHOUSE_HOST) {
+    if (-not $env:CLICKHOUSE_PORT)   { $env:CLICKHOUSE_PORT = '9440' }
+    if (-not $env:CLICKHOUSE_SECURE) { $env:CLICKHOUSE_SECURE = '1' }
+}
 # Kafka: rpk reads RPK_* (not KAFKA_*); derive them so rpk can authenticate.
 if ($env:KAFKA_BOOTSTRAP_SERVERS) {
     if (-not $env:RPK_BROKERS) { $env:RPK_BROKERS = $env:KAFKA_BOOTSTRAP_SERVERS }
@@ -119,10 +126,13 @@ if ($env:CUBEAPM_HOST -and -not $env:CUBEAPM_SERVER) {
     $env:CUBEAPM_SERVER = $env:CUBEAPM_HOST
 }
 
-Write-Host "rca-assist environment loaded from $repoRoot" -ForegroundColor Green
+Write-Host "reckon environment loaded from $repoRoot" -ForegroundColor Green
 Write-Host ("  XDG_CONFIG_HOME = {0}" -f $env:XDG_CONFIG_HOME)
 Write-Host ("  AWS_CONFIG_FILE = {0}" -f $env:AWS_CONFIG_FILE)
 Write-Host ("  PGOPTIONS       = {0}" -f $env:PGOPTIONS)
 if ($env:MYSQL_HOST) {
     Write-Host ("  MYSQL my.cnf    = {0}" -f (Join-Path $xdg 'mysql\my.cnf'))
+}
+if ($env:CLICKHOUSE_HOST) {
+    Write-Host ("  CLICKHOUSE      = {0}:{1} (secure={2})" -f $env:CLICKHOUSE_HOST, $env:CLICKHOUSE_PORT, $env:CLICKHOUSE_SECURE)
 }

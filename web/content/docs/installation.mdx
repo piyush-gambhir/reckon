@@ -1,0 +1,80 @@
+---
+title: Setup
+description: Clone reckon and prepare its isolated production tool workspace.
+---
+
+reckon is a repository workspace, not a standalone binary. Setup starts with
+a Git clone and runs the repository's idempotent installer.
+
+## macOS
+
+```bash
+git clone https://github.com/piyush-gambhir/reckon.git
+cd reckon
+bash scripts/setup.sh
+```
+
+Homebrew is required. The script installs missing tools with Homebrew or pinned
+`go install` commands, creates `.env` from `.env.example` when needed, seeds the
+`infra-knowledge/` templates, and runs `direnv allow`.
+
+## Linux
+
+```bash
+git clone https://github.com/piyush-gambhir/reckon.git
+cd reckon
+bash scripts/setup.sh
+```
+
+The same script detects Debian/Ubuntu or Fedora/RHEL-family systems through
+`/etc/os-release` and uses `apt` or `dnf`. Pinned `rpk` and `kubectl` downloads
+are checksum-verified; vendor repositories are used where available. Other
+Linux distributions receive manual-install guidance.
+
+Hook direnv into your shell once so the workspace environment loads when you
+enter the clone:
+
+```bash
+eval "$(direnv hook bash)"
+```
+
+Use the equivalent zsh hook when zsh is your shell.
+
+## Windows
+
+WSL2 is the recommended Windows path because native Windows does not provide the
+complete toolbelt:
+
+```powershell
+wsl --install
+```
+
+After rebooting, run the Linux clone and setup commands inside WSL.
+
+Native PowerShell support is partial. `scripts/setup.ps1` installs the available
+tools, and `scripts/activate.ps1` replaces direnv for the current session:
+
+```powershell
+git clone https://github.com/piyush-gambhir/reckon.git
+cd reckon
+.\scripts\setup.ps1
+notepad .env
+. .\scripts\activate.ps1
+```
+
+<Callout type="info">
+  Setup is idempotent. Re-running it leaves existing configuration alone and
+  installs only missing tools.
+</Callout>
+
+## Finish the workspace
+
+Edit `.env` with real production credentials and fill the seeded
+`infra-knowledge/*.md` files with your service inventory, naming conventions,
+server quirks, and known issues. Then verify each connection with the safe reads
+listed in `README.md` before starting an incident.
+
+<Callout type="warn">
+  Keep approval prompts enabled in the agent runtime. Database queries must not
+  be broadly pre-approved, and database users must be true read-only roles.
+</Callout>

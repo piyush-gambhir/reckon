@@ -60,3 +60,22 @@ mkdir -p "incidents/$SLUG/evidence"
 ```
 
 The skill (when invoked via `/rca-assist` or by the `rca-assist` agent) will use this same layout automatically.
+
+## Export to PDF
+
+Export an RCA Markdown document, optionally choosing the output path:
+
+```bash
+bash scripts/export-rca-pdf.sh PATH_TO_RCA_MD OPTIONAL_OUTPUT_PDF
+```
+
+Or pass an incident folder to export its `RCA.md` to `RCA.pdf` beside it:
+
+```bash
+bash scripts/export-rca-pdf.sh incidents/SOME_DIR
+```
+
+The exporter prefers `pandoc` with `weasyprint`, `wkhtmltopdf`, `tectonic`, or
+`xelatex` (in that order). If that combination is unavailable, it falls back to
+`npx --yes md-to-pdf` when Node.js is installed; otherwise it prints install
+hints. Existing PDFs require `--force` to be replaced.

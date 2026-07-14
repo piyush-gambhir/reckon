@@ -1,0 +1,56 @@
+---
+title: Kubernetes
+description: Inspect Kubernetes pod state, events, rollout history, and resource pressure with kubectl.
+---
+
+## What it covers in an RCA
+
+Use Kubernetes when a symptom suggests pod churn, deployment blackout, OOM
+kills, or replica-count anomalies. The read surface exposes restarts, container
+last state, cluster events, rollout history, deployment status, and pod resource
+pressure.
+
+## Credentials
+
+`.envrc` pins kubectl to a workspace-local configuration:
+
+```bash
+KUBECONFIG="$XDG_CONFIG_HOME/kube/config"
+```
+
+For EKS, seed that file with the configured AWS credentials:
+
+```bash
+aws eks update-kubeconfig --name <cluster> --region "$AWS_REGION"
+```
+
+`.env.example` also provides optional `EKS_CLUSTER_NAME=prod-cluster` as a
+convenience for that setup command.
+
+## Read-only contract
+
+kubectl is read-only by usage in this workspace. Use `get`, `describe`, `logs`,
+`events`, `top`, and `rollout history` only.
+
+<Callout type="warn">
+  Never use `apply`, `delete`, `scale`, `edit`, `exec`, or `port-forward`. This
+  workspace observes; humans mitigate.
+</Callout>
+
+## Key commands
+
+```bash
+kubectl version --client -o json && kubectl get ns
+kubectl get pods -n <ns> -o wide
+kubectl describe pod <pod> -n <ns>
+kubectl get events -n <ns> --sort-by=.lastTimestamp | tail -30
+kubectl rollout history deploy/<d> -n <ns>
+kubectl get deploy <d> -n <ns> -o json | jq '.status'
+kubectl top pods -n <ns>
+```
+
+`kubectl top` requires metrics-server.
+
+## Links
+
+- [kubectl reference](https://kubernetes.io/docs/reference/kubectl/)

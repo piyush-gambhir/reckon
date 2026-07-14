@@ -1,0 +1,109 @@
+---
+title: Data & infrastructure
+description: Inspect Kafka, Kubernetes, Redis, MongoDB, PostgreSQL, and MySQL without mutating production.
+---
+
+Use these tools after alerts and telemetry have narrowed the incident to a
+queue, cluster workload, cache, collection, table, or query. Their upstream CLIs
+can mutate production, so the documented command shape is part of the safety
+contract.
+
+## Kafka: kcat and rpk
+
+Inspect cluster metadata, tail a topic without joining a consumer group, and
+check consumer lag:
+
+```bash
+kcat -L -b "$KAFKA_BOOTSTRAP_SERVERS" -X security.protocol=$KAFKA_SECURITY_PROTOCOL -X sasl.mechanism=$KAFKA_SASL_MECHANISM -X sasl.username=$KAFKA_SASL_USERNAME -X sasl.password=$KAFKA_SASL_PASSWORD -t <topic> -J | jq
+kcat -C -b "$KAFKA_BOOTSTRAP_SERVERS" -X security.protocol=$KAFKA_SECURITY_PROTOCOL -X sasl.mechanism=$KAFKA_SASL_MECHANISM -X sasl.username=$KAFKA_SASL_USERNAME -X sasl.password=$KAFKA_SASL_PASSWORD -t <topic> -o -10 -e -q
+rpk group describe <consumer-group> --brokers "$KAFKA_BOOTSTRAP_SERVERS"
+rpk group list --brokers "$KAFKA_BOOTSTRAP_SERVERS"
+rpk topic describe <topic> --brokers "$KAFKA_BOOTSTRAP_SERVERS"
+```
+
+<Callout type="warn">
+  Never use `kcat -G` or `rpk topic consume -g`. Joining a production consumer
+  group can rebalance real consumers and commit offsets. Never produce, create,
+  delete, alter, seek, or delete a group. The Kafka principal itself should have
+  only Describe and Read permissions.
+</Callout>
+
+## Kubernetes: kubectl
+
+```bash
+kubectl get pods -n <namespace> -o wide
+kubectl describe pod <pod> -n <namespace>
+kubectl get events -n <namespace> --sort-by=.lastTimestamp | tail -30
+kubectl rollout history deploy/<deployment> -n <namespace>
+kubectl get deploy <deployment> -n <namespace> -o json | jq '.status'
+kubectl top pods -n <namespace>
+```
+
+These reads expose pod restarts, OOM kills, rollout history, replica state,
+cluster events, and resource pressure. `kubectl top` requires metrics-server.
+
+<Callout type="warn">
+  Never use `apply`, `delete`, `scale`, `edit`, `exec`, or `port-forward` in this
+  production-only workspace.
+</Callout>
+
+## Redis: redis-cli
+
+```bash
+redis-cli -u "$REDIS_URL" INFO memory
+redis-cli -u "$REDIS_URL" INFO stats
+redis-cli -u "$REDIS_URL" SLOWLOG GET 20
+redis-cli -u "$REDIS_URL" LATENCY LATEST
+redis-cli -u "$REDIS_URL" DBSIZE
+```
+
+Use `SCAN` for bounded key inspection; never use `KEYS *` on production. Never
+run `FLUSHALL`, `FLUSHDB`, `SET`, `DEL`, `EXPIRE`, or `CONFIG SET`.
+
+## Databases
+
+Database reads are a last-mile diagnostic step. Before every query, confirm the
+credential is a true read-only role, keep the approval prompt, `EXPLAIN` a
+non-trivial read, and apply `LIMIT` to every `SELECT`.
+
+### MongoDB
+
+```bash
+mongosh "$MONGODB_URI" --eval 'db.runCommand({ping:1})'
+mongosh "$MONGODB_URI" --eval 'db.currentOp({active:true, secs_running:{$gt:1}})'
+mongosh "$MONGODB_URI" --eval 'db.serverStatus().connections'
+mongosh "$MONGODB_URI" --eval 'db.<collection>.find({<filter>}).limit(10).toArray()'
+```
+
+MongoDB secondary read preference controls routing, not authorization. The
+read-only database role is the write barrier.
+
+### PostgreSQL
+
+```bash
+psql -c "SHOW default_transaction_read_only;"
+psql -c "SELECT pid, state, wait_event_type, wait_event, now()-query_start AS dur, query FROM pg_stat_activity WHERE state != 'idle' ORDER BY dur DESC LIMIT 20;"
+psql -c "SELECT relation::regclass, mode, granted, pid FROM pg_locks WHERE NOT granted LIMIT 100;"
+```
+
+`SHOW default_transaction_read_only` must report `on`. `EXPLAIN ANALYZE`
+actually executes the query, so confirm read-only intent before using it.
+
+### MySQL
+
+Always include the workspace option file:
+
+```bash
+mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SELECT @@transaction_read_only;"
+mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SELECT id, user, host, db, command, time, state, LEFT(info, 200) AS query FROM information_schema.processlist WHERE command != 'Sleep' ORDER BY time DESC LIMIT 20;"
+mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SHOW ENGINE INNODB STATUS\G"
+```
+
+The transaction check must report `1`. The MySQL client has no read-only
+environment variable; the option file applies the session init command and
+connection settings.
+
+<Callout type="info">
+  The agent approval prompt is intentionally part of database safety. Read each
+  proposed query before allowing it, even when the session reports read-only.
+</Callout>

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// rca-assist incidents viewer — zero-dependency local server.
+// reckon incidents viewer — zero-dependency local server.
 //
 //   node ui/serve.mjs            # http://localhost:7777
 //   PORT=8080 node ui/serve.mjs
@@ -171,6 +171,6 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`rca-assist incidents viewer → http://localhost:${PORT}`);
+  console.log(`reckon incidents viewer → http://localhost:${PORT}`);
   console.log(`serving: ${INCIDENTS} (+ legacy root RCA-*.md)`);
 });

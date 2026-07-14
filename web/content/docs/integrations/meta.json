@@ -1,0 +1,19 @@
+{
+  "title": "Integrations",
+  "pages": [
+    "index",
+    "grafana",
+    "cubeapm",
+    "jenkins",
+    "aws",
+    "github",
+    "kafka",
+    "kubernetes",
+    "redis",
+    "mongodb",
+    "postgresql",
+    "mysql",
+    "elasticsearch",
+    "clickhouse"
+  ]
+}
