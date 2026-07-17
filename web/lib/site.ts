@@ -43,6 +43,10 @@ export interface SiteConfig {
   featuresSubtitle?: string;
   /** Optional: CTA band body (default mentions installing the binary) */
   ctaBody?: string;
+  /** Optional: per-site accent expressed as an OKLCH color */
+  accent?: string;
+  /** Optional: human-readable accent name */
+  accentName?: string;
 }
 
 export const site: SiteConfig = {
@@ -53,6 +57,8 @@ export const site: SiteConfig = {
   description:
     'An agent workspace wiring read-only observability, CI/CD, and infrastructure CLIs into one isolated credential environment so a coding agent can investigate incidents, run RCAs, and understand production behavior.',
   badge: 'Production RCA workspace',
+  accent: 'oklch(0.88 0.18 112)',
+  accentName: 'electric',
   installCommand:
     'git clone https://github.com/piyush-gambhir/reckon.git && cd reckon && bash scripts/setup.sh',
   features: [
@@ -114,3 +120,10 @@ kubectl get events -n checkout --sort-by=.lastTimestamp | tail -30
     'Elasticsearch',
   ],
 };
+
+export const repositoryUrl = `https://github.com/${site.repo}`;
+export const licenseUrl = `${repositoryUrl}/blob/main/LICENSE`;
+export const projectDescription =
+  'reckon is an independent, personal open-source agent workspace for read-only production incident investigation and root-cause analysis.';
+export const siteMetadataDescription =
+  'Independent personal open-source RCA workspace for coding agents with structured output and read-only guidance across observability, CI/CD, and infrastructure.';

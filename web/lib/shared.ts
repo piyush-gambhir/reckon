@@ -1,4 +1,5 @@
 export const appName = 'reckon';
+export const siteUrl = 'https://projects.piyushgambhir.com/reckon';
 export const docsRoute = '/docs';
 export const docsImageRoute = '/og/docs';
 export const docsContentRoute = '/llms.mdx/docs';
