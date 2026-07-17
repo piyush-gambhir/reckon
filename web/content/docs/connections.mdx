@@ -58,7 +58,7 @@ The workspace layers client defaults and agent rules on top:
   `$XDG_CONFIG_HOME/mysql/my.cnf`; always pass that file to `mysql`.
 - ClickHouse requires a server-side `readonly=1` user profile and `--readonly=1`
   on every client invocation; it activates when `CLICKHOUSE_HOST` is set.
-- MongoDB uses secondary read preference, which is routing—not authorization.
+- MongoDB uses secondary read preference, which controls routing but does not provide authorization.
 - `kcat`, `rpk`, `kubectl`, and `redis-cli` are read-only by documented usage,
   so only the approved read-shaped commands are allowed.
 - Every `psql`, `mysql`, `mongosh`, and `clickhouse` query should still prompt for approval.
