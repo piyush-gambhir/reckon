@@ -1,15 +1,22 @@
 'use client';
 
-import { useRef } from 'react';
-import { gsap } from '@/lib/motion/gsap';
-import { useGsap } from '@/lib/motion/useGsap';
+import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 
-function Line({ line }: { line: string }) {
-  if (line.trim() === '') return <span>{'\n'}</span>;
+type Phase = 'static' | 'playing' | 'done';
 
-  // Comment line
-  if (line.trimStart().startsWith('#')) {
+function isComment(line: string) {
+  return line.trimStart().startsWith('#');
+}
+
+function isBlank(line: string) {
+  return line.trim() === '';
+}
+
+function Line({ line }: { line: string }) {
+  if (isBlank(line)) return <span>{'\n'}</span>;
+
+  if (isComment(line)) {
     return <span className="hero-terminal__comment">{line}</span>;
   }
 
@@ -21,7 +28,6 @@ function Line({ line }: { line: string }) {
       {tokens.map((tok, i) => {
         if (/^\s+$/.test(tok)) return <span key={i}>{tok}</span>;
 
-        // first non-space token = the binary
         if (!seenBinary) {
           seenBinary = true;
           return (
@@ -48,16 +54,25 @@ function Line({ line }: { line: string }) {
             </span>
           );
         }
-        return (
-          <span key={i}>
-            {tok}
-          </span>
-        );
+        return <span key={i}>{tok}</span>;
       })}
     </span>
   );
 }
 
+function Prompt() {
+  return (
+    <span className="hero-terminal__prompt" aria-hidden="true">
+      $
+    </span>
+  );
+}
+
+/**
+ * A live investigation session: the transcript types itself like a real RCA.
+ * Server-rendered (and reduced-motion) output is the complete static
+ * transcript; the playback only ever runs client-side on top of it.
+ */
 export function HeroTerminal({
   title,
   command,
@@ -69,64 +84,70 @@ export function HeroTerminal({
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const lines = command.split('\n');
+  const [phase, setPhase] = useState<Phase>('static');
+  const [lineIdx, setLineIdx] = useState(0);
+  const [charIdx, setCharIdx] = useState(0);
 
-  useGsap(
-    () => {
-      const root = rootRef.current;
-      if (!root) return;
+  useEffect(() => {
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const root = rootRef.current;
+    if (!root || reduced.matches) return;
 
-      const terminalLines = gsap.utils.toArray<HTMLElement>(
-        '[data-terminal-line]',
-        root,
+    let started = false;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting || started) return;
+        started = true;
+        observer.disconnect();
+        // Small hold so the card has settled after the boot/hero reveal.
+        window.setTimeout(() => setPhase('playing'), 600);
+      },
+      { threshold: 0.35 },
+    );
+    observer.observe(root);
+
+    const stopPlayback = (event: MediaQueryListEvent) => {
+      if (event.matches) setPhase('static');
+    };
+    reduced.addEventListener('change', stopPlayback);
+    return () => {
+      observer.disconnect();
+      reduced.removeEventListener('change', stopPlayback);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (phase !== 'playing') return;
+    if (lineIdx >= lines.length) {
+      setPhase('done');
+      return;
+    }
+
+    const line = lines[lineIdx];
+    const advance = () => {
+      setLineIdx((i) => i + 1);
+      setCharIdx(0);
+    };
+
+    let timer: number;
+    if (isBlank(line)) {
+      timer = window.setTimeout(advance, 140);
+    } else if (isComment(line)) {
+      // Narration appears as a whole line, like a step label.
+      timer = window.setTimeout(advance, 500);
+    } else if (charIdx < line.length) {
+      timer = window.setTimeout(
+        () => setCharIdx((c) => c + 1),
+        16 + Math.random() * 22,
       );
-      const spinner = root.querySelector<HTMLElement>(
-        '[data-terminal-spinner]',
-      );
+    } else {
+      // Brief "execute" beat before the next step.
+      timer = window.setTimeout(advance, 320);
+    }
+    return () => window.clearTimeout(timer);
+  }, [phase, lineIdx, charIdx, lines]);
 
-      gsap.set(terminalLines, { yPercent: 100, autoAlpha: 0 });
-      gsap.set(spinner, { display: 'block' });
-
-      const timeline = gsap.timeline({
-        scrollTrigger: {
-          trigger: root,
-          start: 'top 85%',
-          once: true,
-        },
-        onComplete: () => gsap.set(spinner, { display: 'none' }),
-      });
-
-      timeline.to(
-        terminalLines,
-        {
-          yPercent: 0,
-          autoAlpha: 1,
-          duration: 1.2,
-          stagger: 0.05,
-          ease: 'expo.out',
-        },
-        0.9,
-      );
-
-      const motionPreference = window.matchMedia(
-        '(prefers-reduced-motion: reduce)',
-      );
-      const finishScan = (event: MediaQueryListEvent) => {
-        if (!event.matches) return;
-        timeline.progress(1).kill();
-        gsap.set(terminalLines, {
-          clearProps: 'transform,opacity,visibility',
-        });
-        gsap.set(spinner, { display: 'none' });
-      };
-
-      motionPreference.addEventListener('change', finishScan);
-      return () => {
-        motionPreference.removeEventListener('change', finishScan);
-      };
-    },
-    [],
-    rootRef,
-  );
+  const playing = phase === 'playing';
 
   return (
     <div ref={rootRef} className={cn('hero-terminal', className)}>
@@ -138,31 +159,66 @@ export function HeroTerminal({
         </span>
         <span className="osmo-eyebrow">{title}</span>
         <span
-          className="hero-terminal__spinner"
-          data-terminal-spinner
+          className={cn('hero-terminal__pulse', playing && 'is--live')}
           aria-hidden="true"
         />
       </div>
-      <pre className="hero-terminal__body">
+      {/* Full transcript for assistive tech regardless of playback state. */}
+      <pre className="sr-only">{command}</pre>
+      <pre className="hero-terminal__body" aria-hidden="true">
         <code>
-          {lines.map((line, i) => (
-            <span
-              className="home-motion__text-mask hero-terminal__line-mask"
-              key={i}
-            >
+          {lines.map((line, i) => {
+            const commandLine = !isComment(line) && !isBlank(line);
+            let content;
+            let hidden = false;
+
+            if (phase === 'static' || i < lineIdx || phase === 'done') {
+              content = (
+                <>
+                  {commandLine ? <Prompt /> : null}
+                  <Line line={line} />
+                </>
+              );
+            } else if (i === lineIdx) {
+              if (commandLine) {
+                content = (
+                  <>
+                    <Prompt />
+                    <span>{line.slice(0, charIdx)}</span>
+                    <span className="hero-terminal__caret" />
+                  </>
+                );
+              } else {
+                content = <Line line={line} />;
+                hidden = isBlank(line);
+              }
+            } else {
+              // Reserve the final layout so nothing shifts while typing.
+              content = (
+                <>
+                  {commandLine ? <Prompt /> : null}
+                  <Line line={line} />
+                </>
+              );
+              hidden = true;
+            }
+
+            return (
               <span
-                className="home-motion__text-line hero-terminal__line"
-                data-terminal-line
+                className="hero-terminal__line"
+                style={hidden ? { visibility: 'hidden' } : undefined}
+                key={i}
               >
-                {!line.trimStart().startsWith('#') && line.trim() !== '' ? (
-                  <span className="hero-terminal__prompt" aria-hidden="true">
-                    $
-                  </span>
-                ) : null}
-                <Line line={line} />
+                {content}
               </span>
+            );
+          })}
+          {phase === 'done' ? (
+            <span className="hero-terminal__line hero-terminal__rest">
+              <Prompt />
+              <span className="hero-terminal__caret is--blinking" />
             </span>
-          ))}
+          ) : null}
         </code>
       </pre>
     </div>
