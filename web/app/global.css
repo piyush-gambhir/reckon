@@ -2752,7 +2752,10 @@ button:focus-visible {
   z-index: 0;
   top: 1.5em;
   bottom: 1.5em;
-  left: calc(1.5em - 0.09375em);
+  /* Centered under the index pills: the pill is 3em of the eyebrow's 0.6875em
+     type (2.0625em here), so its midline is 1.03125em; subtract half the line
+     width. The old 1.5em assumed the pill was sized in this em context. */
+  left: calc(1.03125em - 0.09375em);
   width: 0.1875em;
   border-radius: 3em;
   background: var(--accent-ink);
