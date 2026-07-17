@@ -242,40 +242,7 @@ export function FloatingHeader() {
         </div>
         </div>
       </nav>
-      <UnderNavMarquee hidden={open || hidden} />
     </>
-  );
-}
-
-function UnderNavMarquee({ hidden }: { hidden: boolean }) {
-  const messages = [
-    'Read-only ops toolbelt',
-    'Correlate across systems',
-    'Production-only',
-  ] as const;
-
-  const items = messages.map((message) => (
-    <span className="nav-marquee__item" key={message}>
-      <span className="nav-marquee__mark" aria-hidden="true">
-        &gt;_
-      </span>
-      {message}
-    </span>
-  ));
-
-  return (
-    <div className="under-nav-bar" data-menu-hidden={hidden ? 'true' : 'false'}>
-      <div className="under-nav-bar__inner">
-        <div className="nav-marquee">
-          <span className="marquee-css">
-            <span className="marquee-css__list">{items}</span>
-            <span className="marquee-css__list" aria-hidden="true">
-              {items}
-            </span>
-          </span>
-        </div>
-      </div>
-    </div>
   );
 }
 
