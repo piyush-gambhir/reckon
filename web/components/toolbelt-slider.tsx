@@ -13,61 +13,73 @@ import { gsap } from '@/lib/motion/gsap';
 const tools = [
   {
     title: 'Grafana',
+    sample: 'grafana alert rule list -o json',
     command: 'grafana',
     covers: 'Dashboards, datasources, alerts, and annotations.',
   },
   {
     title: 'Jenkins',
+    sample: 'jenkins job list --recursive --status FAILURE',
     command: 'jenkins',
     covers: 'Jobs, builds, pipelines, logs, and nodes.',
   },
   {
     title: 'CubeAPM',
+    sample: 'cubeapm traces search --service checkout',
     command: 'cubeapm',
     covers: 'Distributed traces, PromQL metrics, and LogsQL logs.',
   },
   {
     title: 'AWS',
+    sample: 'aws logs tail /ecs/checkout --since 1h',
     command: 'aws',
     covers: 'CloudWatch metrics and logs, ALB/ELB, ECS, SQS, RDS, and S3.',
   },
   {
     title: 'gh',
+    sample: 'gh run list --branch main --limit 20',
     command: 'gh',
     covers: 'Pull requests, GitHub Actions runs, releases, and issues.',
   },
   {
     title: 'Kafka',
+    sample: 'rpk group describe checkout-consumers',
     command: 'kcat + rpk',
     covers: 'Metadata, group-less topic reads, consumer-group lag, and cluster information.',
   },
   {
     title: 'Kubernetes',
+    sample: 'kubectl get events --sort-by=.lastTimestamp',
     command: 'kubectl',
     covers: 'Pod and deployment state, events, and rollout history.',
   },
   {
     title: 'Redis',
+    sample: 'redis-cli SLOWLOG GET 10',
     command: 'redis-cli',
     covers: 'INFO, SLOWLOG, LATENCY, DBSIZE, and SCAN diagnostics.',
   },
   {
     title: 'MongoDB',
+    sample: 'mongosh --eval "db.serverStatus().connections"',
     command: 'mongosh',
     covers: 'MongoDB diagnostics through a read-only database role.',
   },
   {
     title: 'PostgreSQL',
+    sample: 'psql -c "SELECT * FROM pg_stat_activity;"',
     command: 'psql',
     covers: 'PostgreSQL diagnostics through a read-only database role.',
   },
   {
     title: 'MySQL',
+    sample: 'mysql -e "SHOW FULL PROCESSLIST;"',
     command: 'mysql',
     covers: 'MySQL diagnostics through a read-only role and option file.',
   },
   {
     title: 'Elasticsearch',
+    sample: 'es cluster health -o json',
     command: 'es',
     covers: 'Optional ELK cluster health, index state, Query DSL, and SQL search.',
   },
@@ -285,9 +297,15 @@ export function ToolbeltSlider() {
                     <h3>{tool.title}</h3>
                     <p>{tool.covers}</p>
                   </div>
-                  <span className="toolbelt-card__count">
-                    {String(index + 1).padStart(2, '0')} / {tools.length}
-                  </span>
+                  <div className="toolbelt-card__footer">
+                    <code className="toolbelt-card__sample">
+                      <span aria-hidden>$ </span>
+                      {tool.sample}
+                    </code>
+                    <span className="toolbelt-card__count">
+                      {String(index + 1).padStart(2, '0')} / {tools.length}
+                    </span>
+                  </div>
                 </div>
               </article>
             ))}

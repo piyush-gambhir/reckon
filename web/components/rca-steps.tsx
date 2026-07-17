@@ -8,26 +8,32 @@ import { useGsap } from '@/lib/motion/useGsap';
 const investigationSteps = [
   {
     title: 'Assess',
+    snippet: 'grafana alert rule list -o json',
     body: 'Check Grafana alerts, Jenkins build status, and the CubeAPM service inventory.',
   },
   {
     title: 'Investigate errors',
+    snippet: 'cubeapm traces search --status error --last 1h',
     body: 'Search error traces and related logs, then open the trace waterfall for the affected service.',
   },
   {
     title: 'Check metrics',
+    snippet: "cubeapm metrics query 'error_rate' --last 1h",
     body: 'Compare error rate, latency, and service health across the incident window.',
   },
   {
     title: 'Check deployments',
+    snippet: 'jenkins build list checkout/deploy --limit 5',
     body: 'Review deploy annotations, recent Jenkins builds, build logs, merged pull requests, and releases.',
   },
   {
     title: 'Map dependencies',
+    snippet: 'cubeapm traces get <trace-id> -o json',
     body: 'Trace error propagation through the dependency graph and check the supporting infrastructure.',
   },
   {
     title: 'Correlate',
+    snippet: 'kubectl get events -n checkout --sort-by=.lastTimestamp',
     body: 'Match deployment timestamps with error spikes, Grafana annotations, and cluster events.',
   },
 ] as const;
@@ -105,6 +111,10 @@ export function RcaSteps() {
                 <div className="reckon-step__copy">
                   <h3>{step.title}</h3>
                   <p>{step.body}</p>
+                  <code className="reckon-step__snippet">
+                    <span aria-hidden>$ </span>
+                    {step.snippet}
+                  </code>
                 </div>
               </article>
             ))}
