@@ -142,14 +142,22 @@ export function HomeHero() {
         <h1 className="osmo-home-hero__title" aria-label={site.tagline}>
           <span className="home-motion__text-mask" aria-hidden="true">
             <span className="home-motion__text-line">
-              {taglineWords.slice(0, -1).map((word, index) => (
+              {taglineWords.slice(0, -2).map((word, index) => (
                 <Fragment key={`${word}-${index}`}>
                   <span data-hero-word>{word}</span>{' '}
                 </Fragment>
               ))}
-              <span className="osmo-home-hero__tail">
-                <span data-hero-word>{taglineWords[taglineWords.length - 1]}</span>
-                <span className="osmo-home-hero__cursor" />
+              {/* The answer the terminal prints, in the terminal's color. */}
+              <span className="osmo-home-hero__accent">
+                <span data-hero-word>
+                  {taglineWords[taglineWords.length - 2]}
+                </span>{' '}
+                <span className="osmo-home-hero__tail">
+                  <span data-hero-word>
+                    {taglineWords[taglineWords.length - 1]}
+                  </span>
+                  <span className="osmo-home-hero__cursor" />
+                </span>
               </span>
             </span>
           </span>

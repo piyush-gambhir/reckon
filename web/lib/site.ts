@@ -57,8 +57,8 @@ export const site: SiteConfig = {
   description:
     'An agent workspace wiring read-only observability, CI/CD, and infrastructure CLIs into one isolated credential environment so a coding agent can investigate incidents, run RCAs, and understand production behavior.',
   badge: 'Production RCA workspace',
-  accent: 'oklch(0.88 0.18 112)',
-  accentName: 'electric',
+  accent: 'oklch(0.85 0.21 150)',
+  accentName: 'phosphor',
   installCommand:
     'git clone https://github.com/piyush-gambhir/reckon.git && cd reckon && bash scripts/setup.sh',
   features: [

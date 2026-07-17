@@ -4149,3 +4149,49 @@ body.booting {
     0 1px 2px rgb(28 30 26 / 5%),
     0 10px 28px rgb(28 30 26 / 7%);
 }
+
+/* Live investigation terminal: typing caret, resting prompt, session pulse. */
+.hero-terminal__caret {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.05em;
+  margin-left: 0.1em;
+  background: var(--accent-ink);
+  vertical-align: text-bottom;
+}
+
+.hero-terminal__caret.is--blinking {
+  animation: hero-block-cursor-blink 1.1s steps(1, end) infinite;
+}
+
+.hero-terminal__pulse {
+  width: 0.5em;
+  height: 0.5em;
+  margin-left: auto;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+  transition: background-color var(--duration-default-half) var(--cubic-default);
+}
+
+.hero-terminal__pulse.is--live {
+  background: var(--accent-ink);
+  animation: hero-terminal-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes hero-terminal-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-ink) 45%, transparent); }
+  55% { box-shadow: 0 0 0 0.45em transparent; }
+}
+
+/* "went wrong." carries the phosphor accent: the terminal's answer in the
+   terminal's color. */
+.osmo-home-hero__accent {
+  color: var(--accent-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-terminal__caret.is--blinking,
+  .hero-terminal__pulse.is--live {
+    animation: none;
+  }
+}
