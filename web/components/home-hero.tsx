@@ -92,6 +92,24 @@ export function HomeHero() {
         }),
       );
 
+      // Subtle parallax: the terminal drifts up slightly as the hero scrolls
+      // out, giving the stage depth without competing with the typing.
+      const terminalStage = root.querySelector<HTMLElement>(
+        '[data-hero-terminal-stage]',
+      );
+      const parallaxTween = terminalStage
+        ? gsap.to(terminalStage, {
+            yPercent: -6,
+            ease: 'none',
+            scrollTrigger: {
+              trigger: root,
+              start: 'top top',
+              end: 'bottom top',
+              scrub: true,
+            },
+          })
+        : null;
+
       const visibilityTrigger = ScrollTrigger.create({
         trigger: root,
         start: 'top bottom',
@@ -107,6 +125,9 @@ export function HomeHero() {
         bootObserver?.disconnect();
         revealTimeline?.progress(1).kill();
         blobTweens.forEach((tween) => tween.kill());
+        parallaxTween?.scrollTrigger?.kill();
+        parallaxTween?.kill();
+        if (terminalStage) gsap.set(terminalStage, { clearProps: 'transform' });
         gsap.set([...words, description, ...blobs], {
           clearProps: 'transform,opacity,visibility',
         });
@@ -119,6 +140,8 @@ export function HomeHero() {
         bootObserver?.disconnect();
         visibilityTrigger.kill();
         revealTimeline?.kill();
+        parallaxTween?.scrollTrigger?.kill();
+        parallaxTween?.kill();
         blobTweens.forEach((tween) => tween.kill());
       };
     },
@@ -139,6 +162,8 @@ export function HomeHero() {
         />
       </div>
       <div className="osmo-container osmo-home-hero__inner">
+        <div className="osmo-home-hero__grid">
+          <div className="osmo-home-hero__content">
         <h1 className="osmo-home-hero__title" aria-label={site.tagline}>
           <span className="home-motion__text-mask" aria-hidden="true">
             <span className="home-motion__text-line">
@@ -185,15 +210,20 @@ export function HomeHero() {
         <div className="osmo-home-hero__install">
           <InstallCommand command={site.installCommand} />
         </div>
-
-        <Reveal className="osmo-home-hero__terminal-stage">
-          <p className="reckon-scribble osmo-home-hero__scribble">
-            read-only, always
-          </p>
-          <div className="osmo-home-hero__terminal">
-            <HeroTerminal title={site.exampleTitle} command={site.example} />
           </div>
-        </Reveal>
+
+          <Reveal
+            className="osmo-home-hero__terminal-stage"
+            data-hero-terminal-stage
+          >
+            <p className="reckon-scribble osmo-home-hero__scribble">
+              read-only, always
+            </p>
+            <div className="osmo-home-hero__terminal">
+              <HeroTerminal title={site.exampleTitle} command={site.example} />
+            </div>
+          </Reveal>
+        </div>
       </div>
     </section>
   );
