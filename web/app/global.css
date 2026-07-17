@@ -4198,3 +4198,114 @@ body.booting {
     animation: none;
   }
 }
+
+/* Split hero: message left, live terminal right and above the fold. Mobile
+   keeps the centered stack. */
+.osmo-home-hero__grid {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap-l);
+}
+
+.osmo-home-hero__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap-l);
+}
+
+@media (min-width: 992px) {
+  .osmo-home-hero__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.04fr) minmax(0, 0.96fr);
+    align-items: center;
+    gap: clamp(var(--gap-xxl), 5vw, 5.5em);
+    text-align: left;
+  }
+
+  .osmo-home-hero__content {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .marketing-shell .osmo-home-hero__title {
+    max-width: none;
+    font-size: 4.75em;
+    letter-spacing: -0.05em;
+  }
+
+  .osmo-home-hero__description {
+    max-width: 24em;
+  }
+
+  .osmo-home-hero__actions {
+    justify-content: flex-start;
+  }
+
+  .osmo-home-hero__install {
+    max-width: 30em;
+  }
+
+  .marketing-shell .osmo-home-hero__terminal-stage {
+    max-width: none;
+    margin-top: 0;
+  }
+
+  .osmo-home-hero__terminal {
+    max-width: none;
+    margin-top: 0;
+  }
+
+  /* Aurora re-anchored to the terminal side. */
+  .osmo-home-hero__aurora-blob.is--electric {
+    top: -6%;
+    left: auto;
+    right: -8%;
+    margin-left: 0;
+  }
+
+  .osmo-home-hero__aurora-blob.is--purple {
+    top: 40%;
+    right: 34%;
+  }
+}
+
+/* Phosphor halo: the terminal is the floating centerpiece. */
+.marketing-shell .osmo-home-hero__terminal .hero-terminal {
+  box-shadow:
+    0 1.5em 4em rgb(0 0 0 / 30%),
+    0 2.5em 7em color-mix(in srgb, var(--site-accent) 10%, transparent);
+}
+
+/* Split-hero constraints. Mobile: the headline sizes so its longest word
+   always fits the viewport, and no hero child can exceed the container. */
+@media (max-width: 991px) {
+  .marketing-shell .osmo-home-hero__title,
+  .osmo-home-hero__title {
+    max-width: 100%;
+    font-size: clamp(2.25em, 9.5vw, 3.25em);
+    letter-spacing: -0.04em;
+  }
+
+  .osmo-home-hero__grid,
+  .osmo-home-hero__content,
+  .osmo-home-hero__content > *,
+  .marketing-shell .osmo-home-hero__terminal-stage {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .hero-terminal__body {
+    overflow-x: auto;
+  }
+}
+
+/* Desktop split column: one type step down so the longest command fits the
+   card without clipping. */
+@media (min-width: 992px) {
+  .osmo-home-hero__terminal .hero-terminal__body {
+    font-size: 0.8125em;
+  }
+}
