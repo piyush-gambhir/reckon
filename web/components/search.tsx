@@ -34,14 +34,17 @@ export default function DefaultSearchDialog(props: SharedProps) {
 
   return (
     <SearchDialog search={search} onSearchChange={setSearch} isLoading={query.isLoading} {...props}>
-      <SearchDialogOverlay />
-      <SearchDialogContent>
-        <SearchDialogHeader>
-          <SearchDialogIcon />
-          <SearchDialogInput />
-          <SearchDialogClose />
+      <SearchDialogOverlay className="reckon-search-overlay" />
+      <SearchDialogContent className="reckon-search-dialog" data-lenis-prevent="">
+        <SearchDialogHeader className="reckon-search-header">
+          <SearchDialogIcon className="reckon-search-icon" />
+          <SearchDialogInput className="reckon-search-input" />
+          <SearchDialogClose className="reckon-search-close" />
         </SearchDialogHeader>
-        <SearchDialogList items={query.data !== 'empty' ? query.data : null} />
+        <SearchDialogList
+          className="reckon-search-results"
+          items={query.data !== 'empty' ? query.data : null}
+        />
       </SearchDialogContent>
     </SearchDialog>
   );
