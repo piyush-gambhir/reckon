@@ -110,7 +110,7 @@
   --color-dark: var(--color-neutral-800);
   --color-white: var(--color-neutral-100);
   --color-black: var(--color-neutral-900);
-  --color-active: var(--site-accent);
+  --color-active: var(--accent-ink);
   --color-danger: var(--color-coral);
 
   --gap-xxs: 0.5em;
@@ -146,6 +146,9 @@
   --popover: var(--color-neutral-100);
   --popover-foreground: var(--color-neutral-900);
   --primary: var(--site-accent);
+  /* Accent used as ink (text, lines, dots): the chartreuse is near-white,
+     so on light surfaces it darkens to a readable olive ink. */
+  --accent-ink: color-mix(in oklab, var(--site-accent) 48%, black);
   --primary-foreground: var(--color-neutral-900);
   --secondary: var(--color-neutral-300);
   --secondary-foreground: var(--color-neutral-900);
@@ -211,6 +214,8 @@
   --popover: var(--color-neutral-800);
   --popover-foreground: var(--color-neutral-200);
   --primary: var(--site-accent);
+  /* Accent as ink on dark surfaces is just the accent. */
+  --accent-ink: var(--site-accent);
   --primary-foreground: var(--color-neutral-900);
   --secondary: var(--color-neutral-700);
   --secondary-foreground: var(--color-neutral-200);
@@ -298,7 +303,7 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--site-accent);
+  outline: 2px solid var(--accent-ink);
   outline-offset: 3px;
 }
 
@@ -429,7 +434,7 @@ body {
   bottom: 0.2rem;
   left: 0;
   height: 1px;
-  background: var(--site-accent);
+  background: var(--accent-ink);
   content: '';
   transform: scaleX(0);
   transform-origin: left;
@@ -571,7 +576,7 @@ body {
 .install-command__code { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .install-command__icon { display: inline-flex; flex: none; color: var(--muted-foreground); }
 .install-command__icon svg { width: 1em; height: 1em; }
-.install-command__icon .is-copied { color: var(--site-accent); }
+.install-command__icon .is-copied { color: var(--accent-ink); }
 
 .js .reveal {
   opacity: 0;
@@ -594,7 +599,7 @@ body {
 }
 
 .osmo-eyebrow {
-  color: var(--site-accent);
+  color: var(--accent-ink);
   font-family: var(--font-haffer-mono), monospace;
   font-size: 0.6875em;
   line-height: 1;
@@ -697,11 +702,11 @@ body {
 }
 
 .hero-terminal__line { display: block; }
-.hero-terminal__prompt { margin-right: 0.5em; color: var(--site-accent); }
+.hero-terminal__prompt { margin-right: 0.5em; color: var(--accent-ink); }
 .hero-terminal__comment { color: var(--color-neutral-500); }
 .hero-terminal__binary { color: var(--foreground); font-weight: 500; }
 .hero-terminal__flag { color: var(--color-coral); }
-.hero-terminal__string { color: var(--site-accent); }
+.hero-terminal__string { color: var(--accent-ink); }
 
 .osmo-section {
   padding-block: var(--padding-m);
@@ -740,7 +745,7 @@ body {
 }
 
 .dark .osmo-card { background: var(--color-neutral-800); }
-.osmo-card__number { color: var(--site-accent); }
+.osmo-card__number { color: var(--accent-ink); }
 
 .osmo-card__title {
   margin-top: auto;
@@ -775,7 +780,7 @@ body {
 }
 
 .dark .osmo-card__snippet { background: var(--color-neutral-700); }
-.osmo-card__snippet > span { color: var(--site-accent); }
+.osmo-card__snippet > span { color: var(--accent-ink); }
 
 .compatible-marquee {
   overflow: hidden;
@@ -896,7 +901,7 @@ body {
 
 .nav-desktop-menu__col ul { gap: 0.75em; margin-top: 1.5em; font-size: 1.25em; }
 .nav-desktop-menu__col a { transition: color var(--duration-default-half) var(--cubic-default); }
-.nav-desktop-menu__col a:hover { color: var(--site-accent); }
+.nav-desktop-menu__col a:hover { color: var(--accent-ink); }
 
 /* OSMO footer chapter. */
 .site-footer {
@@ -927,7 +932,7 @@ body {
 
 .site-footer__eyebrow,
 .site-footer__group-toggle {
-  color: var(--site-accent);
+  color: var(--accent-ink);
   font-family: var(--font-haffer-mono), monospace;
   font-size: 0.6875em;
   line-height: 1;
@@ -980,7 +985,7 @@ body {
 
 .site-footer__group-panel ul { gap: 0.75em; color: var(--muted-foreground); font-size: 0.875em; }
 .site-footer__group-panel a { transition: color var(--duration-default-half) var(--cubic-default); }
-.site-footer__group-panel a:is(:hover, :focus-visible) { color: var(--site-accent); }
+.site-footer__group-panel a:is(:hover, :focus-visible) { color: var(--accent-ink); }
 
 .site-footer__disclaimer {
   max-width: 28em;
@@ -1032,7 +1037,7 @@ body {
     background-color var(--duration-default-half) var(--cubic-default);
 }
 
-.site-footer__legal a:is(:hover, :focus-visible) { color: var(--site-accent); background: transparent; }
+.site-footer__legal a:is(:hover, :focus-visible) { color: var(--accent-ink); background: transparent; }
 .site-footer__credit a { border-color: transparent; color: var(--color-neutral-900); background: var(--site-accent); }
 .site-footer__credit a:is(:hover, :focus-visible) { background: color-mix(in oklab, var(--site-accent) 82%, white); }
 
@@ -1189,7 +1194,7 @@ html[data-lenis] {
 .action-button:is(:hover, :focus-visible) .button-label.is--primary { transform: translateY(-120%); }
 .action-button:is(:hover, :focus-visible) .button-label.is--secondary { transform: translateY(0); }
 .action-button:is(:hover, :focus-visible) .button-bg { transform: scale(1.03); }
-.action-button:focus-visible { outline: 2px solid var(--site-accent); outline-offset: 2px; }
+.action-button:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .action-button:disabled { cursor: not-allowed; opacity: 0.45; }
 .action-button .button-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; }
 
@@ -1211,7 +1216,7 @@ html[data-lenis] {
 }
 
 .capabilities-band__eyebrow {
-  color: var(--site-accent);
+  color: var(--accent-ink);
   font-family: var(--font-mono), monospace;
   font-size: 0.6875rem;
   font-weight: 500;
@@ -1244,7 +1249,7 @@ html[data-lenis] {
 }
 
 .capabilities-grid__number {
-  color: color-mix(in oklab, var(--site-accent) 35%, transparent);
+  color: color-mix(in oklab, var(--accent-ink) 35%, transparent);
   font-family: var(--font-mono), monospace;
   font-size: clamp(3rem, 5vw, 3.5rem);
   font-weight: 500;
@@ -1280,7 +1285,7 @@ html[data-lenis] {
 }
 
 .capabilities-band__separator {
-  color: var(--site-accent);
+  color: var(--accent-ink);
 }
 
 @media (max-width: 767px) {
@@ -1457,7 +1462,7 @@ html[data-lenis] {
 }
 
 .nav-logo__wordmark > span,
-.nav-logo__icon { color: var(--site-accent); }
+.nav-logo__icon { color: var(--accent-ink); }
 .nav-logo__wordmark { opacity: 1; transform: translateY(0) rotate(0.001deg); }
 .nav-logo__icon { opacity: 0; transform: translateY(-0.75em) rotate(0.001deg); }
 .nav[data-nav-status='active'] .nav-logo__wordmark { opacity: 0; transform: translateY(0.75em) rotate(0.001deg); }
@@ -1484,7 +1489,7 @@ html[data-lenis] {
 .nav-icon-button:focus-visible,
 .nav-menu:focus-visible,
 .nav-logo:focus-visible,
-.nav-desktop-menu__col a:focus-visible { outline: 2px solid var(--site-accent); outline-offset: 2px; }
+.nav-desktop-menu__col a:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .nav-github .button-bg { background: oklch(0.32 0 0); }
 
 .nav-bar__bottom {
@@ -1545,7 +1550,7 @@ html[data-lenis] {
   font-size: 1.125em;
 }
 .nav-desktop-menu__col a { transition: color var(--duration-s) var(--cubic-default); }
-.nav-desktop-menu__col a:hover { color: var(--site-accent); }
+.nav-desktop-menu__col a:hover { color: var(--accent-ink); }
 
 
 /* Osmo-inspired closing chapter. */
@@ -1576,7 +1581,7 @@ html[data-lenis] {
 
 .site-footer__start { max-width: 35rem; }
 .site-footer__eyebrow {
-  color: var(--site-accent);
+  color: var(--accent-ink);
   font-family: var(--font-mono), monospace;
   font-size: 0.6875rem;
   font-weight: 500;
@@ -1661,7 +1666,7 @@ html[data-lenis] {
 .site-footer__group-panel a {
   transition: color var(--duration-s) var(--cubic-default);
 }
-.site-footer__group-panel a:is(:hover, :focus-visible) { color: var(--site-accent); }
+.site-footer__group-panel a:is(:hover, :focus-visible) { color: var(--accent-ink); }
 .site-footer__disclaimer {
   max-width: 65ch;
   margin-top: 3.5rem;
@@ -1725,7 +1730,7 @@ html[data-lenis] {
     background-color var(--duration-s) var(--cubic-default);
 }
 .site-footer__legal a:is(:hover, :focus-visible) {
-  color: var(--site-accent);
+  color: var(--accent-ink);
   background: var(--site-accent-muted);
 }
 .site-footer__credit a {
@@ -1919,7 +1924,7 @@ html[data-lenis] {
 .marketing-shell .nav-menu:focus-visible,
 .marketing-shell .nav-logo:focus-visible,
 .marketing-shell .nav-desktop-menu__col a:focus-visible {
-  outline: 2px solid var(--site-accent);
+  outline: 2px solid var(--accent-ink);
   outline-offset: 3px;
 }
 
@@ -2610,7 +2615,7 @@ button:focus-visible {
 
 .scribble,
 .reckon-scribble {
-  color: var(--site-accent);
+  color: var(--accent-ink);
   font-family: var(--font-brisa), cursive;
   font-size: 1.5em;
   line-height: 1;
@@ -2771,7 +2776,7 @@ button:focus-visible {
   left: calc(1.5em - 0.09375em);
   width: 0.1875em;
   border-radius: 3em;
-  background: var(--site-accent);
+  background: var(--accent-ink);
   transform: scaleY(1);
   transform-origin: top;
 }
@@ -2803,7 +2808,7 @@ button:focus-visible {
   height: 3em;
   place-items: center;
   border-radius: 8px;
-  color: var(--site-accent);
+  color: var(--accent-ink);
   background: var(--surface-top);
 }
 
@@ -3140,7 +3145,8 @@ button:focus-visible {
   border-radius: 8px;
   color: var(--foreground);
   background: var(--surface-raised);
-  opacity: 0.55;
+  /* Recessed but still readable: depth comes from scale/rotate, not illegibility. */
+  opacity: 0.72;
   transform: scale(0.88) rotate(4deg);
   transition:
     transform var(--duration-default) var(--cubic-default),
@@ -3196,13 +3202,13 @@ button:focus-visible {
 }
 
 .toolbelt-card__center {
-  padding-bottom: 9em;
+  padding-bottom: 3.5em;
 }
 
 .toolbelt-card__prompt {
   display: block;
   margin-bottom: var(--gap-s);
-  color: var(--site-accent);
+  color: var(--accent-ink);
   font-family: var(--font-haffer-mono), monospace;
   font-size: 1.1875em;
 }
@@ -3222,7 +3228,30 @@ button:focus-visible {
   line-height: 1.25;
 }
 
+.toolbelt-card__footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap-s);
+}
+
+.toolbelt-card__sample {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--muted-foreground);
+  font-family: var(--font-haffer-mono), monospace;
+  font-size: 0.6875em;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.toolbelt-card__sample > span {
+  color: var(--accent-ink);
+}
+
 .toolbelt-card__count {
+  flex: none;
   color: var(--muted-foreground);
   font-family: var(--font-haffer-mono), monospace;
   font-size: 0.6875em;
@@ -3290,7 +3319,7 @@ button:focus-visible {
   width: 0.75em;
   height: 0.75em;
   border-radius: 50%;
-  background: var(--site-accent);
+  background: var(--accent-ink);
 }
 
 .incident-panel__axis {
@@ -3353,7 +3382,7 @@ button:focus-visible {
 }
 
 .incident-signal__source span {
-  color: var(--site-accent);
+  color: var(--accent-ink);
   font-family: var(--font-haffer-mono), monospace;
   font-size: 0.6875em;
   letter-spacing: 0.08em;
@@ -3374,6 +3403,27 @@ button:focus-visible {
   background: var(--surface-raised);
 }
 
+/* Continuous vertical spine through the dot column so the panel reads as one
+   timeline rather than four disconnected rows. Segments overshoot the row gap
+   to bridge it; first/last rows are trimmed to the dot. */
+.incident-signal__time::after {
+  position: absolute;
+  top: -0.5em;
+  bottom: -0.5em;
+  left: 50%;
+  width: 1px;
+  background: color-mix(in srgb, var(--foreground) 14%, transparent);
+  content: '';
+}
+
+.incident-signal:first-child .incident-signal__time::after {
+  top: 50%;
+}
+
+.incident-signal:last-child .incident-signal__time::after {
+  bottom: 50%;
+}
+
 .incident-signal__time::before {
   width: 100%;
   height: 0.1875em;
@@ -3387,7 +3437,7 @@ button:focus-visible {
   width: 0.75em;
   height: 0.75em;
   border-radius: 50%;
-  background: var(--site-accent);
+  background: var(--accent-ink);
 }
 
 .incident-signal__evidence {
@@ -3576,6 +3626,42 @@ body.booting {
   transform: translateY(100%);
 }
 
+/* The first log line reveals via CSS alone, before hydration, so the boot
+   plate never sits blank while JS loads. GSAP sequences the rest. */
+.js[data-boot='pending'] .boot-sequence__line.is--first,
+.js[data-boot='running'] .boot-sequence__line.is--first {
+  animation: boot-line-in 0.5s var(--cubic-default) 0.2s both;
+}
+
+@keyframes boot-line-in {
+  from {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
+}
+
+/* Failsafe: if scripting dies mid-boot, the overlay clears itself and the
+   server-rendered page underneath becomes usable. GSAP normally hides the
+   overlay long before this fires. */
+.js[data-boot='pending'] .boot-sequence,
+.js[data-boot='running'] .boot-sequence {
+  animation: boot-failsafe 0.4s ease 6s forwards;
+}
+
+@keyframes boot-failsafe {
+  to {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
 .boot-sequence__prompt,
 .boot-sequence__spinner {
   color: var(--site-accent);
@@ -3611,7 +3697,7 @@ body.booting {
 
 .nav-menu-link__index {
   margin-right: 0.625em;
-  color: var(--site-accent);
+  color: var(--accent-ink);
   font-family: var(--font-haffer-mono), monospace;
   font-size: 0.6875em;
   letter-spacing: 0.08em;
@@ -3645,14 +3731,22 @@ body.booting {
   width: 100%;
   height: 1.25em;
   overflow: hidden;
-  color: var(--color-neutral-900);
-  background: var(--site-accent);
+  /* Muted chrome, not an accent band: reads as part of the nav, and headings
+     scrolling beneath it no longer collide with a loud stripe. The accent
+     lives only in the >_ separators. */
+  color: var(--muted-foreground);
+  background: var(--surface-top);
+  border-radius: 0 0 0.375em 0.375em;
+  -webkit-mask-image: linear-gradient(to right, transparent, black 7%, black 93%, transparent);
+  mask-image: linear-gradient(to right, transparent, black 7%, black 93%, transparent);
   font-family: var(--font-haffer-mono), monospace;
   font-size: 0.6875em;
   line-height: 1.818;
   text-transform: uppercase;
   pointer-events: auto;
 }
+
+.nav-marquee__mark { color: var(--accent-ink); }
 
 .marquee-css {
   display: flex;
@@ -3769,7 +3863,7 @@ body.booting {
 }
 
 .reckon-docs-brand__prompt {
-  color: var(--site-accent);
+  color: var(--accent-ink);
 }
 
 .reckon-docs-page {
@@ -3832,7 +3926,7 @@ body.booting {
 .reckon-docs-body :not(pre) > code {
   border: 0;
   border-radius: 0.35rem;
-  color: var(--site-accent);
+  color: var(--accent-ink);
   background: var(--surface-raised);
 }
 
@@ -3889,7 +3983,7 @@ body.booting {
 }
 
 .reckon-search-icon {
-  color: var(--site-accent);
+  color: var(--accent-ink);
 }
 
 .reckon-search-input {
@@ -3940,7 +4034,7 @@ body.booting {
 
 .legal-page__effective {
   margin-top: var(--gap-m);
-  color: var(--site-accent);
+  color: var(--accent-ink);
   font-family: var(--font-haffer-mono), monospace;
   font-size: 0.75em;
   line-height: 1;
@@ -4001,14 +4095,14 @@ body.booting {
   padding: 0.18em 0.45em;
   border: 0;
   border-radius: 0.3em;
-  color: var(--site-accent);
+  color: var(--accent-ink);
   background: var(--surface-top);
   font-family: var(--font-haffer-mono), monospace;
   font-size: 0.86em;
 }
 
 .legal-page a {
-  color: var(--site-accent);
+  color: var(--accent-ink);
   text-decoration: underline;
   text-decoration-thickness: 0.08em;
   text-underline-offset: 0.2em;
@@ -4029,7 +4123,7 @@ body.booting {
 }
 
 .legal-contact-card h2 {
-  color: var(--site-accent);
+  color: var(--accent-ink);
   font-family: var(--font-haffer-mono), monospace;
   font-size: 0.75em;
   letter-spacing: 0.08em;
@@ -4073,7 +4167,7 @@ body.booting {
 }
 
 .not-found-page__brand > span {
-  color: var(--site-accent);
+  color: var(--accent-ink);
 }
 
 .not-found-page__status {
@@ -4115,7 +4209,7 @@ body.booting {
 
 .not-found-page__terminal span {
   margin-right: 0.5em;
-  color: var(--site-accent);
+  color: var(--accent-ink);
 }
 
 .not-found-page__actions {
@@ -4183,3 +4277,32 @@ body.booting {
 
 /* The hero cursor stays glued to the final word so it never orphans on wrap. */
 .osmo-home-hero__tail { white-space: nowrap; }
+
+/* Investigation-step command chips: real invocations that fill the wide cards
+   with terminal texture, mirroring the CLI-site step snippets. */
+.reckon-step__snippet {
+  display: block;
+  overflow: hidden;
+  margin-top: var(--gap-s);
+  color: var(--muted-foreground);
+  font-family: var(--font-haffer-mono), monospace;
+  font-size: 0.8125em;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.reckon-step__snippet > span {
+  color: var(--accent-ink);
+}
+
+/* Light theme: white cards on the near-white page need a whisper of lift to
+   read as surfaces at all (tonal steps alone collapse at this lightness). */
+:root:not(.dark) .marketing-shell .osmo-card,
+:root:not(.dark) .marketing-shell .reckon-step,
+:root:not(.dark) .marketing-shell .toolbelt-card,
+:root:not(.dark) .marketing-shell .incident-signal {
+  box-shadow:
+    0 1px 2px rgb(28 30 26 / 5%),
+    0 10px 28px rgb(28 30 26 / 7%);
+}
