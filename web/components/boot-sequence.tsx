@@ -70,27 +70,27 @@ export function BootSequence() {
       },
     });
 
-    gsap.set(lines, { yPercent: 100, autoAlpha: 0 });
+    // The first line reveals via a pure-CSS animation the moment the overlay
+    // paints (no hydration dependency), so the plate is never blank. GSAP
+    // sequences the remaining lines like a real boot log.
+    const queuedLines = lines.slice(1);
+    gsap.set(queuedLines, { yPercent: 100, autoAlpha: 0 });
     timeline
-      .to(
-        lines,
-        {
-          yPercent: 0,
-          autoAlpha: 1,
-          duration: 1.2,
-          ease: 'expo.out',
-          stagger: 0.05,
-        },
-        0,
-      )
+      .to(queuedLines, {
+        yPercent: 0,
+        autoAlpha: 1,
+        duration: 0.5,
+        ease: 'expo.out',
+        stagger: 0.45,
+      }, 0.45)
       .to(
         overlay,
         {
           yPercent: -100,
-          duration: 0.9,
+          duration: 0.8,
           ease: 'home-default',
         },
-        1.8,
+        2.15,
       );
 
     const skipAnimation = (event: MediaQueryListEvent) => {
@@ -119,12 +119,12 @@ export function BootSequence() {
         {bootLines.map((line, index) => (
           <span className="home-motion__text-mask" key={line}>
             <span
-              className="home-motion__text-line boot-sequence__line"
+              className={`home-motion__text-line boot-sequence__line${index === 0 ? ' is--first' : ''}`}
               data-boot-line=""
             >
               <span className="boot-sequence__prompt">&gt;</span>
               <span>{line}</span>
-              {index === bootLines.length - 1 ? (
+              {line === 'scanning signals…' ? (
                 <span className="loading-icon boot-sequence__spinner">
                   <span className="loading-icon__inner" />
                 </span>
