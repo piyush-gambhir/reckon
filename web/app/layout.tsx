@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
-import localFont from 'next/font/local';
+import '@fontsource-variable/inter';
+import '@fontsource-variable/jetbrains-mono';
+import '@fontsource/instrument-serif';
 import type { CSSProperties } from 'react';
 import { BootSequence } from '@/components/boot-sequence';
 import { Provider } from '@/components/provider';
@@ -11,47 +13,6 @@ import {
 } from '@/lib/site';
 import { siteUrl } from '@/lib/shared';
 import './global.css';
-
-const hafferVF = localFont({
-  src: '../fonts/haffer-vf-thin-2.ttf',
-  variable: '--font-haffer-vf',
-  weight: '100 1000',
-  style: 'normal',
-  display: 'swap',
-});
-
-const hafferXH = localFont({
-  src: '../fonts/haffer-xh-regular-2.woff2',
-  variable: '--font-haffer-xh',
-  weight: '400',
-  style: 'normal',
-  display: 'swap',
-});
-
-const hafferMono = localFont({
-  src: [
-    {
-      path: '../fonts/haffer-mono-regular-2.woff2',
-      weight: '400',
-      style: 'normal',
-    },
-    {
-      path: '../fonts/haffer-mono-medium-2.woff2',
-      weight: '500',
-      style: 'normal',
-    },
-  ],
-  variable: '--font-haffer-mono',
-  display: 'swap',
-});
-
-const brisa = localFont({
-  src: '../fonts/brisa-pro-regular-2.woff2',
-  variable: '--font-brisa',
-  weight: '400',
-  style: 'normal',
-  display: 'swap',
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -103,17 +64,9 @@ export default function Layout({ children }: LayoutProps<'/'>) {
     ...(site.accent ? { '--site-accent': site.accent } : {}),
   } as CSSProperties;
 
-  const fontVariables = [
-    hafferVF.variable,
-    hafferXH.variable,
-    hafferMono.variable,
-    brisa.variable,
-  ].join(' ');
-
   return (
     <html
       lang="en"
-      className={`${fontVariables} ${hafferVF.className}`}
       data-accent={site.accentName}
       style={rootStyle}
       suppressHydrationWarning
