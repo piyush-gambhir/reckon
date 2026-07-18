@@ -166,7 +166,8 @@ const server = createServer(async (req, res) => {
     }
     json(res, 404, { error: 'not found' });
   } catch (err) {
-    json(res, 500, { error: String(err && err.message ? err.message : err) });
+    console.error('Incident viewer request failed:', err);
+    json(res, 500, { error: 'internal server error' });
   }
 });
 
