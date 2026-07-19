@@ -1,6 +1,6 @@
 # RCA document template
 
-Copy this skeleton to `incidents/<YYYY-MM-DD>-<slug>/RCA.md` (folder convention in [`incidents/README.md`](../../../incidents/README.md)). Fill in every section; if a section has nothing to say, write one honest sentence explaining why rather than deleting it.
+Copy this skeleton to `incidents/<YYYY-MM-DD>-<slug>/RCA.md` (folder convention in [`incidents-convention.md`](incidents-convention.md)). Fill in every section; if a section has nothing to say, write one honest sentence explaining why rather than deleting it.
 
 ```markdown
 # RCA: <one-line headline, e.g. "<Service> Apdex drop to 0.21">
@@ -17,6 +17,33 @@ Copy this skeleton to `incidents/<YYYY-MM-DD>-<slug>/RCA.md` (folder convention 
 | **Latent contributors**| <slow query X / fan-out pattern Y / missing rate limit Z>          |
 | **Auto-recovery**      | Yes / No (+ reason)                                                |
 | **Data gaps**          | <what we couldn't check and why>                                   |
+| **Root-cause category**| <one leaf name from references/root-cause-taxonomy.md>             |
+| **Confidence**         | <0.00–1.00> — <one line: what would raise it>                      |
+
+---
+
+## 0. Diagnosis (structured)
+
+A machine-greppable summary so this incident joins the searchable corpus. Keep it terse; the prose
+sections below justify it. Categories come from `references/root-cause-taxonomy.md`.
+
+```yaml
+root_cause_category: <leaf name>          # exactly one, narrowest the evidence supports
+incident_status: <confirmed|open|mitigated|ongoing>
+confidence: 0.00                          # 0.0–1.0; run the self-consistency check before setting
+confidence_rationale: <one line — the single missing piece of evidence that would move this>
+```
+
+**Validated claims** — each backed by a specific number/query/log in §4 (cite the subsection):
+- <claim> — §4.x
+- <claim> — §4.x
+
+**Open / unvalidated claims** — believed but not yet proven by tool evidence (hypotheses, not conclusions):
+- <claim> — what would confirm it: <specific check> (also lives in §7)
+
+> Before finalizing: run the **self-consistency check** in `references/root-cause-taxonomy.md` — if
+> your prose's dominant subsystem disagrees with the category's group, resolve it or subtract ~0.15
+> from `confidence` and note the tension here.
 
 ---
 
