@@ -1,0 +1,496 @@
+#!/usr/bin/env bash
+#
+# reckon — workspace control surface.
+#
+# Makes the workspace's own state legible: which environment is active, which
+# integrations are actually usable, and what is misconfigured. Everything here
+# is read-only with respect to your infrastructure; only `verify` touches the
+# network, and only with the safe single reads documented in CLAUDE.md.
+#
+# Usage:
+#   scripts/reckon status              active environment + integration matrix
+#   scripts/reckon doctor              diagnose workspace setup problems
+#   scripts/reckon verify [name...]    live connection checks (touches infra)
+#   scripts/reckon preflight           compact digest for a coding agent
+#   scripts/reckon env                 print activation lines (use with eval)
+#   scripts/reckon use <environment>   switch the active environment
+#
+# direnv is optional. Without it, activate the current shell with:
+#   eval "$(scripts/reckon env)"
+
+set -euo pipefail
+
+cd "$(cd "$(dirname "$0")" && pwd)/.."
+REPO_ROOT="$(pwd)"
+
+# -----------------------------------------------------------------------------
+# Output helpers (house style, see scripts/setup.sh)
+# -----------------------------------------------------------------------------
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+    C_RESET=$'\033[0m'
+    C_RED=$'\033[0;31m'
+    C_GREEN=$'\033[0;32m'
+    C_YELLOW=$'\033[0;33m'
+    C_BLUE=$'\033[0;34m'
+    C_DIM=$'\033[2m'
+    C_BOLD=$'\033[1m'
+else
+    C_RESET=''; C_RED=''; C_GREEN=''; C_YELLOW=''; C_BLUE=''; C_DIM=''; C_BOLD=''
+fi
+
+ok()     { printf "  %s✓%s %s\n" "$C_GREEN" "$C_RESET" "$*"; }
+info()   { printf "  %s→%s %s\n" "$C_BLUE" "$C_RESET" "$*"; }
+warn()   { printf "  %s⚠%s %s\n" "$C_YELLOW" "$C_RESET" "$*"; }
+err()    { printf "  %s✗%s %s\n" "$C_RED" "$C_RESET" "$*" >&2; }
+header() { printf "\n%s%s%s\n" "$C_BOLD" "$*" "$C_RESET"; }
+have()   { command -v "$1" >/dev/null 2>&1; }
+
+VALID_ENVS="production staging uat"
+
+# -----------------------------------------------------------------------------
+# Integration registry
+#
+# The single place mapping an integration to its binary, its credentials, and
+# its saved-profile fallback. Every subcommand is a projection of this table.
+#
+#   name | binary | required_vars | config_file
+#
+# required_vars: "," = all of, "/" = any of, "-" = none.
+# config_file:   path under $XDG_CONFIG_HOME that also counts as configured
+#                (a saved CLI profile), or "-" if the tool has none.
+#
+# Verification commands deliberately live in verify_one() rather than in this
+# table, so no row is ever eval'd as a shell command.
+# -----------------------------------------------------------------------------
+registry() {
+    cat <<'EOF'
+grafana|grafana|GRAFANA_URL,GRAFANA_TOKEN|grafana-cli/config.yaml
+jenkins|jenkins|JENKINS_URL,JENKINS_USER,JENKINS_TOKEN|jenkins-cli/config.yaml
+cubeapm|cubeapm|CUBEAPM_HOST,CUBEAPM_EMAIL,CUBEAPM_PASSWORD|cubeapm-cli/config.yaml
+github|gh|GH_TOKEN/GITHUB_TOKEN|gh/hosts.yml
+aws|aws|AWS_REGION,AWS_ACCESS_KEY_ID/AWS_PROFILE|aws/credentials
+kubernetes|kubectl|-|kube/config
+kafka|kcat|KAFKA_BOOTSTRAP_SERVERS|-
+kafka-rpk|rpk|KAFKA_BOOTSTRAP_SERVERS|-
+redis|redis-cli|REDIS_URL|-
+mongodb|mongosh|MONGODB_URI|-
+postgres|psql|PGHOST,PGUSER|-
+mysql|mysql|MYSQL_HOST,MYSQL_USER|mysql/my.cnf
+clickhouse|clickhouse|CLICKHOUSE_HOST,CLICKHOUSE_USER,CLICKHOUSE_PASSWORD|-
+elasticsearch|es|ES_URL|-
+EOF
+}
+
+# Is a required-vars spec satisfied by the current environment?
+vars_satisfied() {
+    local spec="$1" group v val hit
+    [ "$spec" = "-" ] && return 1
+    for group in $(printf '%s' "$spec" | tr ',' ' '); do
+        hit=0
+        for v in $(printf '%s' "$group" | tr '/' ' '); do
+            eval "val=\${$v:-}"
+            if [ -n "${val:-}" ]; then hit=1; break; fi
+        done
+        [ "$hit" -eq 0 ] && return 1
+    done
+    return 0
+}
+
+# Is an integration configured — credentials in env, or a saved profile on disk?
+is_configured() {
+    local required="$1" config_file="$2"
+    vars_satisfied "$required" && return 0
+    if [ "$config_file" != "-" ] && [ -n "${XDG_CONFIG_HOME:-}" ] \
+       && [ -f "$XDG_CONFIG_HOME/$config_file" ]; then
+        return 0
+    fi
+    return 1
+}
+
+# -----------------------------------------------------------------------------
+# Environment resolution
+#
+# Resolution itself lives in .envrc and is NOT reimplemented here — a second
+# copy would drift from the fail-closed behaviour .envrc guarantees. We only
+# detect *where* the value came from, then source .envrc to apply it.
+# -----------------------------------------------------------------------------
+ENV_SOURCE=""
+
+detect_env_source() {
+    if [ -n "${RECKON_ENV:-}" ]; then
+        ENV_SOURCE="exported variable"
+    elif [ -f "$REPO_ROOT/.reckon-env" ]; then
+        ENV_SOURCE=".reckon-env"
+    else
+        ENV_SOURCE="default"
+    fi
+}
+
+load_environment() {
+    detect_env_source
+    # shellcheck disable=SC1091
+    if ! . "$REPO_ROOT/.envrc" >/dev/null 2>&1; then
+        err "environment failed to resolve — invalid RECKON_ENV or .reckon-env"
+        printf "    valid environments: %s\n" "$VALID_ENVS" >&2
+        [ -f "$REPO_ROOT/.reckon-env" ] && \
+            printf "    .reckon-env contains: %s\n" "$(cat "$REPO_ROOT/.reckon-env")" >&2
+        return 1
+    fi
+    return 0
+}
+
+direnv_active() {
+    [ -n "${DIRENV_DIR:-}" ]
+}
+
+# -----------------------------------------------------------------------------
+# status
+# -----------------------------------------------------------------------------
+cmd_status() {
+    load_environment || return 1
+
+    header "reckon — environment"
+    if [ "$RECKON_ENV" = production ]; then
+        printf "  %s%sENV=production%s  (resolved from %s)\n" \
+            "$C_BOLD" "$C_RED" "$C_RESET" "$ENV_SOURCE"
+    else
+        printf "  %sENV=%s%s  (resolved from %s)\n" \
+            "$C_BOLD" "$RECKON_ENV" "$C_RESET" "$ENV_SOURCE"
+    fi
+    printf "  config      %s\n" "${XDG_CONFIG_HOME#$REPO_ROOT/}"
+    if direnv_active; then
+        printf "  activation  direnv (auto)\n"
+    else
+        printf "  activation  %smanual — direnv not active in this shell%s\n" "$C_DIM" "$C_RESET"
+    fi
+
+    header "integrations"
+    printf "  %-14s %-9s %s\n" "INTEGRATION" "CLI" "CREDENTIALS"
+    local name binary required config_file cli_word cli_col cred_word cred_col
+    local n_ready=0 n_total=0
+    while IFS='|' read -r name binary required config_file; do
+        [ -z "$name" ] && continue
+        n_total=$((n_total + 1))
+        if have "$binary"; then cli_word="yes"; cli_col="$C_GREEN"
+        else cli_word="no"; cli_col="$C_DIM"; fi
+        if is_configured "$required" "$config_file"; then
+            cred_word="configured"; cred_col="$C_GREEN"
+            have "$binary" && n_ready=$((n_ready + 1))
+        else
+            cred_word="—"; cred_col="$C_DIM"
+        fi
+        # Pad inside the colour wrapper — %-Ns on a string containing ANSI
+        # escapes pads by byte length, which misaligns the column.
+        printf "  %-14s %s%-9s%s %s%s%s\n" \
+            "$name" "$cli_col" "$cli_word" "$C_RESET" "$cred_col" "$cred_word" "$C_RESET"
+    done <<EOF
+$(registry)
+EOF
+
+    printf "\n  %s%d of %d integrations usable%s in %s\n" \
+        "$C_BOLD" "$n_ready" "$n_total" "$C_RESET" "$RECKON_ENV"
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# doctor
+# -----------------------------------------------------------------------------
+DOCTOR_ERRORS=0
+
+d_err()  { err "$*"; DOCTOR_ERRORS=$((DOCTOR_ERRORS + 1)); }
+
+cmd_doctor() {
+    load_environment || return 1
+    header "reckon doctor — $RECKON_ENV"
+
+    # -- activation ----------------------------------------------------------
+    if have direnv; then
+        ok "direnv installed"
+        if grep -qs 'direnv hook' "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.zprofile" \
+                                  "$HOME/.bash_profile" 2>/dev/null; then
+            ok "direnv hooked into a shell profile"
+        else
+            warn "direnv installed but not hooked — add: eval \"\$(direnv hook zsh)\""
+        fi
+    else
+        warn "direnv not installed — .envrc will not auto-load"
+        info "activate manually with: eval \"\$(scripts/reckon env)\""
+    fi
+
+    # -- environment state ---------------------------------------------------
+    if [ -f "$REPO_ROOT/.reckon-env" ]; then
+        ok "active environment pinned in .reckon-env ($RECKON_ENV)"
+    else
+        info "no .reckon-env — environment from $ENV_SOURCE"
+    fi
+
+    # -- credentials ---------------------------------------------------------
+    local envfile="$REPO_ROOT/.env.$RECKON_ENV"
+    if [ -f "$envfile" ]; then
+        local mode
+        mode="$(ls -l "$envfile" | cut -c2-10)"
+        if [ "$mode" = "rw-------" ]; then
+            ok ".env.$RECKON_ENV present (0600)"
+        else
+            d_err ".env.$RECKON_ENV has permissions $mode — should be 0600 (chmod 0600 $envfile)"
+        fi
+    else
+        warn ".env.$RECKON_ENV missing — no credentials for this environment"
+    fi
+
+    # -- config isolation ----------------------------------------------------
+    if [ -d "$REPO_ROOT/.config/$RECKON_ENV" ]; then
+        ok ".config/$RECKON_ENV/ exists"
+    else
+        warn ".config/$RECKON_ENV/ missing — run: bash scripts/setup.sh"
+    fi
+    # Orphans: CLI config left at the .config/ root by a pre-multi-env layout.
+    local orphan orphans=""
+    for orphan in "$REPO_ROOT"/.config/*/; do
+        [ -d "$orphan" ] || continue
+        local base; base="$(basename "$orphan")"
+        case " $VALID_ENVS " in
+            *" $base "*) ;;
+            *) orphans="$orphans $base" ;;
+        esac
+    done
+    if [ -n "$orphans" ]; then
+        d_err "orphaned config at .config/ root:$orphans — these are invisible to every"
+        printf "    environment. Move them: mv .config/{%s} .config/%s/\n" \
+            "$(printf '%s' "${orphans# }" | tr ' ' ',')" "$RECKON_ENV" >&2
+    else
+        ok "no orphaned config outside the per-environment directories"
+    fi
+
+    # -- knowledge base ------------------------------------------------------
+    local shared_n env_n
+    shared_n="$(find "$REPO_ROOT/infra-knowledge/_shared" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+    env_n="$(find "$REPO_ROOT/infra-knowledge/$RECKON_ENV" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "$shared_n" -gt 0 ]; then ok "infra-knowledge/_shared — $shared_n file(s)"
+    else warn "infra-knowledge/_shared is empty — run: bash scripts/setup.sh"; fi
+    if [ "$env_n" -gt 0 ]; then ok "infra-knowledge/$RECKON_ENV — $env_n file(s)"
+    else warn "infra-knowledge/$RECKON_ENV is empty — the agent has no facts for this environment"; fi
+
+    # -- skill wiring --------------------------------------------------------
+    if [ -f "$REPO_ROOT/.claude/skills/reckon/SKILL.md" ]; then
+        ok "skill symlink chain resolves (.claude → .agents → skills/reckon)"
+    else
+        d_err "skill not reachable at .claude/skills/reckon/SKILL.md — symlink chain broken"
+    fi
+
+    # -- corpus hygiene ------------------------------------------------------
+    local legacy
+    legacy="$(find "$REPO_ROOT" -maxdepth 1 -name 'RCA-*.md' 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "$legacy" -gt 0 ]; then
+        warn "$legacy legacy RCA file(s) at the repo root — belong in incidents/<date>-<slug>/"
+    fi
+
+    printf "\n"
+    if [ "$DOCTOR_ERRORS" -gt 0 ]; then
+        printf "  %s%d problem(s) need fixing%s\n" "$C_BOLD" "$DOCTOR_ERRORS" "$C_RESET"
+        return 1
+    fi
+    printf "  %sworkspace healthy%s\n" "$C_GREEN" "$C_RESET"
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# verify — the only subcommand that touches infrastructure
+# -----------------------------------------------------------------------------
+run_bounded() {
+    # Bound every probe so a hung endpoint can't stall the sweep.
+    if have timeout; then timeout 15 "$@"
+    elif have gtimeout; then gtimeout 15 "$@"
+    else "$@"; fi
+}
+
+verify_one() {
+    case "$1" in
+        grafana)       run_bounded grafana user current -o json ;;
+        jenkins)       run_bounded jenkins status -o json ;;
+        cubeapm)       run_bounded cubeapm metrics label-values service -o json ;;
+        github)        run_bounded gh auth status ;;
+        aws)           run_bounded aws sts get-caller-identity --output json ;;
+        kubernetes)    run_bounded kubectl get ns -o name ;;
+        kafka)         run_bounded kcat -L -b "$KAFKA_BOOTSTRAP_SERVERS" -J ;;
+        kafka-rpk)     run_bounded rpk cluster info ;;
+        redis)         run_bounded redis-cli -u "$REDIS_URL" PING ;;
+        mongodb)       run_bounded mongosh "$MONGODB_URI" --quiet --eval 'db.runCommand({ping:1})' ;;
+        postgres)      run_bounded psql -c 'SELECT 1' ;;
+        mysql)         run_bounded mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e 'SELECT 1' ;;
+        clickhouse)    run_bounded clickhouse client --host "$CLICKHOUSE_HOST" --user "$CLICKHOUSE_USER" \
+                           --password "$CLICKHOUSE_PASSWORD" --secure --readonly=1 --query 'SELECT 1' ;;
+        elasticsearch) run_bounded es cluster health -o json ;;
+        *) return 127 ;;
+    esac
+}
+
+cmd_verify() {
+    load_environment || return 1
+    local wanted="$*"
+
+    header "reckon verify — $RECKON_ENV"
+    if [ "$RECKON_ENV" = production ]; then
+        printf "  %s%s!!! these are live reads against PRODUCTION !!!%s\n" \
+            "$C_BOLD" "$C_RED" "$C_RESET"
+    fi
+    printf "  %sone safe read per configured integration%s\n\n" "$C_DIM" "$C_RESET"
+
+    local name binary required config_file n_ok=0 n_fail=0
+    while IFS='|' read -r name binary required config_file; do
+        [ -z "$name" ] && continue
+        if [ -n "$wanted" ]; then
+            case " $wanted " in *" $name "*) ;; *) continue ;; esac
+        fi
+        if ! have "$binary"; then
+            printf "  %s—%s %-14s %sskipped (no %s)%s\n" \
+                "$C_DIM" "$C_RESET" "$name" "$C_DIM" "$binary" "$C_RESET"
+            continue
+        fi
+        if ! is_configured "$required" "$config_file"; then
+            printf "  %s—%s %-14s %sskipped (not configured)%s\n" \
+                "$C_DIM" "$C_RESET" "$name" "$C_DIM" "$C_RESET"
+            continue
+        fi
+        if verify_one "$name" >/dev/null 2>&1; then
+            ok "$name"
+            n_ok=$((n_ok + 1))
+        else
+            err "$name — probe failed (run the command by hand for detail)"
+            n_fail=$((n_fail + 1))
+        fi
+    done <<EOF
+$(registry)
+EOF
+
+    printf "\n  %s%d ok, %d failed%s\n" "$C_BOLD" "$n_ok" "$n_fail" "$C_RESET"
+    [ "$n_fail" -eq 0 ]
+}
+
+# -----------------------------------------------------------------------------
+# preflight — compact digest an agent reads before its first query
+# -----------------------------------------------------------------------------
+cmd_preflight() {
+    load_environment || return 1
+
+    local name binary required config_file available="" unavailable=""
+    while IFS='|' read -r name binary required config_file; do
+        [ -z "$name" ] && continue
+        if ! have "$binary"; then
+            unavailable="$unavailable $name(no cli)"
+        elif ! is_configured "$required" "$config_file"; then
+            unavailable="$unavailable $name(no creds)"
+        else
+            available="$available $name"
+        fi
+    done <<EOF
+$(registry)
+EOF
+
+    local shared_n env_n
+    shared_n="$(find "$REPO_ROOT/infra-knowledge/_shared" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+    env_n="$(find "$REPO_ROOT/infra-knowledge/$RECKON_ENV" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+
+    local inc_n latest=""
+    inc_n="$(find "$REPO_ROOT/incidents" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "$inc_n" -gt 0 ]; then
+        latest="$(find "$REPO_ROOT/incidents" -maxdepth 1 -mindepth 1 -type d 2>/dev/null \
+                  | sed 's|.*/||' | sort | tail -1)"
+    fi
+
+    printf "reckon preflight — ENV=%s (resolved from %s)\n" "$RECKON_ENV" "$ENV_SOURCE"
+    printf "available:   %s\n" "${available# }"
+    printf "unavailable: %s\n" "${unavailable# }"
+    printf "knowledge:   _shared %s files · %s %s files\n" "$shared_n" "$RECKON_ENV" "$env_n"
+    if [ "$inc_n" -gt 0 ]; then
+        printf "incidents:   %s recorded · latest %s\n" "$inc_n" "$latest"
+    else
+        printf "incidents:   none recorded yet\n"
+    fi
+    if ! direnv_active; then
+        printf "warnings:    direnv not active — environment resolved from %s\n" "$ENV_SOURCE"
+    fi
+    if [ "$env_n" -eq 0 ]; then
+        printf "warnings:    no infra-knowledge for %s — do not invent facts\n" "$RECKON_ENV"
+    fi
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# env / use
+# -----------------------------------------------------------------------------
+cmd_env() {
+    load_environment || return 1
+    if [ -t 1 ]; then
+        printf "%s# these lines must be eval'd to take effect:%s\n" "$C_DIM" "$C_RESET" >&2
+        printf "%s#   eval \"\$(scripts/reckon env)\"%s\n" "$C_DIM" "$C_RESET" >&2
+    fi
+    # Emit only plumbing — never credential values. .envrc does the rest, so
+    # there is exactly one implementation of credential loading.
+    printf 'export RECKON_ENV=%s\n' "$RECKON_ENV"
+    printf '. %s/.envrc\n' "$REPO_ROOT"
+    return 0
+}
+
+cmd_use() {
+    local want="${1:-}"
+    if [ -z "$want" ]; then
+        err "usage: scripts/reckon use <${VALID_ENVS// /|}>"
+        return 1
+    fi
+    case " $VALID_ENVS " in
+        *" $want "*) ;;
+        *) err "unknown environment '$want' — valid: $VALID_ENVS"; return 1 ;;
+    esac
+    printf '%s\n' "$want" > "$REPO_ROOT/.reckon-env"
+    ok "active environment → $want"
+    if [ -n "${RECKON_ENV:-}" ] && [ "${RECKON_ENV}" != "$want" ]; then
+        warn "RECKON_ENV=$RECKON_ENV is exported in this shell and takes precedence"
+        info "unset it (unset RECKON_ENV) or open a new shell for '$want' to apply"
+    elif ! direnv_active; then
+        info "apply to this shell with: eval \"\$(scripts/reckon env)\""
+    fi
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# Main
+# -----------------------------------------------------------------------------
+usage() {
+    cat <<'EOF'
+reckon — workspace control surface
+
+  scripts/reckon status              active environment + integration matrix
+  scripts/reckon doctor              diagnose workspace setup problems
+  scripts/reckon verify [name...]    live connection checks (touches infrastructure)
+  scripts/reckon preflight           compact digest for a coding agent
+  scripts/reckon env                 print activation lines — eval "$(scripts/reckon env)"
+  scripts/reckon use <environment>   switch the active environment
+
+Environments: production, staging, uat
+
+Only `verify` contacts your infrastructure; everything else is local inspection.
+direnv is optional — without it, activate a shell with eval "$(scripts/reckon env)".
+EOF
+}
+
+main() {
+    local cmd="${1:-}"
+    [ $# -gt 0 ] && shift
+    case "$cmd" in
+        status)              cmd_status "$@" ;;
+        doctor)              cmd_doctor "$@" ;;
+        verify)              cmd_verify "$@" ;;
+        preflight)           cmd_preflight "$@" ;;
+        env)                 cmd_env "$@" ;;
+        use)                 cmd_use "$@" ;;
+        -h|--help|help|"")   usage ;;
+        *)
+            printf "Unknown command: %s\n" "$cmd" >&2
+            printf "Expected: status | doctor | verify | preflight | env | use\n" >&2
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

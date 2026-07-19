@@ -10,6 +10,24 @@ An agent workspace for talking to your infrastructure — investigating incident
 
 This clone is intended to be **production-only**. Put only production Grafana, Jenkins, and CubeAPM credentials in this workspace. If you ever need staging or UAT, use a separate clone so the agent never mixes environments during an RCA.
 
+### Quick start
+
+```bash
+./scripts/reckon status      # what environment is active, what's actually connected
+./scripts/reckon doctor      # diagnose setup problems
+./scripts/reckon preflight   # the digest a coding agent reads first
+./scripts/reckon use staging # switch environment (persists in .reckon-env)
+./scripts/reckon verify      # live connection checks — the only one that hits your infra
+```
+
+**direnv is optional.** It auto-loads `.envrc` when you `cd` in, but if it isn't installed or
+hooked into your shell, nothing warns you — `.envrc` simply never runs and the CLIs fall back to
+saved profiles. `./scripts/reckon doctor` detects that; to activate a shell without direnv:
+
+```bash
+eval "$(./scripts/reckon env)"
+```
+
 ### Editions
 
 reckon comes in two editions that share one brain and differ in **who runs the investigation**. This repo is the first one.
@@ -117,11 +135,10 @@ If the script doesn't fit (unsupported distro, locked-down corporate machine, et
 After tool installation, finish workspace setup manually:
 
 ```bash
-cp -n .env.example .env                                # then edit with real credentials
-cd infra-knowledge
-for f in *.example.md; do cp -n "$f" "${f/.example/}"; done
-cd ..
-direnv allow
+cp -n .env.example .env.production                     # then edit with real credentials
+bash scripts/setup.sh                                  # seeds infra-knowledge/ per environment
+./scripts/reckon use production
+direnv allow                                           # optional — see Quick start
 ```
 
 Verify every connection (one safe read per tool):
@@ -149,12 +166,12 @@ clickhouse client --host "$CLICKHOUSE_HOST" --port "$CLICKHOUSE_PORT" --user "$C
 
 ## How credentials are isolated
 
-`.envrc` sets `XDG_CONFIG_HOME` to `.config/` inside this directory and also loads `.env` / `.env.local` when present. That gives you two repo-local authentication modes:
+`.envrc` resolves `RECKON_ENV`, sets `XDG_CONFIG_HOME` to `.config/<env>/` inside this directory, and loads `.env.common` → `.env.<env>` → `.env.<env>.local` when present. That gives you two repo-local authentication modes:
 
-- **Preferred:** store credentials in `.env` or `.env.local` and let direnv export them automatically whenever you enter this repo.
-- **Fallback:** run `grafana login`, `jenkins login`, `cubeapm login`, `aws configure`, or `gh auth login` inside this directory to save per-repo CLI profiles under `.config/`.
+- **Preferred:** store credentials in `.env.<env>` and let direnv export them automatically whenever you enter this repo (or `eval "$(./scripts/reckon env)"` without direnv).
+- **Fallback:** run `grafana login`, `jenkins login`, `cubeapm login`, `aws configure`, or `gh auth login` inside this directory to save per-repo CLI profiles under `.config/<env>/`.
 
-`grafana`, `jenkins`, `cubeapm`, and `gh` honour `XDG_CONFIG_HOME` natively, so their saved state lands inside `.config/` automatically. `aws` does not — `.envrc` therefore also exports `AWS_CONFIG_FILE` and `AWS_SHARED_CREDENTIALS_FILE` to `.config/aws/`, so `aws configure` writes here instead of `~/.aws/`.
+`grafana`, `jenkins`, `cubeapm`, and `gh` honour `XDG_CONFIG_HOME` natively, so their saved state lands inside `.config/<env>/` automatically. `aws` does not — `.envrc` therefore also exports `AWS_CONFIG_FILE` and `AWS_SHARED_CREDENTIALS_FILE` to `.config/<env>/aws/`, so `aws configure` writes here instead of `~/.aws/`.
 
 Either way, credentials stay isolated from your global `~/.config/` and `~/.aws/` profiles. You can have different credentials per clone of this repo.
 

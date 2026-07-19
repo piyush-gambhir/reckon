@@ -36,7 +36,9 @@ This workspace targets **three environments: `production`, `staging`, `uat`**, s
 
 **The rule the whole design exists to enforce:** never query one environment while believing you are on another. It is silent, easy, and no tool will catch it.
 
-1. **Resolve `RECKON_ENV` before the first query.** If unset, empty, or uncertain — **stop and ask**. Never infer the environment from service names, hostnames, or context.
+**Start every task with `./scripts/reckon preflight`.** It reports the active environment, which integrations are genuinely usable, which are not and why, what knowledge exists, and any warnings — in ~8 lines, without touching infrastructure. **Trust it over the toolbelt list below**: this file describes what reckon *can* connect to, preflight describes what *is* connected right now. Discovering a missing credential mid-investigation wastes the whole cascade.
+
+1. **Resolve `RECKON_ENV` before the first query** (preflight prints it). If unset, empty, or uncertain — **stop and ask**. Never infer the environment from service names, hostnames, or context.
 2. **State it explicitly** in your first substantive message: *"Working against **production**."* Restate on any switch.
 3. **Never mix environments within one investigation, sweep, or analysis.** Cross-environment comparison is legitimate, but label every number with its environment and announce each switch.
 4. **Record it in the output** — RCAs carry an `Environment` header row; health reports and analyses name it in the first line.
@@ -44,9 +46,14 @@ This workspace targets **three environments: `production`, `staging`, `uat`**, s
 Switching:
 
 ```bash
-export RECKON_ENV=staging && direnv reload    # macOS/Linux
+./scripts/reckon use staging       # persists in .reckon-env, survives new shells
+./scripts/reckon status            # confirm what is active and how it resolved
 . .\scripts\activate.ps1 -Env staging          # Windows
 ```
+
+Precedence is `RECKON_ENV` (exported) → `.reckon-env` (file) → `production`. An unrecognised value in **either** fails closed: no credentials load at all.
+
+**direnv is optional.** If it is not hooked into your shell, `.envrc` never runs and nothing warns you — the CLIs silently fall back to saved profiles. `./scripts/reckon doctor` detects exactly this; activate manually with `eval "$(./scripts/reckon env)"`.
 
 **The read-only posture is identical in all three environments** — the split is about *which* infrastructure you touch, never about relaxing safety. But blast radius is not identical: in production, prefer the cheaper signal, bound queries harder, and escalate to a human sooner.
 
@@ -95,25 +102,17 @@ Config files are stored at:
 - `.config/<env>/aws/{config,credentials}`
 - `.config/<env>/gh/{config.yml,hosts.yml}`
 
-Verify every connection (one safe read per tool):
+Verify every connection with one command — it runs exactly one safe read per
+configured integration, bounded by a timeout, and reports a pass/fail table:
+
 ```bash
-grafana user current -o json
-jenkins status -o json
-cubeapm metrics label-values service -o json   # canonical service inventory; do NOT use `traces services` (see Agent Guidelines / server-quirks.md)
-aws sts get-caller-identity --output json
-gh auth status
-kcat -L -b "$KAFKA_BOOTSTRAP_SERVERS" -X security.protocol=$KAFKA_SECURITY_PROTOCOL \
-     -X sasl.mechanism=$KAFKA_SASL_MECHANISM -X sasl.username=$KAFKA_SASL_USERNAME \
-     -X sasl.password=$KAFKA_SASL_PASSWORD | head -20
-rpk cluster info   # RPK_BROKERS / RPK_SASL_* are derived from KAFKA_* by .envrc
-mongosh "$MONGODB_URI" --eval 'db.runCommand({ping:1})'
-psql -c "SELECT current_user, current_database(), pg_is_in_recovery();"
-mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SELECT CURRENT_USER(), DATABASE(), @@transaction_read_only;"
-kubectl version --client -o json && kubectl get ns   # second command needs a seeded KUBECONFIG
-redis-cli -u "$REDIS_URL" PING
-es cluster health -o json                            # optional — only if ES_URL is set
-clickhouse client --host "$CLICKHOUSE_HOST" --port "$CLICKHOUSE_PORT" --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --secure --readonly=1 --query "SELECT 1"
+./scripts/reckon verify              # all configured integrations
+./scripts/reckon verify grafana      # just one
 ```
+
+This is the only `reckon` subcommand that contacts your infrastructure; `status`,
+`doctor`, and `preflight` are purely local inspection. The individual commands it
+runs are listed per-tool in the sections below.
 
 ## RCA Workflow
 

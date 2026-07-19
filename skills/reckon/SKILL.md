@@ -46,6 +46,8 @@ Extended surfaces, reached for at specific steps — see `CLAUDE.md` for exact c
 - **`mongosh` / `psql` / `mysql` / `clickhouse client`** — read-only DB shells. Only after the work has narrowed to a specific table/collection/query. **Re-read the Database safety contract in `CLAUDE.md` first: read-only role, `EXPLAIN` before any non-trivial SELECT, `LIMIT` always, and every call prompts for approval.**
 - **`es`** (optional) — Elasticsearch/ELK log stores for services that don't ship logs to the APM. Client-side read-only via `ES_READ_ONLY=true`.
 
+**This list is what reckon *can* reach, not what is reachable right now.** Before the first query, obtain a **capability digest** for the active environment — which integrations actually have a working binary and credentials, and which do not — and trust it over this list. Discovering a missing credential midway through a cascade wastes every query that preceded it. How the digest is produced is runtime-specific; the workspace edition provides a command for it (see `CLAUDE.md`).
+
 If a CLI isn't logged in, don't block — note the gap, continue with what's available, and carry the gap into the output as an explicit limitation.
 
 ---

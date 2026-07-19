@@ -50,6 +50,7 @@ These encode "a human is driving a shell on a laptop." The hosted edition will n
 | `scripts/setup.sh`, `scripts/activate.ps1` | Per-machine install of the CLIs |
 | `CLAUDE.md`, `AGENTS.md` | Instructions addressed to an *interactive* coding agent |
 | `.claude/skills/…` symlink chain | How one specific runtime discovers the skill |
+| `scripts/reckon` | The workspace control surface — status/doctor/verify/preflight/env/use. Assumes a shell; a hosted agent needs its own way to answer the same questions. |
 | **Approval-prompt safety** (DB contract layer 4) | Depends on a human reading each query before approving |
 
 ## Outside the split entirely

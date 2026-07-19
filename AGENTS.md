@@ -2,6 +2,18 @@
 
 **Read [`CLAUDE.md`](CLAUDE.md) — it is the canonical agent guide for this workspace.** Everything there applies to you regardless of runtime: the tool inventory, the Database safety contract, the RCA workflow, and the agent guidelines. This file only covers what differs outside Claude Code.
 
+## Start here: preflight
+
+Run `./scripts/reckon preflight` before the first query of any task. It prints the active
+environment, which integrations are genuinely usable, which are not and why, what knowledge
+exists, and any warnings — without touching infrastructure. Trust it over the toolbelt list in
+`CLAUDE.md`: that describes what reckon *can* connect to, preflight describes what *is*
+connected. `./scripts/reckon doctor` diagnoses setup problems; `./scripts/reckon use <env>`
+switches environment.
+
+direnv is optional — if it isn't hooked into your shell, `.envrc` never loads and nothing warns
+you. Activate manually with `eval "$(./scripts/reckon env)"`.
+
 ## Investigation methodology
 
 The full RCA methodology lives at [`skills/reckon/SKILL.md`](skills/reckon/SKILL.md) (with references in `skills/reckon/references/`). Claude Code loads it as a skill automatically; if your runtime has no skill loader, **read that file at the start of any incident investigation** and follow it. Consult [`infra-knowledge/`](infra-knowledge/) before querying anything.
