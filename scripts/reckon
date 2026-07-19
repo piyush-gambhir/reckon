@@ -81,6 +81,21 @@ elasticsearch|es|ES_URL|-
 EOF
 }
 
+# Does a value still look like an unedited .env.example placeholder?
+# Without this, a freshly seeded .env reports every integration as configured and
+# preflight confidently tells the agent that grafana.example.com is reachable —
+# the exact false confidence preflight exists to prevent.
+#
+# Tokens below are the ones .env.example actually uses; keep them in sync with it.
+is_placeholder() {
+    case "$1" in
+        replace_me|REPLACE_ME|*replace_me*) return 0 ;;
+        *example.com*|*.example.*|*@example*) return 0 ;;
+        *xxxx*|*XXXX*|*changeme*|*CHANGEME*|*your-*|'<'*'>') return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Is a required-vars spec satisfied by the current environment?
 vars_satisfied() {
     local spec="$1" group v val hit
@@ -89,7 +104,7 @@ vars_satisfied() {
         hit=0
         for v in $(printf '%s' "$group" | tr '/' ' '); do
             eval "val=\${$v:-}"
-            if [ -n "${val:-}" ]; then hit=1; break; fi
+            if [ -n "${val:-}" ] && ! is_placeholder "$val"; then hit=1; break; fi
         done
         [ "$hit" -eq 0 ] && return 1
     done
@@ -398,8 +413,9 @@ EOF
                   | sed 's|.*/||' | sort | tail -1)"
     fi
 
+    local avail_out="${available# }"
     printf "reckon preflight — ENV=%s (resolved from %s)\n" "$RECKON_ENV" "$ENV_SOURCE"
-    printf "available:   %s\n" "${available# }"
+    printf "available:   %s\n" "${avail_out:-(none)}"
     printf "unavailable: %s\n" "${unavailable# }"
     printf "knowledge:   _shared %s files · %s %s files\n" "$shared_n" "$RECKON_ENV" "$env_n"
     if [ "$inc_n" -gt 0 ]; then
@@ -412,6 +428,10 @@ EOF
     fi
     if [ "$env_n" -eq 0 ]; then
         printf "warnings:    no infra-knowledge for %s — do not invent facts\n" "$RECKON_ENV"
+    fi
+    if [ -z "$avail_out" ]; then
+        printf "warnings:    nothing configured — edit .env.%s (values still look like .env.example placeholders)\n" \
+            "$RECKON_ENV"
     fi
     return 0
 }

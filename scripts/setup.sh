@@ -639,6 +639,24 @@ setup_workspace() {
         err "infra-knowledge templates missing — are you running this from the repo root?"
     fi
 
+    # Skill wiring. .claude/ and .agents/ are gitignored (they hold local agent
+    # state), so a fresh clone has no symlinks and the reckon skill — which IS
+    # tracked, at skills/reckon/ — is unreachable to every runtime until we
+    # recreate the chain here:
+    #   .claude/skills/reckon -> .agents/skills/reckon -> skills/reckon
+    mkdir -p .agents/skills .claude/skills
+    if [ -d skills/reckon ]; then
+        [ -e .agents/skills/reckon ] || ln -s ../../skills/reckon .agents/skills/reckon
+        [ -e .claude/skills/reckon ] || ln -s ../../.agents/skills/reckon .claude/skills/reckon
+        if [ -f .claude/skills/reckon/SKILL.md ]; then
+            ok "reckon skill linked (.claude → .agents → skills/reckon)"
+        else
+            err "reckon skill symlink chain did not resolve — agents will not load the skill"
+        fi
+    else
+        err "skills/reckon missing — are you running this from the repo root?"
+    fi
+
     if have direnv; then
         info "Approving .envrc with direnv..."
         if direnv allow . >/dev/null 2>&1; then
