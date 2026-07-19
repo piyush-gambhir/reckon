@@ -582,36 +582,61 @@ ensure_go() {
 setup_workspace() {
     header "Workspace setup"
 
-    if [ -f .env ] || [ -f .env.local ]; then
-        ok ".env or .env.local already exists — leaving alone"
+    mkdir -p .config/production .config/staging .config/uat
+    mkdir -p infra-knowledge/_shared infra-knowledge/production \
+        infra-knowledge/staging infra-knowledge/uat incidents
+    ok "per-environment config, infra-knowledge, and incidents directories ready"
+
+    if [ -f .env.production ]; then
+        ok ".env.production already exists — leaving alone"
     elif [ -f .env.example ]; then
-        (umask 077 && cp -n .env.example .env)
-        ok ".env created from .env.example"
-        warn "EDIT .env with real production credentials before using any CLI"
+        (umask 077 && cp -n .env.example .env.production)
+        chmod 0600 .env.production
+        ok ".env.production created from .env.example"
+        warn "EDIT .env.production with real production credentials before using any CLI"
     else
         err ".env.example missing — are you running this from the repo root?"
     fi
 
-    # Correct permissions on both newly-created and pre-existing credential files.
-    [ ! -f .env ] || chmod 0600 .env
-    [ ! -f .env.local ] || chmod 0600 .env.local
+    # Correct permissions on newly-created and pre-existing credential files.
+    [ ! -f .env.production ] || chmod 0600 .env.production
+    [ ! -f .env.common ] || chmod 0600 .env.common
+    [ ! -f .env.staging ] || chmod 0600 .env.staging
+    [ ! -f .env.uat ] || chmod 0600 .env.uat
+    for credential_file in .env.*.local; do
+        [ -f "$credential_file" ] || continue
+        chmod 0600 "$credential_file"
+    done
 
-    if [ -d infra-knowledge ]; then
-        local seeded=0
-        for example in infra-knowledge/*.example.md; do
-            [ -f "$example" ] || continue
-            local target="${example/.example/}"
+    local seeded=0 template target env
+    if [ -d skills/reckon/templates/infra-knowledge/_shared ] && \
+       [ -d skills/reckon/templates/infra-knowledge/env ]; then
+        for template in skills/reckon/templates/infra-knowledge/_shared/*.md; do
+            [ -f "$template" ] || continue
+            target="infra-knowledge/_shared/${template##*/}"
             if [ ! -f "$target" ]; then
-                cp -n "$example" "$target"
+                cp -n "$template" "$target"
                 seeded=$((seeded + 1))
             fi
         done
+        for env in production staging uat; do
+            for template in skills/reckon/templates/infra-knowledge/env/*.md; do
+                [ -f "$template" ] || continue
+                target="infra-knowledge/$env/${template##*/}"
+                if [ ! -f "$target" ]; then
+                    cp -n "$template" "$target"
+                    seeded=$((seeded + 1))
+                fi
+            done
+        done
         if [ "$seeded" -gt 0 ]; then
             ok "infra-knowledge: seeded $seeded file(s) from templates"
-            warn "edit infra-knowledge/*.md with your real service inventory and quirks"
+            warn "edit infra-knowledge/<environment>/*.md with your real service inventory and quirks"
         else
             ok "infra-knowledge: all template files already seeded"
         fi
+    else
+        err "infra-knowledge templates missing — are you running this from the repo root?"
     fi
 
     if have direnv; then
@@ -622,19 +647,20 @@ setup_workspace() {
             warn "direnv allow failed — run 'direnv allow' manually after hooking direnv into your shell"
         fi
     else
-        warn "direnv not installed — workspace env vars won't auto-load. Install it or source .env manually."
+        warn "direnv not installed — workspace env vars won't auto-load; source the selected env files manually."
     fi
 }
 
 print_next_steps() {
     header "Next steps"
     cat <<'EOF'
-  1. Edit .env with your real production credentials:
-       $EDITOR .env
+  1. Edit .env.production with your real production credentials:
+       $EDITOR .env.production
   2. Hook direnv into your shell (one-time, if not done already):
        bash:  eval "$(direnv hook bash)"   # add to ~/.bashrc
        zsh:   eval "$(direnv hook zsh)"    # add to ~/.zshrc
-  3. Reload direnv after editing .env:
+  3. Select production, staging, or uat and reload direnv:
+       export RECKON_ENV=production
        direnv reload
   4. Verify every connection (one safe read per tool):
        grafana user current -o json
