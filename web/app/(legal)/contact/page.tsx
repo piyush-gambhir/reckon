@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LegalPage } from '@/components/legal-page';
-import { createPageMetadata } from '@/lib/metadata';
+import { createPageMetadata, describePage } from '@/lib/metadata';
 
 export const metadata: Metadata = createPageMetadata({
   title: 'Contact',
-  summary: 'Contact details, support channels, and security reporting guidance for reckon.',
+  description: describePage('Contact details, support channels, and security reporting guidance for reckon.'),
   path: '/contact',
 });
 

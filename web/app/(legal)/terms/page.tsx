@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LegalPage } from '@/components/legal-page';
-import { createPageMetadata } from '@/lib/metadata';
+import { createPageMetadata, describePage } from '@/lib/metadata';
 
 export const metadata: Metadata = createPageMetadata({
   title: 'Terms of Service',
-  summary: 'Terms covering use, warranty, liability, authorization, and third-party services for reckon.',
+  description: describePage('Terms covering use, warranty, liability, authorization, and third-party services for reckon.'),
   path: '/terms',
 });
 

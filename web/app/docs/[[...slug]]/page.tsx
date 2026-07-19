@@ -11,7 +11,7 @@ import { notFound } from 'next/navigation';
 import { getMDXComponents } from '@/components/mdx';
 import type { Metadata } from 'next';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
-import { absoluteUrl, createPageMetadata } from '@/lib/metadata';
+import { absoluteUrl, createPageMetadata, describePage } from '@/lib/metadata';
 import { gitConfig } from '@/lib/shared';
 import {
   licenseUrl,
@@ -145,8 +145,9 @@ export async function generateMetadata(props: PageProps<'/docs/[[...slug]]'>): P
 
   return createPageMetadata({
     title: page.data.title,
-    summary:
+    description: describePage(
       page.data.description ?? `Technical documentation for ${page.data.title}.`,
+    ),
     path: page.url,
     type: 'article',
     image: getPageImage(page).url,
