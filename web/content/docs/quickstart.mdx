@@ -1,21 +1,38 @@
 ---
 title: Quick start
-description: Launch an agent runtime and carry out a cross-tool production investigation.
+description: Confirm what is connected, launch an agent runtime, and pick the right mode.
 ---
 
 ## 1. Prepare the clone
 
-After [setup](/docs/installation), fill `.env` with production credentials and
-edit the seeded `infra-knowledge/*.md` files. The agent consults this knowledge
+After [setup](/docs/installation), fill `.env.production` with real credentials and
+edit the seeded `infra-knowledge/` files. The agent consults this knowledge
 before querying so it understands service names, data locations, known quirks,
-and existing issues.
+and existing issues — it is per-environment: `_shared/` first, then `<env>/`
+overlaid, with the environment winning.
 
 ```bash
-$EDITOR .env
-direnv allow
+$EDITOR .env.production
+direnv allow                 # optional — see Connections
 ```
 
-## 2. Launch an agent
+## 2. Confirm what is actually connected
+
+Before launching anything, check the workspace's own state. Values still left at
+their `.env.example` defaults are reported as unconfigured, so this will not
+flatter you:
+
+```bash
+./scripts/reckon status      # active environment + integration matrix
+./scripts/reckon doctor      # setup problems, with the fix for each
+./scripts/reckon verify      # live connection checks (touches your infra)
+```
+
+`doctor` catches the failure that is otherwise silent: if direnv is not hooked
+into your shell, `.envrc` never loads, no credentials are exported, and the CLIs
+quietly fall back to saved profiles.
+
+## 3. Launch an agent
 
 The launcher auto-detects Claude Code, Codex CLI, then OpenCode:
 
@@ -31,11 +48,30 @@ scripts/agent.sh codex
 scripts/agent.sh opencode
 ```
 
+The agent's first action should be `./scripts/reckon preflight` — a compact digest
+of the active environment, which integrations are genuinely usable, which are not
+and why, and what knowledge exists. It is what stops an investigation from
+discovering a missing credential five queries in.
+
+## 4. Pick a mode
+
+reckon routes by *what is known*, not by what you call it:
+
+| Mode | Use when | Produces |
+| --- | --- | --- |
+| **investigate** | A specific bad thing in a specific window | An RCA under `incidents/<date>-<slug>/` |
+| **monitor** | Nothing known broken; sweeping for problems | A health report |
+| **analyze** | No fault — capacity, cost, profiling, growth | A ranked analysis |
+
+You do not need to name the mode. Describe the situation and the agent selects
+it; a request phrased as "just check something" that names a bad number in a
+window is an investigation.
+
 Keep approval prompts on. Claude Code reads `CLAUDE.md` and the repo-local RCA
 skill; Codex, OpenCode, and other compatible runtimes read `AGENTS.md` and the
 same canonical safety contract.
 
-## 3. Describe the incident
+## 5. Describe the situation
 
 Give the agent a service, symptom, and narrow UTC window when possible:
 
@@ -48,7 +84,7 @@ The agent starts broad, then follows the evidence across alert state, failed
 builds, traces, logs, metrics, deployments, dependencies, queues, Kubernetes,
 caches, and databases as needed.
 
-## 4. Review the evidence
+## 6. Review the evidence
 
 A completed investigation is written to:
 

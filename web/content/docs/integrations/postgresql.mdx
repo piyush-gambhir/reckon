@@ -22,7 +22,7 @@ PGDATABASE=app_production
 PGSSLMODE=require
 ```
 
-Unless `.env` overrides it, `.envrc` also exports:
+Unless `.env.<env>` overrides it, `.envrc` also exports:
 
 ```bash
 PGOPTIONS='-c statement_timeout=30s -c default_transaction_read_only=on'

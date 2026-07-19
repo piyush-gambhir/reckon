@@ -1,12 +1,13 @@
 ---
 title: Introduction
-description: A production-only agent workspace for cross-system root-cause analysis.
+description: An agent workspace for investigating, monitoring, and analysing your infrastructure across production, staging, and UAT.
 ---
 
-**reckon** is an agent workspace for investigating production incidents and
-performing root-cause analysis. It wires together twelve read-only
-observability, CI/CD, and infrastructure CLIs, plus optional Elasticsearch
-access, inside one isolated credential environment.
+**reckon** is an agent workspace for talking to your infrastructure —
+investigating incidents, sweeping for problems, and understanding behaviour over
+time. It wires together fourteen read-only observability, CI/CD, queue,
+Kubernetes, and database CLIs inside one isolated, per-environment credential
+setup.
 
 It is not a single CLI or installable binary. Clone the workspace, run its
 idempotent setup script, add production credentials, and launch Claude Code,
@@ -15,10 +16,51 @@ then correlate signals across systems in one session instead of investigating
 each tool in isolation.
 
 <Callout type="warn">
-  This workspace is **production-only**. Put only production credentials in a
-  clone. Use a separate clone for staging or UAT so an investigation cannot mix
-  environments.
+  **reckon never writes.** Every wired tool is read-only by role or by usage: no
+  writes to a database, no `kubectl apply`, no triggered builds, no producing to
+  Kafka. reckon observes; humans mitigate.
 </Callout>
+
+## Three modes
+
+Not every question is an incident. reckon routes work by *what is known*:
+
+- **investigate** — a specific bad thing in a specific window: an alert fired, a
+  metric dropped, errors spiked, a deploy is suspected. Produces an RCA under
+  `incidents/<YYYY-MM-DD>-<slug>/`.
+- **monitor** — nothing known to be broken; sweeping. Health checks, pre- and
+  post-deploy verification, drift hunting. Produces a health report, and escalates
+  into `investigate` when it finds something real.
+- **analyze** — no fault at all: capacity headroom, cost drivers, slow-query and
+  endpoint profiling, growth. Produces a ranked analysis.
+
+## Environments
+
+One clone targets **production, staging, and UAT**, selected by `RECKON_ENV`.
+Each environment gets its own credentials (`.env.<env>`) and its own CLI config
+directory (`.config/<env>/`), so no two ever share credential state. An
+unrecognised value fails closed — no credentials load at all, rather than
+silently falling back to a real environment.
+
+```bash
+./scripts/reckon use staging     # persists across shells
+./scripts/reckon status          # what is active, and how it resolved
+```
+
+The read-only posture is identical everywhere; the split governs *which*
+infrastructure you touch, never how safe the access is.
+
+## The control surface
+
+`scripts/reckon` makes the workspace's own state legible, so neither you nor the
+agent has to guess what is connected:
+
+```bash
+./scripts/reckon status      # active environment + integration matrix
+./scripts/reckon doctor      # diagnose setup problems
+./scripts/reckon preflight   # compact digest an agent reads before its first query
+./scripts/reckon verify      # live connection checks (the only one that hits your infra)
+```
 
 ## The toolbelt
 
@@ -41,6 +83,11 @@ and failures, inspect traces and logs, check metrics, correlate deployments,
 map dependencies, then consult queues, infrastructure, caches, or databases
 only where the evidence points. Findings and raw evidence are persisted under
 `incidents/<YYYY-MM-DD>-<slug>/`.
+
+Every RCA carries a `root_cause_category` from a controlled vocabulary, a
+calibrated confidence score, and an explicit split between claims backed by tool
+evidence and claims still unproven — so the incident corpus becomes searchable
+across incidents instead of a pile of prose.
 
 <Cards>
   <Card title="Setup" href="/docs/installation" description="Clone the workspace and install the toolbelt on macOS, Linux, or Windows with WSL2." />

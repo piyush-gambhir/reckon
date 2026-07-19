@@ -1,21 +1,53 @@
 ---
 title: Connections & credentials
-description: Isolate production credentials, CLI profiles, and read-only safety settings per clone.
+description: Per-environment credential isolation, CLI profiles, and the read-only safety contract.
 ---
 
-reckon uses folder-specific credentials. On macOS and Linux, `.envrc` pins
-`XDG_CONFIG_HOME` to `.config/` inside the clone and loads `.env` and
-`.env.local`. On native Windows, dot-source `scripts/activate.ps1` to apply the
-same workspace-local environment to the current PowerShell session.
+reckon uses **per-environment, folder-specific credentials**. `.envrc` resolves
+`RECKON_ENV`, pins `XDG_CONFIG_HOME` to `.config/<env>/` inside the clone, and
+loads credentials in order — `.env.common`, then `.env.<env>`, then
+`.env.<env>.local`, later winning. On native Windows, dot-source
+`scripts/activate.ps1 -Env <env>` for the same result.
+
+Because each environment gets its own config directory, production, staging, and
+UAT never share credential state.
+
+## Choosing an environment
+
+```bash
+./scripts/reckon use staging     # persists in .reckon-env, survives new shells
+./scripts/reckon status          # confirm what is active and how it resolved
+```
+
+Precedence is `RECKON_ENV` (exported) → `.reckon-env` (file) → `production`. An
+unrecognised value in either **fails closed**: no credentials are loaded at all,
+rather than silently selecting a real environment.
 
 ## Preferred: environment credentials
 
-Setup seeds `.env` from `.env.example`. Populate it with production-only
-credentials, then allow direnv:
+Setup seeds `.env.production` from `.env.example`. Populate it with real
+credentials — create `.env.staging` and `.env.uat` the same way as you need them:
 
 ```bash
-$EDITOR .env
-direnv allow
+$EDITOR .env.production
+direnv allow            # optional, see below
+```
+
+<Callout type="warn">
+  Values left at their `.env.example` defaults (`replace_me`, `*.example.com`)
+  are treated as **unconfigured**. `./scripts/reckon preflight` will report the
+  integration as unavailable rather than claim a connection that cannot work.
+</Callout>
+
+## direnv is optional
+
+direnv auto-loads `.envrc` when you `cd` in. If it is not installed or not hooked
+into your shell, **nothing warns you** — `.envrc` simply never runs and the CLIs
+fall back to saved profiles. `./scripts/reckon doctor` detects exactly this. To
+activate a shell without direnv:
+
+```bash
+eval "$(./scripts/reckon env)"
 ```
 
 Kafka and database clients read credentials directly from this environment.
@@ -36,15 +68,15 @@ gh auth login
 
 Their state stays under the clone:
 
-- `.config/grafana-cli/config.yaml`
-- `.config/jenkins-cli/config.yaml`
-- `.config/cubeapm-cli/config.yaml`
-- `.config/aws/{config,credentials}`
-- `.config/gh/{config.yml,hosts.yml}`
+- `.config/<env>/grafana-cli/config.yaml`
+- `.config/<env>/jenkins-cli/config.yaml`
+- `.config/<env>/cubeapm-cli/config.yaml`
+- `.config/<env>/aws/{config,credentials}`
+- `.config/<env>/gh/{config.yml,hosts.yml}`
 
 <Callout type="info">
-  Use a separate clone for every environment. The local config root lets each
-  clone carry different credentials without falling back to global profiles.
+  A saved profile counts as configured even when the matching environment
+  variables are absent — which is how `gh auth login` alone is enough for GitHub.
 </Callout>
 
 ## The read-only contract

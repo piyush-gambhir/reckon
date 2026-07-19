@@ -15,7 +15,7 @@ bash scripts/setup.sh
 ```
 
 Homebrew is required. The script installs missing tools with Homebrew or pinned
-`go install` commands, creates `.env` from `.env.example` when needed, seeds the
+`go install` commands, creates `.env.production` from `.env.example` when needed, seeds the
 `infra-knowledge/` templates, and runs `direnv allow`.
 
 ## Linux
@@ -69,10 +69,18 @@ notepad .env
 
 ## Finish the workspace
 
-Edit `.env` with real production credentials and fill the seeded
+Edit `.env.production` with real production credentials and fill the seeded
 `infra-knowledge/*.md` files with your service inventory, naming conventions,
-server quirks, and known issues. Then verify each connection with the safe reads
-listed in `README.md` before starting an incident.
+server quirks, and known issues. Then confirm the workspace is actually wired up:
+
+```bash
+./scripts/reckon doctor      # setup problems, with the fix for each
+./scripts/reckon status      # what is connected in the active environment
+./scripts/reckon verify      # one safe read per configured integration
+```
+
+`verify` is the only command that contacts your infrastructure; `doctor` and
+`status` are local inspection.
 
 <Callout type="warn">
   Keep approval prompts enabled in the agent runtime. Database queries must not

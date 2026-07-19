@@ -20,13 +20,13 @@ GRAFANA_TOKEN=replace_me
 
 `grafana` also honors the repo-local `XDG_CONFIG_HOME`. Running `grafana login`
 inside the workspace stores its fallback profile at
-`.config/grafana-cli/config.yaml`.
+`.config/<env>/grafana-cli/config.yaml`.
 
 ## Read-only contract
 
-This workspace is production-only and read-only by usage. Keep Grafana access to
-the investigation reads documented below and use a separate clone for staging
-or UAT credentials.
+This workspace is read-only by usage. Keep Grafana access to
+the investigation reads documented below, and put staging or UAT credentials in
+`.env.staging` / `.env.uat` rather than mixing them into production.
 
 ## Key commands
 

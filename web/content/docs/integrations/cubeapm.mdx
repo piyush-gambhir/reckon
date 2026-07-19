@@ -25,11 +25,11 @@ that differ from the defaults may also set `CUBEAPM_QUERY_PORT`,
 `CUBEAPM_INGEST_PORT`, and `CUBEAPM_ADMIN_PORT`.
 
 The CLI honors the repo-local `XDG_CONFIG_HOME`. Running `cubeapm login` stores
-the fallback profile at `.config/cubeapm-cli/config.yaml`.
+the fallback profile at `.config/<env>/cubeapm-cli/config.yaml`.
 
 ## Read-only contract
 
-This production-only workspace uses CubeAPM for telemetry reads. Keep the
+This workspace uses CubeAPM for telemetry reads. Keep the
 integration to the query commands below, start broad, narrow by service and time
 range, and use `-o json` when an agent will parse the output.
 
