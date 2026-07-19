@@ -30,7 +30,25 @@ This project is a workspace for spinning up a coding agent to investigate produc
 **Optional integrations**
 - **es** ([es-cli](https://github.com/piyush-gambhir/es-cli)) -- Elasticsearch/ELK: cluster health, index state, Query DSL / SQL search. Only wired when `ES_URL` is set in `.env`. `.envrc` exports `ES_READ_ONLY=true`, which the CLI enforces client-side — mutating commands are refused before any request is sent.
 
-This workspace is **production-only**. Keep only production credentials here. If the team wants staging or UAT investigation, use a different clone so the agent cannot cross wires between environments.
+## Environments — read before any query
+
+This workspace targets **three environments: `production`, `staging`, `uat`**, selected by the `RECKON_ENV` variable. Each has its own credentials (`.env.<env>`) and its own CLI config directory (`.config/<env>/`), so no two environments ever share credential state.
+
+**The rule the whole design exists to enforce:** never query one environment while believing you are on another. It is silent, easy, and no tool will catch it.
+
+1. **Resolve `RECKON_ENV` before the first query.** If unset, empty, or uncertain — **stop and ask**. Never infer the environment from service names, hostnames, or context.
+2. **State it explicitly** in your first substantive message: *"Working against **production**."* Restate on any switch.
+3. **Never mix environments within one investigation, sweep, or analysis.** Cross-environment comparison is legitimate, but label every number with its environment and announce each switch.
+4. **Record it in the output** — RCAs carry an `Environment` header row; health reports and analyses name it in the first line.
+
+Switching:
+
+```bash
+export RECKON_ENV=staging && direnv reload    # macOS/Linux
+. .\scripts\activate.ps1 -Env staging          # Windows
+```
+
+**The read-only posture is identical in all three environments** — the split is about *which* infrastructure you touch, never about relaxing safety. But blast radius is not identical: in production, prefer the cheaper signal, bound queries harder, and escalate to a human sooner.
 
 ## Database safety contract
 
@@ -44,35 +62,38 @@ The DB clients (`mongosh`, `psql`, `mysql`, and `clickhouse client`) can in prin
 
 ## Skills
 
-Skills are installed **repo-locally** (the skills CLI honours `XDG_CONFIG_HOME`, which `.envrc` pins into `.config/`; pinned sources live in `skills-lock.json`). The `rca-assist` skill is the one tracked in this repo at `skills/rca-assist/`, surfaced to the agent via the `.claude/skills/rca-assist` → `.agents/skills/rca-assist` → `skills/rca-assist` symlink chain — so editing `skills/rca-assist/SKILL.md` *is* editing the loaded skill. See the `grafana`, `jenkins`, and `cubeapm` skills for full command references and workflows.
+Skills are installed **repo-locally** (the skills CLI honours `XDG_CONFIG_HOME`, which `.envrc` pins into `.config/`; pinned sources live in `skills-lock.json`). The `reckon` skill is the one tracked in this repo at `skills/reckon/`, surfaced to the agent via the `.claude/skills/reckon` → `.agents/skills/reckon` → `skills/reckon` symlink chain — so editing `skills/reckon/SKILL.md` *is* editing the loaded skill. See the `grafana`, `jenkins`, and `cubeapm` skills for full command references and workflows.
 
 ## Authentication
 
-This project uses **folder-specific credentials** via `.envrc`, which sets `XDG_CONFIG_HOME` to `.config/` within this directory and loads `.env` / `.env.local` if present. Environment variables are the preferred setup because they make the workspace usable immediately when you `cd` into it, without interactive CLI logins. Saved CLI profiles under `.config/` remain a fallback option.
+This project uses **per-environment, folder-specific credentials** via `.envrc`. It resolves `RECKON_ENV`, sets `XDG_CONFIG_HOME` to `.config/<env>/` within this directory, and loads credentials in this order (later wins): `.env.common` → `.env.<env>` → `.env.<env>.local`. Because each environment gets its own config directory, no two environments ever share CLI credential state. Environment variables are the preferred setup because they make the workspace usable immediately when you `cd` into it, without interactive CLI logins. Saved CLI profiles under `.config/<env>/` remain a fallback option.
 
-Make sure direnv is set up (`direnv allow`), then either populate `.env` / `.env.local` from `.env.example` or run login for each tool:
+An unrecognised `RECKON_ENV` **fails closed** — no credentials are loaded at all, rather than silently falling back to a real environment.
+
+Make sure direnv is set up (`direnv allow`), then populate the credential file for each environment you use:
 
 ```bash
-cp -n .env.example .env
-$EDITOR .env
+cp -n .env.example .env.production      # repeat for .env.staging / .env.uat as needed
+$EDITOR .env.production
+export RECKON_ENV=production            # or staging / uat
 direnv allow
 
 # Optional fallback if you prefer saved profiles:
 # grafana login
 # jenkins login
 # cubeapm login
-# aws configure                # writes .config/aws/{config,credentials}
-# gh auth login                # writes .config/gh/hosts.yml
+# aws configure                # writes .config/<env>/aws/{config,credentials}
+# gh auth login                # writes .config/<env>/gh/hosts.yml
 ```
 
-`grafana`, `jenkins`, `cubeapm`, and `gh` honour `XDG_CONFIG_HOME` so their state lands inside `.config/` automatically. `aws` does not, so `.envrc` also exports `AWS_CONFIG_FILE` and `AWS_SHARED_CREDENTIALS_FILE` to point inside the workspace. Kafka and DB tools (`kcat`, `rpk`, `mongosh`, `psql`, `mysql`, and `clickhouse client`) read credentials directly from env vars in `.env`.
+`grafana`, `jenkins`, `cubeapm`, and `gh` honour `XDG_CONFIG_HOME` so their state lands inside `.config/<env>/` automatically. `aws` does not, so `.envrc` also exports `AWS_CONFIG_FILE` and `AWS_SHARED_CREDENTIALS_FILE` to point inside the active environment's directory. Kafka and DB tools (`kcat`, `rpk`, `mongosh`, `psql`, `mysql`, and `clickhouse client`) read credentials directly from env vars in `.env.<env>`.
 
 Config files are stored at:
-- `.config/grafana-cli/config.yaml`
-- `.config/jenkins-cli/config.yaml`
-- `.config/cubeapm-cli/config.yaml`
-- `.config/aws/{config,credentials}`
-- `.config/gh/{config.yml,hosts.yml}`
+- `.config/<env>/grafana-cli/config.yaml`
+- `.config/<env>/jenkins-cli/config.yaml`
+- `.config/<env>/cubeapm-cli/config.yaml`
+- `.config/<env>/aws/{config,credentials}`
+- `.config/<env>/gh/{config.yml,hosts.yml}`
 
 Verify every connection (one safe read per tool):
 ```bash
@@ -96,14 +117,22 @@ clickhouse client --host "$CLICKHOUSE_HOST" --port "$CLICKHOUSE_PORT" --user "$C
 
 ## RCA Workflow
 
-For any investigation, invoke the **`rca-assist` skill** — it captures the disciplined cascade methodology and points at the right CLI at each step. Always consult [`infra-knowledge/`](infra-knowledge/) at the workspace root before querying anything; it holds service inventory, label conventions, server quirks, and latent issues the team already knows about.
+For any infrastructure work, invoke the **`reckon` skill** and enter the mode that fits the request:
 
-Quick reference (the skill expands on each step):
+| Mode | Enter when | Produces |
+|---|---|---|
+| **investigate** | A specific bad thing in a specific window — alert fired, metric dropped, errors spiked, deploy suspected | An RCA at `incidents/<YYYY-MM-DD>-<slug>/` |
+| **monitor** | Nothing known broken; sweeping — health check, pre/post-deploy verification, drift hunting | A health report |
+| **analyze** | No fault — capacity, cost, performance profiling, growth | An analysis writeup |
+
+Always consult `infra-knowledge/` before querying anything. It is **per-environment**: read `infra-knowledge/_shared/` first, then overlay `infra-knowledge/$RECKON_ENV/`, where the environment-specific file always wins.
+
+Quick reference for the investigate mode (the skill expands on each step):
 
 ### 1. Assess the situation
 - Check **Grafana alerts**: `grafana alert rule list -o json` and `grafana alert silence list -o json`
 - Check **Jenkins build status**: `jenkins job list --recursive --status FAILURE -o json`
-- List **CubeAPM services**: `cubeapm metrics label-values service -o json` (use this, not `cubeapm traces services`, as the canonical inventory — see [`infra-knowledge/server-quirks.md`](infra-knowledge/server-quirks.md) for any deployment-specific behaviour)
+- List **CubeAPM services**: `cubeapm metrics label-values service -o json` (use this, not `cubeapm traces services`, as the canonical inventory — see [`infra-knowledge/<env>/server-quirks.md`](infra-knowledge/<env>/server-quirks.md) for any deployment-specific behaviour)
 
 ### 2. Investigate errors (traces + logs)
 - Search error traces: `cubeapm traces search --service <svc> --status error --last 1h -o json`
@@ -112,7 +141,7 @@ Quick reference (the skill expands on each step):
 - Check log volume: `cubeapm logs hits --query 'level:error' --last 6h --step 15m -o json`
 
 ### 2b. Search an Elasticsearch/ELK log store (es) — when a service logs to ES, not CubeAPM
-Use when `cubeapm logs hits` stays zero across a wide window and the service's log destination is Elasticsearch (see `infra-knowledge/known-issues.md` "Logs not shipped to CubeAPM"). Read-only is enforced client-side via `ES_READ_ONLY=true` from `.envrc`.
+Use when `cubeapm logs hits` stays zero across a wide window and the service's log destination is Elasticsearch (see `infra-knowledge/<env>/known-issues.md` "Logs not shipped to CubeAPM"). Read-only is enforced client-side via `ES_READ_ONLY=true` from `.envrc`.
 
 - Cluster sanity: `es cluster health -o json`
 - Find the right index: `es index list -o json | jq -r '.[].index' | grep -i <svc>`
@@ -169,7 +198,7 @@ Use when CubeAPM data is missing, lagging, or attribution is weak (e.g. `host.na
 - Grafana datasource health: `grafana datasource list -o json`
 
 ### 5b. Inspect message queues (Kafka — kcat + rpk)
-Use when the symptom is "consumer is slow / lagging / stuck", a deadletter topic is suspected, or a service that talks to Kafka is misbehaving. The team's stack uses many consumer groups — see [`infra-knowledge/service-name-mapping.md`](infra-knowledge/service-name-mapping.md) for the mapping from service to consumer group.
+Use when the symptom is "consumer is slow / lagging / stuck", a deadletter topic is suspected, or a service that talks to Kafka is misbehaving. The team's stack uses many consumer groups — see [`infra-knowledge/_shared/service-name-mapping.md`](infra-knowledge/_shared/service-name-mapping.md) for the mapping from service to consumer group.
 
 **Kafka safety contract** (kcat/rpk have no read-only mode — these rules are the only client-side guard):
 1. **The SASL principal in `.env` should be read-only at the broker** — ACLs limited to `Describe`/`Read` (for MSK IAM: `kafka-cluster:Connect`, `Describe*`, `ReadData` — no `WriteData`/`Create*`/`Delete*`/`Alter*`). That's the real enforcement; provision it like the read-only DB role.
@@ -228,7 +257,7 @@ Use sparingly and only after observability tools have narrowed the suspect to a 
 - Replication: `mysql -e "SHOW REPLICA STATUS\G"`
 
 ### 5d. Inspect Kubernetes state (kubectl) — read-only by usage
-Use when the symptom looks like pod churn, a deploy blackout, OOM kills, or replica-count anomalies (e.g. "service emitted 0 metrics and 0 logs for 80 minutes" — check whether anything was *running*). `KUBECONFIG` is workspace-local (`.config/kube/config`); seed it with `aws eks update-kubeconfig --name <cluster> --region "$AWS_REGION"`.
+Use when the symptom looks like pod churn, a deploy blackout, OOM kills, or replica-count anomalies (e.g. "service emitted 0 metrics and 0 logs for 80 minutes" — check whether anything was *running*). `KUBECONFIG` is workspace-local (`.config/<env>/kube/config`); seed it with `aws eks update-kubeconfig --name <cluster> --region "$AWS_REGION"`.
 
 - Pod state + restarts: `kubectl get pods -n <ns> -o wide`
 - Why a pod died: `kubectl describe pod <pod> -n <ns>` (look at Events, LastState, OOMKilled)
@@ -262,4 +291,4 @@ Use when a cache/queue backed by Redis is suspect (the Grafana datasource list i
 - **Check multiple signals.** Don't rely on just traces or just metrics -- cross-reference.
 - **Document findings.** As you investigate, summarize what you find at each step.
 - **Be explicit about uncertainty.** If the data is inconclusive, say so.
-- **Persist the RCA in the incidents convention.** Write all output to `incidents/<YYYY-MM-DD>-<slug>/` (UTC date the incident started; `RCA.md` + `alert.txt` + `learnings.md` + `evidence/`) per [`incidents/README.md`](incidents/README.md) and the skill's §7 — never to the repo root.
+- **Persist the RCA in the incidents convention.** Write all output to `incidents/<YYYY-MM-DD>-<slug>/` (UTC date the incident started; `RCA.md` + `alert.txt` + `learnings.md` + `evidence/`) per [`skills/reckon/references/incidents-convention.md`](skills/reckon/references/incidents-convention.md) and the skill's §7 — never to the repo root.

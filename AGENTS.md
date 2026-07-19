@@ -4,7 +4,7 @@
 
 ## Investigation methodology
 
-The full RCA methodology lives at [`skills/rca-assist/SKILL.md`](skills/rca-assist/SKILL.md) (with references in `skills/rca-assist/references/`). Claude Code loads it as a skill automatically; if your runtime has no skill loader, **read that file at the start of any incident investigation** and follow it. Consult [`infra-knowledge/`](infra-knowledge/) before querying anything.
+The full RCA methodology lives at [`skills/reckon/SKILL.md`](skills/reckon/SKILL.md) (with references in `skills/reckon/references/`). Claude Code loads it as a skill automatically; if your runtime has no skill loader, **read that file at the start of any incident investigation** and follow it. Consult [`infra-knowledge/`](infra-knowledge/) before querying anything.
 
 ## Things that don't transfer from Claude Code
 
@@ -19,4 +19,4 @@ Subscription logins (Claude Pro/Max via `claude` → `/login`, ChatGPT via `code
 
 - This workspace is **production-only** and **read-only by usage**: never write to a DB, never `kubectl apply/delete/scale`, never trigger a Jenkins build, never produce to Kafka — and never consume with a group id (`kcat -G` / `rpk topic consume -g`), which joins and rebalances a production consumer group.
 - Re-read the **Database safety contract** in `CLAUDE.md` before any `psql`/`mysql`/`mongosh` query. `EXPLAIN` first, `LIMIT` always, and invoke mysql via `mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf"`.
-- Write all RCA output to `incidents/<YYYY-MM-DD>-<slug>/` per [`incidents/README.md`](incidents/README.md) — never to the repo root.
+- Write all RCA output to `incidents/<YYYY-MM-DD>-<slug>/` per [`skills/reckon/references/incidents-convention.md`](skills/reckon/references/incidents-convention.md) — never to the repo root.

@@ -10,6 +10,21 @@ An agent workspace for talking to your infrastructure — investigating incident
 
 This clone is intended to be **production-only**. Put only production Grafana, Jenkins, and CubeAPM credentials in this workspace. If you ever need staging or UAT, use a separate clone so the agent never mixes environments during an RCA.
 
+### Editions
+
+reckon comes in two editions that share one brain and differ in **who runs the investigation**. This repo is the first one.
+
+| | **Workspace edition** *(this repo)* | **Hosted edition** |
+|---|---|---|
+| Status | ✅ The only edition being built right now | 🔜 Deferred — not started |
+| Who reasons | *Your* coding agent (Claude Code / Codex / any `AGENTS.md` runtime) | A deployed agent with its own LLM loop |
+| Where it runs | Your laptop, in a clone you `cd` into | A server, connected to the whole infra |
+| Human in the loop | Always — you approve each sensitive query | No, by design |
+
+The methodology (`skills/reckon/`), the facts (`infra-knowledge/`), and the incident corpus (`incidents/`) are the **shared core** — both editions consume them verbatim. Everything that assumes a shell, direnv, or a human at the keyboard is workspace-specific.
+
+**→ [EDITIONS.md](EDITIONS.md)** — the full split, what belongs to the shared core, and the four seam rules that keep the hosted edition attachable later.
+
 **Tools available to the agent:**
 
 | CLI | Covers |
@@ -175,16 +190,6 @@ Example prompts:
 - *"The checkout service latency spiked at 14:30 UTC. What happened?"*
 - *"Which Jenkins build broke the payments pipeline and when did it start?"*
 - *"Find all error traces from the auth service in the last hour."*
-
-## Incidents viewer (UI)
-
-A zero-dependency local web UI for browsing your RCA corpus — incident list with filtering, rendered RCA/learnings markdown, raw alert text, and every evidence file, including the legacy root-level `RCA-*.md` writeups:
-
-```bash
-node ui/serve.mjs        # → http://localhost:7777
-```
-
-It binds `127.0.0.1` only and serves the gitignored `incidents/` folder read-only — nothing leaves the machine. (The docs site under [`web/`](web/) remains the *product documentation*; the UI is for *your incident data*.)
 
 ## Agent runtimes
 
