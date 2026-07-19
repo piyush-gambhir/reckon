@@ -13,6 +13,14 @@ infra-knowledge/*.md
 !infra-knowledge/README.md
 !infra-knowledge/*.example.md
 
+# Same reasoning for per-environment folders (infra-knowledge/production/,
+# infra-knowledge/_shared/, ...): they hold real service inventories and
+# hostnames. Only the templates above are meant to be tracked.
+infra-knowledge/*/
+
+# Locally built reckon binary.
+/bin/
+
 # Per-incident folders under incidents/<YYYY-MM-DD>-<slug>/. Each
 # contains the RCA writeup, original alert text, learnings, and raw
 # evidence (logs, metric snapshots) — all of which reference real
