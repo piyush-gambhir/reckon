@@ -8,7 +8,7 @@ When you add an entry: include a **date**, a **pointer to the RCA or ticket** wh
 
 ### Example entry
 **Observed:** `<query span_name>` on `<service>` — avg 200–900 ms per call, **all day long**. Range does not correlate with load or time of day.
-**First surfaced:** [RCA YYYY-MM-DD](../RCA-YYYY-MM-DD-<slug>.md) — amplified under bulk load.
+**First surfaced:** `incidents/<YYYY-MM-DD>-<slug>/RCA.md` — amplified under bulk load.
 **Why it matters:** at ~600 ms per call, each MySQL connection can sustain ~2 q/s of this query before queueing begins. Any fan-out pattern above ~4 q/s saturates the pool.
 **Suspected cause:** missing index on the `WHERE` predicate. Needs DBA `EXPLAIN`.
 **Mitigation status:** not fixed as of YYYY-MM-DD.

@@ -18,7 +18,7 @@ For each bulk endpoint, record:
 
 ### `POST /api/v1/bulk/<thing>` on `<service>`
 **Amplification:** One call → ~N rps of downstream work for M minutes per K items. **No rate limiting**.
-**First seen in:** [RCA YYYY-MM-DD](../RCA-YYYY-MM-DD-<slug>.md).
+**First seen in:** `incidents/<YYYY-MM-DD>-<slug>/RCA.md`.
 **Common initiator:** admin console user, via the `<screen>` page. Preceded by GETs to `/api/<screen>/<helper>`.
 **Mitigation status:** `<status>`.
 

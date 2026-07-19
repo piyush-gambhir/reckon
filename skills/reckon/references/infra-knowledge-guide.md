@@ -1,6 +1,6 @@
 # infra-knowledge
 
-Team-owned, team-maintained facts about **your organisation's infrastructure** that the `rca-assist` skill consults during investigations. The skill itself is generic; this folder is what makes its answers specific and correct.
+Team-owned, team-maintained facts about **your organisation's infrastructure** that the `reckon` skill consults during investigations. The skill itself is generic; this folder is what makes its answers specific and correct.
 
 ## Getting started
 
@@ -17,18 +17,18 @@ Diff against the example file periodically to catch new sections added upstream.
 
 ## How the skill uses this folder
 
-When `rca-assist` starts an investigation, it tries to read (at minimum) the files below. If a file is missing, the skill continues without it and notes the gap in the RCA — but every file you fill in saves real investigation time on the next incident.
+When `reckon` starts an investigation, it tries to read (at minimum) the files below. If a file is missing, the skill continues without it and notes the gap in the RCA — but every file you fill in saves real investigation time on the next incident.
 
 | File | Purpose |
 |------|---------|
-| [services.md](services.md) | Service inventory: canonical names, what each owns, label spellings |
-| [service-name-mapping.md](service-name-mapping.md) | Cross-tool name lookup (CubeAPM ↔ Grafana ↔ Jenkins ↔ Kafka consumer group ↔ K8s) + Grafana datasource UIDs |
-| [metric-conventions.md](metric-conventions.md) | Label conventions, metric names, time zone, expected env values |
-| [server-quirks.md](server-quirks.md) | Reverse-proxy and API quirks the CLIs have to work around |
-| [known-issues.md](known-issues.md) | Queries / endpoints known to be slow or fragile at baseline |
-| [bulk-endpoints.md](bulk-endpoints.md) | Admin / bulk endpoints that commonly cause cascade incidents |
-| [deploy-pipelines.md](deploy-pipelines.md) | Which Jenkins job deploys which service, and how to check |
-| [oncall.md](oncall.md) | Who to escalate to for each service / domain |
+| `<env>/services.md` | Service inventory: canonical names, what each owns, label spellings |
+| `_shared/service-name-mapping.md` | Cross-tool name lookup (CubeAPM ↔ Grafana ↔ Jenkins ↔ Kafka consumer group ↔ K8s) + Grafana datasource UIDs |
+| `_shared/metric-conventions.md` | Label conventions, metric names, time zone, expected env values |
+| `<env>/server-quirks.md` | Reverse-proxy and API quirks the CLIs have to work around |
+| `<env>/known-issues.md` | Queries / endpoints known to be slow or fragile at baseline |
+| `_shared/bulk-endpoints.md` | Admin / bulk endpoints that commonly cause cascade incidents |
+| `<env>/deploy-pipelines.md` | Which Jenkins job deploys which service, and how to check |
+| `<env>/oncall.md` | Who to escalate to for each service / domain |
 
 ## How to maintain it
 
@@ -39,7 +39,7 @@ When `rca-assist` starts an investigation, it tries to read (at minimum) the fil
 
 ## What lives here vs. in the skill
 
-- The **skill** (`skills/rca-assist/`, loaded via the `.claude/skills/rca-assist` symlink) describes *how* to investigate — the cascade method, queries by pattern, document structure.
+- The **skill** (`skills/reckon/`, loaded via the `.claude/skills/reckon` symlink) describes *how* to investigate — the cascade method, queries by pattern, document structure.
 - This **folder** describes *what is true* about this environment — service names, label conventions, deploy jobs, on-call rota.
 
 If you find yourself wanting to hard-code a service name into the skill itself, that's a sign it should live here instead.

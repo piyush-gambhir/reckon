@@ -8,7 +8,7 @@ Keep this list in sync with `cubeapm metrics label-values service`. If a service
 
 - **Label source of truth:** CubeAPM metric label `service` (not `service.name`, which is used in logs and sometimes differs in case).
 - **Case matters.** `My-Service` and `my-service` are different label values.
-- **Environment label:** `env` with values from [metric-conventions.md](metric-conventions.md). Treat missing/empty env values as a data-quality bug.
+- **Environment label:** `env` with values from [../_shared/metric-conventions.md](../_shared/metric-conventions.md). Treat missing/empty env values as a data-quality bug.
 
 ## Services
 
@@ -26,7 +26,7 @@ Last refreshed: YYYY-MM-DD.
 Document known fan-out patterns. Example format:
 
 - `example-api` `POST /do/thing` → synchronous fan-out to `example-worker`, `example-downstream`. A slowdown in either cascades to this endpoint.
-- `example-api` `POST /bulk/import` → generates sustained `example-worker` load for several minutes per call. See [bulk-endpoints.md](bulk-endpoints.md).
+- `example-api` `POST /bulk/import` → generates sustained `example-worker` load for several minutes per call. See [../_shared/bulk-endpoints.md](../_shared/bulk-endpoints.md).
 
 ## Time zone
 

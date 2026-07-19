@@ -6,31 +6,30 @@
 .env.*
 !.env.example
 
-# Team-specific infra knowledge. Each team fills in its own version from
-# the committed <topic>.example.md templates; the filled-in copies are
-# local-only so rca-assist can be distributed as a generic product.
-infra-knowledge/*.md
-!infra-knowledge/README.md
-!infra-knowledge/*.example.md
+# ── Tenant data: ENTIRELY local, never committed ───────────────────────────
+# Everything under these two directories belongs to whoever cloned reckon —
+# their service inventory, quirks, on-call rotations, incident history, raw
+# evidence: real service names, trace IDs, IPs, timelines. Operators populate
+# them via their own coding agent, against their own infra. Nothing here is
+# ours to ship, so both directories are ignored wholesale (no exceptions —
+# a `!` re-include rule here is how tenant data leaks).
+#
+# What makes these directories usable travels with the SKILL instead, tracked:
+#   skills/reckon/templates/infra-knowledge/{_shared,env}/  — seed templates
+#   skills/reckon/references/infra-knowledge-guide.md       — what each file holds
+#   skills/reckon/references/incidents-convention.md        — folder layout
+# `scripts/setup.sh` creates and seeds both directories from those templates,
+# so a fresh clone bootstraps without either being in git.
+/infra-knowledge/
+/incidents/
 
-# Same reasoning for per-environment folders (infra-knowledge/production/,
-# infra-knowledge/_shared/, ...): they hold real service inventories and
-# hostnames. Only the templates above are meant to be tracked.
-infra-knowledge/*/
-
-# Locally built reckon binary.
+# Locally built binaries. The `reckon` control-surface CLI is a tracked shell
+# script at scripts/reckon, deliberately NOT here, so this stays a pure
+# build-output directory.
 /bin/
 
-# Per-incident folders under incidents/<YYYY-MM-DD>-<slug>/. Each
-# contains the RCA writeup, original alert text, learnings, and raw
-# evidence (logs, metric snapshots) — all of which reference real
-# service names, trace IDs, IPs, and timelines that shouldn't be
-# shared publicly. The convention itself (incidents/README.md and
-# any incidents/*.example/ reference folders) stays tracked so the
-# layout travels with the skill.
-/incidents/*/
-!/incidents/*.example/
-!/incidents/*.example/**
+# Local state: the active environment pinned by `scripts/reckon use <env>`.
+/.reckon-env
 
 # Legacy: RCA artifacts that used to land at the repo root before the
 # incidents/ convention. Kept ignored for back-compat with older clones.

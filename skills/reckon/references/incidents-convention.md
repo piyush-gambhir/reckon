@@ -28,7 +28,7 @@ The skill writes the following structure. Anything here is optional except `RCA.
 
 ```
 incidents/<YYYY-MM-DD>-<slug>/
-├── RCA.md                    # the writeup. Required. Follows skills/rca-assist/references/rca-doc-template.md.
+├── RCA.md                    # the writeup. Required. Follows skills/reckon/references/rca-doc-template.md.
 ├── alert.txt                 # the original notification text that triggered the investigation.
 ├── learnings.md              # short retrospective: what I got wrong, where each lesson now lives.
 ├── evidence/                 # raw artifacts that back specific claims in the RCA.
@@ -59,7 +59,7 @@ mkdir -p "incidents/$SLUG/evidence"
 # Then write RCA.md, alert.txt, learnings.md, and evidence/*
 ```
 
-The skill (when invoked via `/rca-assist` or by the `rca-assist` agent) will use this same layout automatically.
+The skill (when invoked via `/reckon` or by the `reckon` agent) will use this same layout automatically.
 
 ## Export to PDF
 

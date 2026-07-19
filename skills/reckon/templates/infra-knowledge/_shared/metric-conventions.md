@@ -30,7 +30,7 @@ Histogram: `cube_apm_latency_bucket`, `cube_apm_latency_count`, `cube_apm_latenc
 | Label          | Values seen                                  | Notes |
 |----------------|----------------------------------------------|-------|
 | `env`          | e.g. `prod`, `stage`, `dev`                  | Document the exact spellings used here |
-| `service`      | see [services.md](services.md)               | Case-sensitive; note any inconsistencies |
+| `service`      | see [../env/services.md](../env/services.md)               | Case-sensitive; note any inconsistencies |
 | `service.version` | typically version tags or `unset`          | |
 | `root_name`    | e.g. `WebTransaction/...`                    | Framework-dependent format — document the shape |
 
