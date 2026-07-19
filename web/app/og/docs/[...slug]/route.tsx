@@ -1,108 +1,22 @@
-import { getPageImage, source } from '@/lib/source';
 import { notFound } from 'next/navigation';
-import { ImageResponse } from 'next/og';
-import { site } from '@/lib/site';
+import { socialCard } from '@/lib/og';
+import { getPageImage, source } from '@/lib/source';
 
 export const revalidate = false;
 
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-
-const fontBuffer = async (...fontPath: string[]) => {
-  const data = await readFile(join(process.cwd(), 'node_modules', ...fontPath));
-  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
-};
-
-const interDisplay = fontBuffer('@fontsource', 'inter', 'files', 'inter-latin-400-normal.woff');
-const jetbrainsMono = fontBuffer('@fontsource', 'jetbrains-mono', 'files', 'jetbrains-mono-latin-500-normal.woff');
-
-export async function GET(_req: Request, { params }: RouteContext<'/og/docs/[...slug]'>) {
+export async function GET(
+  _req: Request,
+  { params }: RouteContext<'/og/docs/[...slug]'>,
+) {
   const { slug } = await params;
   const page = source.getPage(slug.slice(0, -1));
   if (!page) notFound();
 
-  const [displayFont, monoFont] = await Promise.all([interDisplay, jetbrainsMono]);
-
-  return new ImageResponse(
-    <div
-      style={{
-        width: '100%',
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        padding: '68px 76px',
-        color: '#f3f4f1',
-        background: '#131412',
-        fontFamily: 'Inter',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          fontFamily: 'JetBrains Mono',
-          fontSize: 24,
-        }}
-      >
-        <span style={{ color: '#cdec4e' }}>&gt;_ {site.binary}</span>
-        <span style={{ color: '#7f827b' }}>docs / {page.slugs.join(' / ') || 'introduction'}</span>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <div
-          style={{
-            maxWidth: 990,
-            fontSize: 86,
-            lineHeight: 0.96,
-            letterSpacing: '-0.055em',
-          }}
-        >
-          {page.data.title}
-        </div>
-        <div
-          style={{
-            maxWidth: 900,
-            color: '#b6b8b3',
-            fontFamily: 'JetBrains Mono',
-            fontSize: 26,
-            lineHeight: 1.3,
-          }}
-        >
-          {page.data.description}
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: 'flex',
-          width: '100%',
-          height: 16,
-          borderRadius: 8,
-          background: '#cdec4e',
-        }}
-      />
-    </div>,
-    {
-      width: 1200,
-      height: 630,
-      fonts: [
-        {
-          name: 'Inter',
-          data: displayFont,
-          weight: 400,
-          style: 'normal',
-        },
-        {
-          name: 'JetBrains Mono',
-          data: monoFont,
-          weight: 500,
-          style: 'normal',
-        },
-      ],
-    },
-  );
+  return socialCard({
+    title: page.data.title,
+    description: page.data.description,
+    context: `docs / ${page.slugs.join(' / ') || 'introduction'}`,
+  });
 }
 
 export function generateStaticParams() {

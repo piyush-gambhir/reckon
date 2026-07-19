@@ -47,6 +47,8 @@ export interface SiteConfig {
   accent?: string;
   /** Optional: human-readable accent name */
   accentName?: string;
+  /** Optional: hex twin of the accent, for surfaces without oklch() support (OG images) */
+  accentHex?: string;
 }
 
 export const site: SiteConfig = {
@@ -59,6 +61,7 @@ export const site: SiteConfig = {
   badge: 'Production RCA workspace',
   accent: 'oklch(0.85 0.21 150)',
   accentName: 'phosphor',
+  accentHex: '#45f27f',
   installCommand:
     'git clone https://github.com/piyush-gambhir/reckon.git && cd reckon && bash scripts/setup.sh',
   features: [
