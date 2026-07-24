@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useRef } from 'react';
+import { useRef } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { HeroTerminal } from '@/components/hero-terminal';
 import { InstallCommand } from '@/components/install-command';
@@ -20,7 +20,6 @@ export function HomeHero() {
       const root = rootRef.current;
       if (!root) return;
 
-      const words = gsap.utils.toArray<HTMLElement>('[data-hero-word]', root);
       const description = root.querySelector<HTMLElement>(
         '[data-hero-description]',
       );
@@ -35,25 +34,8 @@ export function HomeHero() {
       const revealHero = () => {
         if (revealTimeline) return;
 
-        gsap.set(words, {
-          yPercent: 100,
-          rotation: 10,
-          transformOrigin: 'bottom left',
-        });
-
         revealTimeline = gsap
           .timeline({ defaults: { ease: 'expo.out' } })
-          .to(
-            words,
-            {
-              yPercent: 0,
-              rotation: 0,
-              autoAlpha: 1,
-              duration: 1.2,
-              stagger: 0.05,
-            },
-            0,
-          )
           .from(description, { y: '2em', duration: 1.2 }, 0);
       };
 
@@ -128,7 +110,7 @@ export function HomeHero() {
         parallaxTween?.scrollTrigger?.kill();
         parallaxTween?.kill();
         if (terminalStage) gsap.set(terminalStage, { clearProps: 'transform' });
-        gsap.set([...words, description, ...blobs], {
+        gsap.set([description, ...blobs], {
           clearProps: 'transform,opacity,visibility',
         });
       };
@@ -164,24 +146,16 @@ export function HomeHero() {
       <div className="osmo-container osmo-home-hero__inner">
         <div className="osmo-home-hero__grid">
           <div className="osmo-home-hero__content">
-        <h1 className="osmo-home-hero__title" aria-label={site.tagline}>
-          <span className="home-motion__text-mask" aria-hidden="true">
+        <h1 className="osmo-home-hero__title">
+          <span className="home-motion__text-mask">
             <span className="home-motion__text-line">
-              {taglineWords.slice(0, -2).map((word, index) => (
-                <Fragment key={`${word}-${index}`}>
-                  <span data-hero-word>{word}</span>{' '}
-                </Fragment>
-              ))}
+              {`${taglineWords.slice(0, -2).join(' ')} `}
               {/* The answer the terminal prints, in the terminal's color. */}
               <span className="osmo-home-hero__accent">
-                <span data-hero-word>
-                  {taglineWords[taglineWords.length - 2]}
-                </span>{' '}
+                {taglineWords[taglineWords.length - 2]}{' '}
                 <span className="osmo-home-hero__tail">
-                  <span data-hero-word>
-                    {taglineWords[taglineWords.length - 1]}
-                  </span>
-                  <span className="osmo-home-hero__cursor" />
+                  {taglineWords[taglineWords.length - 1]}
+                  <span className="osmo-home-hero__cursor" aria-hidden="true" />
                 </span>
               </span>
             </span>
