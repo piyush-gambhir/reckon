@@ -613,22 +613,29 @@ body {
   text-transform: uppercase;
 }
 
+/* A viewport-locked stage. The composition is centered in what is left after
+   the floating nav and the scroll cue claim their bands, so the headline sits
+   on the optical center rather than the geometric one. */
 .osmo-home-hero {
   position: relative;
-  overflow: hidden;
-  padding-top: calc(var(--nav-bar-height) + var(--padding-s));
-  padding-bottom: var(--padding-m);
+  display: flex;
+  min-height: 100svh;
+  flex-direction: column;
+  justify-content: center;
+  overflow: clip;
+  padding-top: calc(var(--nav-bar-height) + var(--gap-xxl));
+  padding-bottom: calc(var(--gap-xxl) * 2.5);
 }
 
 .osmo-home-hero__inner {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--gap-l);
   text-align: center;
 }
-
-.osmo-home-hero__eyebrow-mark { margin-right: 0.5em; }
 
 .osmo-home-hero__title {
   max-width: 12em;
@@ -677,7 +684,6 @@ body {
 }
 
 .osmo-home-hero__install { width: 100%; max-width: 35.1875em; }
-.osmo-home-hero__terminal { width: 100%; max-width: 44em; margin-top: var(--gap-xl); text-align: left; }
 
 .hero-terminal {
   overflow: hidden;
@@ -2639,60 +2645,14 @@ button:focus-visible {
   z-index: 1;
 }
 
-.osmo-home-hero__aurora {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.osmo-home-hero__aurora-blob {
-  position: absolute;
-  display: block;
-  border-radius: 50%;
-  filter: blur(80px);
-  will-change: transform;
-}
-
-.osmo-home-hero__aurora-blob.is--electric {
-  top: -12%;
-  left: 50%;
-  width: 36rem;
-  height: 36rem;
-  margin-left: -18rem;
-  background: radial-gradient(
-    circle,
-    color-mix(in oklab, var(--site-accent) 22%, transparent),
-    transparent 70%
-  );
-}
-
-.osmo-home-hero__aurora-blob.is--purple {
-  top: 4%;
-  right: 8%;
-  width: 22rem;
-  height: 22rem;
-  background: radial-gradient(
-    circle,
-    color-mix(in oklab, var(--color-purple) 18%, transparent),
-    transparent 72%
-  );
-}
-
-.marketing-shell .osmo-home-hero__terminal-stage {
-  position: relative;
-  width: 100%;
-  max-width: 44em;
-  margin-top: var(--gap-xl);
-}
-
-.marketing-shell .osmo-home-hero__terminal {
-  max-width: none;
-  margin-top: 0;
-}
-
+/* The field: the live investigation transcript, full bleed behind the type at
+   texture strength. It is the product's own output doing the work a decorative
+   background would otherwise do. */
+/* Annotates the clone command from below, where nothing else is competing for
+   the space. Above it would land on the button row. */
 .marketing-shell .osmo-home-hero__scribble {
-  top: -0.5em;
-  right: var(--gap-xl);
+  top: calc(100% + 0.5em);
+  right: 0.25em;
 }
 
 .marketing-shell .hero-terminal {
@@ -4227,88 +4187,68 @@ body.booting {
   }
 }
 
-/* Split hero: message left, live terminal right and above the fold. Mobile
-   keeps the centered stack. */
-.osmo-home-hero__grid {
-  display: flex;
-  width: 100%;
-  flex-direction: column;
+.osmo-home-hero__title,
+.osmo-home-hero__description,
+.osmo-home-hero__actions,
+.osmo-home-hero__install {
+  position: relative;
+  z-index: 1;
+}
+
+.osmo-home-hero__install { position: relative; }
+
+/* Gutter ticks: a quiet admission that the stage sits on a grid. */
+.osmo-home-hero__tick {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  color: var(--muted-foreground);
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.875em;
+  line-height: 1;
+  opacity: 0.5;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.osmo-home-hero__tick.is--start { left: var(--container-padding); }
+.osmo-home-hero__tick.is--end { right: var(--container-padding); }
+
+/* One cue, bottom center, sitting in the band the stage reserved for it. */
+.osmo-home-hero__cue {
+  position: absolute;
+  z-index: 1;
+  bottom: var(--gap-xxl);
+  left: 50%;
+  display: inline-flex;
   align-items: center;
-  gap: var(--gap-l);
+  gap: 0.75em;
+  padding: 1em 1.75em;
+  border-radius: 3em;
+  color: var(--background);
+  background: var(--foreground);
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.6875em;
+  line-height: 1;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  transition: transform 0.3s var(--cubic-default);
 }
 
-.osmo-home-hero__content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--gap-l);
+.osmo-home-hero__cue:hover {
+  transform: translateX(-50%) scale(1.04);
 }
 
-@media (min-width: 992px) {
-  .osmo-home-hero__grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.04fr) minmax(0, 0.96fr);
-    align-items: center;
-    gap: clamp(var(--gap-xxl), 5vw, 5.5em);
-    text-align: left;
-  }
-
-  .osmo-home-hero__content {
-    align-items: flex-start;
-    text-align: left;
-  }
-
-  .marketing-shell .osmo-home-hero__title {
-    max-width: none;
-    font-size: 4.75em;
-    letter-spacing: -0.05em;
-  }
-
-  .osmo-home-hero__description {
-    max-width: 24em;
-  }
-
-  .osmo-home-hero__actions {
-    justify-content: flex-start;
-  }
-
-  .osmo-home-hero__install {
-    max-width: 30em;
-  }
-
-  .marketing-shell .osmo-home-hero__terminal-stage {
-    max-width: none;
-    margin-top: 0;
-  }
-
-  .osmo-home-hero__terminal {
-    max-width: none;
-    margin-top: 0;
-  }
-
-  /* Aurora re-anchored to the terminal side. */
-  .osmo-home-hero__aurora-blob.is--electric {
-    top: -6%;
-    left: auto;
-    right: -8%;
-    margin-left: 0;
-  }
-
-  .osmo-home-hero__aurora-blob.is--purple {
-    top: 40%;
-    right: 34%;
-  }
+.osmo-home-hero__cue:focus-visible {
+  outline: 2px solid var(--site-accent);
+  outline-offset: 4px;
 }
 
-/* Phosphor halo: the terminal is the floating centerpiece. */
-.marketing-shell .osmo-home-hero__terminal .hero-terminal {
-  box-shadow:
-    0 1.5em 4em rgb(0 0 0 / 30%),
-    0 2.5em 7em color-mix(in srgb, var(--site-accent) 10%, transparent);
-}
-
-/* Split-hero constraints. Mobile: the headline sizes so its longest word
-   always fits the viewport, and no hero child can exceed the container. */
+/* Mobile: the headline sizes so its longest word always fits the viewport, the
+   field thins out so the type keeps its contrast, and no hero child can exceed
+   the container. */
 @media (max-width: 991px) {
   .marketing-shell .osmo-home-hero__title,
   .osmo-home-hero__title {
@@ -4317,23 +4257,24 @@ body.booting {
     letter-spacing: -0.04em;
   }
 
-  .osmo-home-hero__grid,
-  .osmo-home-hero__content,
-  .osmo-home-hero__content > *,
-  .marketing-shell .osmo-home-hero__terminal-stage {
+  .osmo-home-hero__inner,
+  .osmo-home-hero__inner > * {
     min-width: 0;
     max-width: 100%;
   }
 
-  .hero-terminal__body {
-    overflow-x: auto;
+  .osmo-home-hero__tick { display: none; }
+
+  .osmo-home-hero__cue {
+    padding: 0.9em 1.35em;
+    font-size: 0.625em;
+    letter-spacing: 0.14em;
   }
 }
 
-/* Desktop split column: one type step down so the longest command fits the
-   card without clipping. */
-@media (min-width: 992px) {
-  .osmo-home-hero__terminal .hero-terminal__body {
-    font-size: 0.8125em;
-  }
+/* The field is decoration; reduced motion should not animate it, and the cue
+   should not translate on hover. */
+@media (prefers-reduced-motion: reduce) {
+  .osmo-home-hero__cue { transition: none; }
+  .osmo-home-hero__cue:hover { transform: translateX(-50%); }
 }

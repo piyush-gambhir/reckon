@@ -101,6 +101,7 @@ export default function HomePage() {
       {/* Stack strip */}
       {site.compatible && site.compatible.length > 0 ? (
         <section
+          id="stack"
           className="osmo-section osmo-section--compatible"
           aria-labelledby="compatible-heading"
         >

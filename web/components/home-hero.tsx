@@ -2,17 +2,23 @@
 
 import { useRef } from 'react';
 import { ArrowRight } from 'lucide-react';
-import { HeroTerminal } from '@/components/hero-terminal';
 import { InstallCommand } from '@/components/install-command';
-import { Reveal } from '@/components/reveal';
 import { OsmoButton } from '@/components/ui/osmo-button';
-import { gsap, ScrollTrigger } from '@/lib/motion/gsap';
+import { gsap } from '@/lib/motion/gsap';
 import { useGsap } from '@/lib/motion/useGsap';
 import { site } from '@/lib/site';
 
+/**
+ * A viewport-locked stage with one centered idea: the headline, what it does,
+ * and the two ways in. Nothing sits behind the type.
+ */
 export function HomeHero() {
   const rootRef = useRef<HTMLElement>(null);
-  const taglineWords = site.tagline.split(/\s+/);
+  const words = site.tagline.split(/\s+/);
+  // Deliberate two-line break: the long clause reads first, the answer lands
+  // second. Accent stays on the closing pair.
+  const opening = words.slice(0, -3);
+  const closing = words.slice(-3);
   const repoUrl = `https://github.com/${site.repo}`;
 
   useGsap(
@@ -23,7 +29,7 @@ export function HomeHero() {
       const description = root.querySelector<HTMLElement>(
         '[data-hero-description]',
       );
-      const blobs = gsap.utils.toArray<HTMLElement>('[data-hero-aurora]', root);
+      const cue = root.querySelector<HTMLElement>('[data-hero-cue]');
       const motionPreference = window.matchMedia(
         '(prefers-reduced-motion: reduce)',
       );
@@ -36,7 +42,8 @@ export function HomeHero() {
 
         revealTimeline = gsap
           .timeline({ defaults: { ease: 'expo.out' } })
-          .from(description, { y: '2em', duration: 1.2 }, 0);
+          .from(description, { y: '2em', duration: 1.2 }, 0)
+          .from(cue, { autoAlpha: 0, y: '1em', duration: 0.9 }, 0.35);
       };
 
       const html = document.documentElement;
@@ -63,54 +70,11 @@ export function HomeHero() {
         });
       }
 
-      const blobTweens = blobs.map((blob, index) =>
-        gsap.to(blob, {
-          xPercent: index === 0 ? 6 : -6,
-          yPercent: index === 0 ? 4 : -4,
-          duration: 8,
-          ease: 'sine.inOut',
-          yoyo: true,
-          repeat: -1,
-        }),
-      );
-
-      // Subtle parallax: the terminal drifts up slightly as the hero scrolls
-      // out, giving the stage depth without competing with the typing.
-      const terminalStage = root.querySelector<HTMLElement>(
-        '[data-hero-terminal-stage]',
-      );
-      const parallaxTween = terminalStage
-        ? gsap.to(terminalStage, {
-            yPercent: -6,
-            ease: 'none',
-            scrollTrigger: {
-              trigger: root,
-              start: 'top top',
-              end: 'bottom top',
-              scrub: true,
-            },
-          })
-        : null;
-
-      const visibilityTrigger = ScrollTrigger.create({
-        trigger: root,
-        start: 'top bottom',
-        end: 'bottom top',
-        onEnter: () => blobTweens.forEach((tween) => tween.resume()),
-        onEnterBack: () => blobTweens.forEach((tween) => tween.resume()),
-        onLeave: () => blobTweens.forEach((tween) => tween.pause()),
-        onLeaveBack: () => blobTweens.forEach((tween) => tween.pause()),
-      });
-
       const handlePreferenceChange = (event: MediaQueryListEvent) => {
         if (!event.matches) return;
         bootObserver?.disconnect();
         revealTimeline?.progress(1).kill();
-        blobTweens.forEach((tween) => tween.kill());
-        parallaxTween?.scrollTrigger?.kill();
-        parallaxTween?.kill();
-        if (terminalStage) gsap.set(terminalStage, { clearProps: 'transform' });
-        gsap.set([description, ...blobs], {
+        gsap.set([description, cue], {
           clearProps: 'transform,opacity,visibility',
         });
       };
@@ -120,11 +84,7 @@ export function HomeHero() {
         motionPreference.removeEventListener('change', handlePreferenceChange);
         window.cancelAnimationFrame(bootFrame);
         bootObserver?.disconnect();
-        visibilityTrigger.kill();
         revealTimeline?.kill();
-        parallaxTween?.scrollTrigger?.kill();
-        parallaxTween?.kill();
-        blobTweens.forEach((tween) => tween.kill());
       };
     },
     [],
@@ -133,72 +93,60 @@ export function HomeHero() {
 
   return (
     <section ref={rootRef} className="osmo-home-hero">
-      <div className="osmo-home-hero__aurora" aria-hidden="true">
-        <span
-          className="osmo-home-hero__aurora-blob is--electric"
-          data-hero-aurora
-        />
-        <span
-          className="osmo-home-hero__aurora-blob is--purple"
-          data-hero-aurora
-        />
-      </div>
+      {/* Gutter ticks: the stage admits it sits on a grid. */}
+      <span className="osmo-home-hero__tick is--start" aria-hidden="true">
+        +
+      </span>
+      <span className="osmo-home-hero__tick is--end" aria-hidden="true">
+        +
+      </span>
+
       <div className="osmo-container osmo-home-hero__inner">
-        <div className="osmo-home-hero__grid">
-          <div className="osmo-home-hero__content">
         <h1 className="osmo-home-hero__title">
           <span className="home-motion__text-mask">
+            <span className="home-motion__text-line">{opening.join(' ')}</span>
+          </span>
+          <span className="home-motion__text-mask">
             <span className="home-motion__text-line">
-              {`${taglineWords.slice(0, -2).join(' ')} `}
+              {`${closing[0]} `}
               {/* The answer the terminal prints, in the terminal's color. */}
               <span className="osmo-home-hero__accent">
-                {taglineWords[taglineWords.length - 2]}{' '}
+                {closing[1]}{' '}
                 <span className="osmo-home-hero__tail">
-                  {taglineWords[taglineWords.length - 1]}
+                  {closing[2]}
                   <span className="osmo-home-hero__cursor" aria-hidden="true" />
                 </span>
               </span>
             </span>
           </span>
         </h1>
+
         <p className="osmo-home-hero__description" data-hero-description>
           {site.description}
         </p>
 
         <div className="osmo-home-hero__actions">
-          <OsmoButton
-            href="/docs"
-            aria-label="Get started"
-            icon={<ArrowRight />}
-          >
+          <OsmoButton href="/docs" aria-label="Get started" icon={<ArrowRight />}>
             Get started
           </OsmoButton>
-          <OsmoButton
-            href={repoUrl}
-            theme="neutral"
-            aria-label="View on GitHub"
-          >
+          <OsmoButton href={repoUrl} theme="neutral" aria-label="View on GitHub">
             View on GitHub
           </OsmoButton>
         </div>
+
         <div className="osmo-home-hero__install">
+          <p className="reckon-scribble osmo-home-hero__scribble">
+            read-only, always
+          </p>
           <InstallCommand command={site.installCommand} />
         </div>
-          </div>
-
-          <Reveal
-            className="osmo-home-hero__terminal-stage"
-            data-hero-terminal-stage
-          >
-            <p className="reckon-scribble osmo-home-hero__scribble">
-              read-only, always
-            </p>
-            <div className="osmo-home-hero__terminal">
-              <HeroTerminal title={site.exampleTitle} command={site.example} />
-            </div>
-          </Reveal>
-        </div>
       </div>
+
+      <a className="osmo-home-hero__cue" href="#stack" data-hero-cue>
+        <span aria-hidden="true">&darr;</span>
+        Scroll to explore
+        <span aria-hidden="true">&darr;</span>
+      </a>
     </section>
   );
 }
