@@ -152,7 +152,7 @@ export function SiteFooter() {
             </p>
             <p className="site-footer__credit">
               <a
-                href="https://github.com/piyush-gambhir"
+                href="https://www.piyushgambhir.com"
                 target="_blank"
                 rel="noreferrer"
               >
