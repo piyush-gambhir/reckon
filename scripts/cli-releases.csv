@@ -1,0 +1,5 @@
+binary,module,version,release,version_package
+grafana,github.com/piyush-gambhir/grafana-cli/cli-go,v0.2.6,v0.2.6,internal/build
+jenkins,github.com/piyush-gambhir/jenkins-cli/cli-go,v0.2.6,v0.2.6,internal/version
+cubeapm,github.com/piyush-gambhir/cubeapm-cli/cli-go,v0.2.6,v0.2.6,cmd
+es,github.com/piyush-gambhir/es-cli/cli-go,v0.1.6,v0.1.6,internal/build

@@ -15,6 +15,8 @@
 
 set -uo pipefail
 
+RECKON_SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 INSTALLED=0
 ALREADY=0
 FAILED=0
@@ -508,21 +510,8 @@ install_redis_cli() {
 # Go-based custom CLIs (grafana / jenkins / cubeapm) — same on all platforms.
 # -----------------------------------------------------------------------------
 
-install_go_cli() {
-    local module="$1" bin="$2" version="$3"
-    if have "$bin"; then mark_already "$bin"; return; fi
-    info "$bin — installing via go install (${module}@${version})..."
-    if go install "${module}@${version}" >/dev/null 2>&1; then
-        if have "$bin"; then
-            mark_installed "$bin"
-        else
-            warn "$bin — installed to $GOBIN_DIR but not on PATH yet"
-            INSTALLED=$((INSTALLED + 1))
-        fi
-    else
-        mark_failed "$bin"
-    fi
-}
+# shellcheck source=lib/go-clis.sh
+source "$RECKON_SETUP_DIR/lib/go-clis.sh"
 
 # -----------------------------------------------------------------------------
 # Bootstrap dependencies (brew on macOS, go everywhere)
@@ -567,7 +556,8 @@ ensure_go() {
         esac
     fi
 
-    GOBIN_DIR="$(go env GOPATH)/bin"
+    GOBIN_DIR="$(go env GOBIN)"
+    [ -n "$GOBIN_DIR" ] || GOBIN_DIR="$(go env GOPATH)/bin"
     case ":$PATH:" in
         *":$GOBIN_DIR:"*) ok "$GOBIN_DIR is on PATH" ;;
         *) warn "$GOBIN_DIR is NOT on PATH — add to your shell rc:"
@@ -700,7 +690,7 @@ EOF
 # -----------------------------------------------------------------------------
 
 main() {
-    cd "$(cd "$(dirname "$0")" && pwd)/.."
+    cd "$RECKON_SETUP_DIR/.."
 
     printf "%s=== reckon setup ===%s\n" "$C_BOLD" "$C_RESET"
     printf "Repo: %s\n" "$(pwd)"
@@ -733,10 +723,11 @@ main() {
     install_redis_cli
 
     header "Custom CLIs (grafana / jenkins / cubeapm / es)"
-    install_go_cli github.com/piyush-gambhir/grafana-cli grafana v0.2.2
-    install_go_cli github.com/piyush-gambhir/jenkins-cli jenkins v0.2.2
-    install_go_cli github.com/piyush-gambhir/cubeapm-cli cubeapm v0.2.2
-    install_go_cli github.com/piyush-gambhir/es-cli es v0.1.2
+    local binary module version release version_package
+    while IFS=, read -r binary module version release version_package; do
+        [ "$binary" = "binary" ] && continue
+        install_go_cli "$module" "$binary" "$version" "$release" "$version_package"
+    done < "$RECKON_SETUP_DIR/cli-releases.csv"
 
     setup_workspace
 

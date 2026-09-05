@@ -86,3 +86,11 @@ server quirks, and known issues. Then confirm the workspace is actually wired up
   Keep approval prompts enabled in the agent runtime. Database queries must not
   be broadly pre-approved, and database users must be true read-only roles.
 </Callout>
+
+## Pinned CLI releases
+
+Both setup scripts read `scripts/cli-releases.csv`. It pins Grafana, Jenkins,
+and CubeAPM to release 0.2.6 and Elasticsearch to 0.1.6. The source modules live
+under `cli-go/` and have matching `cli-go/v*` version tags. The installer stages
+each build and installs it using its public name (`grafana`, `jenkins`,
+`cubeapm`, or `es`). Existing commands on PATH are left in place when setup is rerun.

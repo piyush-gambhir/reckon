@@ -124,37 +124,38 @@ function Install-GoCli {
     param(
         [Parameter(Mandatory)] [string] $Module,
         [Parameter(Mandatory)] [string] $Bin,
-        [Parameter(Mandatory)] [string] $Version
+        [Parameter(Mandatory)] [string] $Version,
+        [Parameter(Mandatory)] [string] $Release,
+        [Parameter(Mandatory)] [string] $VersionPackage
     )
     if (Test-Command $Bin) { Mark-Already $Bin; return }
-    if (-not (Test-Command go)) {
-        Mark-Failed "$Bin (go not installed)"
-        return
-    }
-    Write-Info "$Bin — installing via go install ($Module@$Version)..."
+    if (-not (Test-Command go)) { Mark-Failed "$Bin (go not installed)"; return }
+    $previousGoBin = $env:GOBIN
+    $previousEAP = $ErrorActionPreference
+    $stage = Join-Path ([IO.Path]::GetTempPath()) ([IO.Path]::GetRandomFileName())
+    Write-Info "$Bin — installing $Release ($Module@$Version)..."
     try {
-        # `go install` always writes "go: downloading ..." to stderr on a fresh
-        # fetch; under EAP=Stop on Windows PowerShell 5.1 that stderr is wrapped
-        # in an ErrorRecord and throws, falsely failing the install. Force
-        # Continue around the native call and check $LASTEXITCODE only.
-        $prevEAP = $ErrorActionPreference
+        $destination = (& go env GOBIN).Trim()
+        if (-not $destination) { $destination = Join-Path ((& go env GOPATH).Trim()) 'bin' }
+        New-Item -ItemType Directory -Path $stage -Force | Out-Null
+        $env:GOBIN = $stage
+        # PowerShell 5.1 treats native stderr as ErrorRecord; Go writes normal
+        # download progress there. Use its exit code, restoring state in finally.
         $ErrorActionPreference = 'Continue'
-        & go install "$Module@$Version" 2>&1 | Out-Null
-        $ErrorActionPreference = $prevEAP
-        if ($LASTEXITCODE -eq 0) {
-            $gobin = (& go env GOPATH).Trim() + '\bin'
-            $env:Path = "$gobin;$env:Path"
-            if (Test-Command $Bin) {
-                Mark-Installed $Bin
-            } else {
-                Write-Warn "$Bin — installed to $gobin but not on PATH yet"
-                $Script:Installed++
-            }
-        } else {
-            Mark-Failed $Bin
-        }
+        & go install -ldflags "-X $Module/$VersionPackage.Version=$($Release.TrimStart('v'))" "$Module@$Version" 2>&1 | Out-Null
+        $installExitCode = $LASTEXITCODE
+        $ErrorActionPreference = $previousEAP
+        if ($installExitCode -ne 0) { Mark-Failed $Bin; return }
+        New-Item -ItemType Directory -Path $destination -Force | Out-Null
+        Move-Item -LiteralPath (Join-Path $stage 'cli-go.exe') -Destination (Join-Path $destination "$Bin.exe") -Force
+        $env:Path = "$destination;$env:Path"
+        Mark-Installed $Bin
     } catch {
         Mark-Failed $Bin
+    } finally {
+        $env:GOBIN = $previousGoBin
+        $ErrorActionPreference = $previousEAP
+        if (Test-Path $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
     }
 }
 
@@ -270,10 +271,9 @@ function Main {
     Install-Winget -Id 'GoLang.Go' -Bin 'go'
 
     Write-Header 'Custom CLIs (grafana / jenkins / cubeapm / es)'
-    Install-GoCli -Module 'github.com/piyush-gambhir/grafana-cli' -Bin 'grafana' -Version 'v0.2.2'
-    Install-GoCli -Module 'github.com/piyush-gambhir/jenkins-cli' -Bin 'jenkins' -Version 'v0.2.2'
-    Install-GoCli -Module 'github.com/piyush-gambhir/cubeapm-cli' -Bin 'cubeapm' -Version 'v0.2.2'
-    Install-GoCli -Module 'github.com/piyush-gambhir/es-cli'      -Bin 'es' -Version 'v0.1.2'
+    Import-Csv (Join-Path $PSScriptRoot 'cli-releases.csv') | ForEach-Object {
+        Install-GoCli -Module $_.module -Bin $_.binary -Version $_.version -Release $_.release -VersionPackage $_.version_package
+    }
 
     Setup-Workspace
 
