@@ -22,6 +22,16 @@ from reckonlib.store import create, evidence, lock, read_json, resolve_service, 
 BOUNDS = {"from": "2026-09-08T14:00:00Z", "to": "2026-09-08T14:30:00Z"}
 
 
+class RepositoryBoundaryTests(unittest.TestCase):
+    def test_tenant_state_is_never_tracked(self):
+        tracked = subprocess.check_output(["git", "ls-files", "-z"], cwd=SOURCE).decode().split("\0")
+        private_roots = {".config", ".reckon-env", ".reckon-demo", "infra-knowledge", "incidents", "sessions", "bin"}
+        for name in filter(None, tracked):
+            path = Path(name)
+            self.assertNotIn(path.parts[0], private_roots, name)
+            self.assertFalse(path.name == ".env" or path.name.startswith(".env.") and path.name != ".env.example", name)
+
+
 class Fixture(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="reckon-test-")
@@ -85,6 +95,42 @@ class EnvironmentTests(Fixture):
         self.assertNotIn("GRAFANA_TOKEN", values)
         self.assertNotIn("CUBEAPM_PASSWORD", envs.scope(values, "github"))
         self.assertEqual(values["CUBEAPM_SERVER"], "fixture.invalid")
+        self.assertNotIn("KUBECONFIG", envs.scope(values, "github"))
+        self.assertIn("KUBECONFIG", envs.scope(values, "kubernetes"))
+
+    def test_read_only_cannot_be_disabled_in_environment_files(self):
+        self.credentials("ES_READ_ONLY=false\n")
+        self.assertEqual(envs.load(self.root, "staging")["ES_READ_ONLY"], "true")
+
+    def test_runtime_home_cache_and_temp_are_provider_and_environment_scoped(self):
+        outside = self.root / "operator-home"
+        outside.mkdir()
+        (outside / "global-credentials").write_text("outside-profile")
+        values = envs.load(self.root, "staging")
+        values["HOME"] = str(outside)
+        staging = envs.scope(values, "cubeapm")
+        production = envs.scope({**values, "RECKON_ENV": "production"}, "cubeapm")
+        github = envs.scope(values, "github")
+        self.assertNotEqual(staging["HOME"], production["HOME"])
+        self.assertNotEqual(staging["HOME"], github["HOME"])
+        probe = "import os; from pathlib import Path; assert not (Path.home()/'global-credentials').exists(); (Path(os.environ['TMPDIR'])/'marker').write_text('private')"
+        result = run([sys.executable, "-c", probe], env=staging)
+        self.assertEqual(result["status"], "ok", result["stderr"])
+        for key in ("HOME", "USERPROFILE", "XDG_CACHE_HOME", "XDG_STATE_HOME", "APPDATA", "LOCALAPPDATA", "TMPDIR", "TMP", "TEMP"):
+            directory = Path(staging[key])
+            directory.relative_to(self.root / ".config/staging/runtime/cubeapm")
+            if os.name != "nt":
+                self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
+        self.assertEqual(values["HOME"], str(outside))
+        self.assertEqual(list(outside.iterdir()), [outside / "global-credentials"])
+
+    def test_profile_directory_symlink_is_rejected_before_activation(self):
+        outside = self.root / "outside-config"
+        outside.mkdir()
+        (self.root / ".config").symlink_to(outside, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            envs.load(self.root, "staging")
+        self.assertEqual(list(outside.iterdir()), [])
 
     def test_missing_environment_is_explicit(self):
         (self.root / ".reckon-env").unlink()
@@ -295,6 +341,81 @@ class WorkflowTests(Fixture):
             with self.assertRaises(OSError):
                 with lock(path):
                     self.fail("second writer acquired lock")
+
+    def test_evidence_parent_symlink_cannot_write_outside_session(self):
+        self.fake('print("[]")')
+        path, data = self.session()
+        outside = self.root / "outside"
+        outside.mkdir()
+        (path / "evidence").rmdir()
+        (path / "evidence").symlink_to(outside, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            self.collect(data["id"])
+        self.assertEqual(list(outside.iterdir()), [])
+
+    def test_metadata_and_lock_symlinks_are_rejected(self):
+        for name in ("session.json", ".lock"):
+            with self.subTest(name=name):
+                path, data = self.session()
+                outside = self.root / (name + "-outside")
+                if name == "session.json":
+                    (path / name).rename(outside)
+                else:
+                    outside.write_text("do not modify")
+                    outside.chmod(0o644)
+                before = outside.read_bytes(), outside.stat().st_mode
+                (path / name).symlink_to(outside)
+                with self.assertRaisesRegex(ValueError, "symlink"):
+                    work.note(self.root, data["id"], "question", "Check this", [])
+                self.assertEqual((outside.read_bytes(), outside.stat().st_mode), before)
+
+    def test_changed_evidence_cannot_be_reused_cited_reported_or_promoted(self):
+        self.fake('print("[]")')
+        path, data = self.session()
+        record = self.collect(data["id"])[0]
+        # Same byte count as the original []\n: this must check the hash too.
+        (path / record["artifacts"]["stdout"]["path"]).write_text('{}\n')
+        checks = [lambda: self.collect(data["id"]),
+                  lambda: work.note(self.root, data["id"], "finding", "Unsupported", [record["id"]]),
+                  lambda: work.report(self.root, data["id"]),
+                  lambda: work.promote(self.root, data["id"], "changed")]
+        for check in checks:
+            with self.subTest(action=check), self.assertRaisesRegex(ValueError, "integrity"):
+                check()
+
+    def test_evidence_artifacts_must_use_their_own_paths(self):
+        self.fake('print("[]")')
+        path, data = self.session()
+        record = self.collect(data["id"])[0]
+        record["artifacts"]["stdout"]["path"] = "../../.env.staging"
+        write_json(path / "evidence" / record["id"] / "record.json", record)
+        with self.assertRaisesRegex(ValueError, "artifact path"):
+            work.resume(self.root, data["id"])
+
+    def test_missing_or_linked_artifact_cannot_be_cited(self):
+        self.fake('print("[]")')
+        for linked in (False, True):
+            with self.subTest(linked=linked):
+                path, data = self.session()
+                record = self.collect(data["id"])[0]
+                output = path / record["artifacts"]["stdout"]["path"]
+                output.unlink()
+                if linked:
+                    output.symlink_to(self.root / ".env.staging")
+                with self.assertRaisesRegex(ValueError, "integrity|symlink"):
+                    work.note(self.root, data["id"], "finding", "Bad citation", [record["id"]])
+
+    def test_empty_allocation_after_interruption_does_not_block_resume(self):
+        path, data = self.session()
+        (path / "evidence/e-allocated").mkdir()
+        self.assertEqual(work.resume(self.root, data["id"])["evidence"], [])
+
+    def test_promotion_rejects_symlinked_extra_files(self):
+        path, data = self.session()
+        (path / "extra.txt").symlink_to(self.root / ".env.staging")
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            work.promote(self.root, data["id"], "linked")
+        self.assertFalse(list((self.root / "incidents").glob("*")))
 
     def test_command_injection_stays_a_single_argument(self):
         marker = self.root / "should-not-exist"

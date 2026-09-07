@@ -9,7 +9,8 @@ import uuid
 from . import environment as envs
 from .operations import PLAYBOOKS, build, plan
 from .process import run
-from .store import evidence, identifier, instant, lock, now, private_dir, read_json, session_path, write, write_json
+from .store import (evidence, identifier, instant, local_path, lock, now, private_dir,
+                    read_bytes, session_path, validate_tree, write, write_json)
 
 
 def payload_summary(text, output_format, limit):
@@ -144,10 +145,8 @@ def note(root, sid, kind, text, references, next_check=""):
 
 def history(root, env=None, service=None, query=None, limit=20):
     matches = []
-    for p in sorted((root / "sessions").glob("*/session.json"), reverse=True):
-        if p.parent.is_symlink():
-            continue
-        data = read_json(p)
+    for p in sorted(local_path(root, "sessions").glob("*/session.json"), reverse=True):
+        _, data = session_path(root, p.parent.name)
         if env and data["environment"] != env or service and data["service"] != service:
             continue
         if query and query.casefold() not in json.dumps(data).casefold():
@@ -159,10 +158,11 @@ def history(root, env=None, service=None, query=None, limit=20):
     # Legacy RCAs have no reliable machine-readable environment. Label unknown;
     # don't silently include them in an environment-filtered result.
     if not env:
-        for p in sorted((root / "incidents").glob("*/RCA.md"), reverse=True):
-            if p.parent.is_symlink() or p.stat().st_size > 1048576:
+        for p in sorted(local_path(root, "incidents").glob("*/RCA.md"), reverse=True):
+            local_path(root, p.relative_to(root))
+            if p.parent.name.startswith(".") or p.stat().st_size > 1048576:
                 continue
-            text = p.read_text(errors="replace")
+            text = read_bytes(p, 1048576).decode(errors="replace")
             if service and service.casefold() not in text.casefold() or query and query.casefold() not in text.casefold():
                 continue
             matches.append({"id": p.parent.name, "environment": "unverified (legacy RCA)", "path": str(p),
@@ -189,6 +189,13 @@ def resume(root, sid):
 
 
 def report(root, sid):
+    path, _ = session_path(root, sid)
+    with lock(path):
+        return _write_report(root, sid)
+
+
+def _write_report(root, sid):
+    """Caller holds the session lock across both the snapshot and report write."""
     path, data = session_path(root, sid)
     context = resume(root, sid)
     records = context["evidence"]
@@ -224,27 +231,29 @@ def report(root, sid):
     lines += ["- Check telemetry retention/ingestion lag before treating absence as a negative result.",
               "- Verify actual deployed revision and mechanism before blaming a release.",
               "- Recheck the symptom against a baseline before declaring recovery.", ""]
-    with lock(path):
-        write(path / "report.md", "\n".join(lines))
+    write(path / "report.md", "\n".join(lines))
     return path / "report.md"
 
 
 def promote(root, sid, slug):
     path, _ = session_path(root, sid)
     identifier(slug)
-    report(root, sid)
     with lock(path):
         _, data = session_path(root, sid)
         if data.get("incident"):
             raise ValueError("session already promoted to " + data["incident"])
         date = instant(data["window"]["from"]).strftime("%Y-%m-%d")
-        target = root / "incidents" / (date + "-" + slug)
-        private_dir(root / "incidents")
+        target = local_path(root, "incidents", date + "-" + slug)
+        private_dir(local_path(root, "incidents"))
         if target.exists():
             raise ValueError("incident already exists; choose another slug")
+        _write_report(root, sid)
+        validate_tree(path)
         temp = root / "incidents" / (".promote-" + uuid.uuid4().hex)
         try:
-            shutil.copytree(path, temp, ignore=shutil.ignore_patterns(".lock"))
+            shutil.copytree(path, temp, symlinks=True, ignore=shutil.ignore_patterns(".lock"))
+            validate_tree(temp)
+            evidence(temp)
             write(temp / "RCA.md", "# RCA: " + data["question"] + "\n\n**Environment:** " + data["environment"] +
                   "\n\n**Status: preliminary.** Evidence capture alone does not establish a root cause.\n\n"
                   "[Investigation briefing](report.md) contains the findings, hypotheses and captured evidence at promotion.\n\n"

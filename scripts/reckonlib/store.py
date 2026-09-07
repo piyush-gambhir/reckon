@@ -1,10 +1,12 @@
 """Versioned local sessions and atomic evidence; no external storage."""
 from contextlib import contextmanager
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import stat
 import tempfile
 import uuid
 
@@ -38,18 +40,45 @@ def identifier(value):
     return value
 
 
+def local_path(root, *parts):
+    """Reject redirects below a trusted workspace/tree root, including broken links."""
+    path = root
+    for part in Path(*parts).parts:
+        if part == ".." or Path(part).is_absolute():
+            raise ValueError("local state paths must stay inside their root")
+        path = path / part
+        if path.is_symlink() or (os.name == "nt" and path.exists() and
+                getattr(path.lstat(), "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT):
+            raise ValueError("local state paths must not contain symlinks or junctions")
+    return path
+
+
+def validate_tree(root):
+    """Validate a snapshot before/after copying without following extra links."""
+    for directory, dirs, files in os.walk(root, followlinks=False):
+        for name in dirs + files:
+            path = local_path(root, Path(directory, name).relative_to(root))
+            mode = path.lstat().st_mode
+            if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+                raise ValueError("session snapshots require regular files and directories")
+
+
 def private_dir(path):
     if path.is_symlink():
         raise ValueError("local state directories must not be symlinks")
-    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # mkdir(parents=True) uses the umask for intermediate directories, not mode.
+    if not path.parent.exists():
+        private_dir(path.parent)
+    path.mkdir(mode=0o700, exist_ok=True)
     path.chmod(0o700)
 
 
 def write(path, text):
+    local_path(path.parent, path.name)
     private_dir(path.parent)
     fd, temporary = tempfile.mkstemp(prefix=".write-", dir=path.parent)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
             stream.write(text)
             stream.flush()
             os.fsync(stream.fileno())
@@ -63,18 +92,35 @@ def write_json(path, value):
     write(path, json.dumps(value, indent=2, ensure_ascii=False) + "\n")
 
 
+def read_bytes(path, maximum=8 * 1048576):
+    local_path(path.parent, path.name)
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    with os.fdopen(fd, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size > maximum:
+            raise ValueError("local state must be a regular file within its size limit")
+        content = stream.read(maximum + 1)
+        if len(content) > maximum:
+            raise ValueError("local state file exceeds its size limit")
+        return content
+
+
 def read_json(path):
-    if path.stat().st_size > 8 * 1048576:
-        raise ValueError("metadata file exceeds 8 MiB")
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(read_bytes(path).decode("utf-8"))
 
 
 @contextmanager
 def lock(path):
     """OS advisory lock releases automatically on interruption/process death."""
     private_dir(path)
-    with open(path / ".lock", "a+b") as stream:
-        os.chmod(path / ".lock", 0o600)
+    target = local_path(path, ".lock")
+    fd = os.open(target, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0), 0o600)
+    with os.fdopen(fd, "r+b") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise ValueError("session lock must be a private regular file")
+        if os.name != "nt":
+            os.fchmod(stream.fileno(), 0o600)
         if os.name == "nt":
             import msvcrt
             stream.write(b"0")
@@ -95,20 +141,18 @@ def lock(path):
 
 
 def session_path(root, session_id):
-    base = root / "sessions"
-    path = base / identifier(session_id)
-    if base.is_symlink() or path.is_symlink():
-        raise ValueError("sessions must not be symlinks")
+    path = local_path(root, "sessions", identifier(session_id))
+    local_path(path, "session.json")
     if not (path / "session.json").is_file():
         raise ValueError("unknown session: " + session_id)
     data = read_json(path / "session.json")
-    if data.get("schema_version") != SCHEMA or data.get("id") != session_id:
+    if not isinstance(data, dict) or data.get("schema_version") != SCHEMA or data.get("id") != session_id or data.get("environment") not in ("production", "staging", "uat"):
         raise ValueError("unsupported or inconsistent session metadata")
     return path, data
 
 
 def services(root, env):
-    path = root / "infra-knowledge" / env / "services.json"
+    path = local_path(root, "infra-knowledge", env, "services.json")
     if not path.exists():
         return []
     data = read_json(path)
@@ -150,7 +194,7 @@ def resolve_service(root, env, name):
 
 
 def create(root, env, service, question, bounds, playbook, mode):
-    private_dir(root / "sessions")
+    private_dir(local_path(root, "sessions"))
     sid = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:10]
     path = root / "sessions" / sid
     private_dir(path / "evidence")
@@ -164,11 +208,33 @@ def create(root, env, service, question, bounds, playbook, mode):
 def evidence(path):
     items = []
     session = read_json(path / "session.json")
-    for p in sorted((path / "evidence").glob("*/record.json")):
-        if p.parent.is_symlink():
-            raise ValueError("evidence directories must not be symlinks")
+    for directory in sorted(local_path(path, "evidence").iterdir()):
+        local_path(path, "evidence", directory.name)
+        if not directory.is_dir():
+            raise ValueError("unexpected file in evidence directory")
+        p = local_path(path, "evidence", directory.name, "record.json")
+        # A process can stop between allocating a directory and starting a read.
+        if not p.exists() and not any(directory.iterdir()):
+            continue
         record = read_json(p)
+        if not isinstance(record, dict) or record.get("schema_version") != SCHEMA:
+            raise ValueError("unsupported evidence metadata")
         if record.get("id") != p.parent.name or record.get("session") != session["id"] or record.get("environment") != session["environment"]:
             raise ValueError("evidence identity/environment mismatch")
+        artifacts = record.get("artifacts")
+        if not isinstance(artifacts, dict) or set(artifacts) - {"stdout", "stderr"}:
+            raise ValueError("invalid evidence artifacts")
+        if record.get("status") == "ok" and set(artifacts) != {"stdout", "stderr"}:
+            raise ValueError("evidence integrity check failed: successful record lacks artifacts")
+        for stream, artifact in artifacts.items():
+            expected = "evidence/" + directory.name + "/" + stream + ".txt"
+            if not isinstance(artifact, dict) or artifact.get("path") != expected:
+                raise ValueError("invalid evidence artifact path")
+            try:
+                content = read_bytes(local_path(path, expected))
+            except FileNotFoundError:
+                raise ValueError("evidence integrity check failed: missing artifact") from None
+            if len(content) != artifact.get("bytes") or hashlib.sha256(content).hexdigest() != artifact.get("sha256"):
+                raise ValueError("evidence integrity check failed: " + directory.name + "/" + stream)
         items.append(record)
     return sorted(items, key=lambda item: (item["observed_at"], item["id"]))

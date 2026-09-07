@@ -6,6 +6,7 @@ import re
 import shutil
 
 from .process import run
+from .store import local_path, private_dir
 
 ENVIRONMENTS = ("production", "staging", "uat")
 BASE_KEYS = {"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP",
@@ -35,6 +36,7 @@ def selected(root, explicit=None):
 def load(root, name):
     if name not in ENVIRONMENTS:
         raise ValueError("invalid environment")
+    local_path(root, ".config", name)
     clean = {k: v for k, v in os.environ.items() if k in BASE_KEYS}
     clean.update(RECKON_ROOT=str(root), RECKON_ENV=name, NO_COLOR="1")
     if os.name == "nt":
@@ -58,8 +60,21 @@ def load(root, name):
 
 
 def scope(values, provider):
-    keys = BASE_KEYS | {"XDG_CONFIG_HOME", "RECKON_ROOT", "RECKON_ENV", "KUBECONFIG"}
+    keys = BASE_KEYS | {"XDG_CONFIG_HOME", "RECKON_ROOT", "RECKON_ENV"}
     result = {k: v for k, v in values.items() if k in keys or k.startswith(PREFIXES[provider])}
+    # XDG_CONFIG_HOME alone does not cover HOME-based profiles, SSO caches,
+    # startup files or temporary data. Keep those defaults private to this
+    # provider/environment. This is path scoping, not an OS filesystem sandbox.
+    root = Path(values["RECKON_ROOT"])
+    runtime = local_path(root, ".config", values["RECKON_ENV"], "runtime", provider)
+    for directory, keys in (("home", ("HOME", "USERPROFILE")),
+                            ("cache", ("XDG_CACHE_HOME", "LOCALAPPDATA")),
+                            ("state", ("XDG_STATE_HOME", "APPDATA")),
+                            ("tmp", ("TMPDIR", "TMP", "TEMP"))):
+        target = local_path(root, runtime.relative_to(root), directory)
+        private_dir(target)
+        for key in keys:
+            result[key] = str(target)
     result.update(NO_COLOR="1", CI="1", GIT_TERMINAL_PROMPT="0", GIT_PAGER="cat", PAGER="cat")
     # CLI-level restrictions supplement server-side read-only roles.
     for prefix in ("GRAFANA", "JENKINS", "ES", "JIRA", "NGINXPM"):
