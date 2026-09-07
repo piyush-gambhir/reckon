@@ -226,11 +226,11 @@ export function ToolbeltSlider() {
       <div className="osmo-container toolbelt-slider__heading">
         <div>
           <h2 id="toolbelt-heading" className="toolbelt-slider__title">
-            One toolbelt, twelve CLIs
+            One toolbelt, fourteen CLIs
           </h2>
         </div>
         <p className="reckon-scribble toolbelt-slider__scribble">
-          twelve CLIs, one session
+          fourteen CLIs, one session
         </p>
       </div>
 

@@ -6,23 +6,40 @@ An agent workspace for talking to your infrastructure — investigating incident
 
 ## Overview
 
-`reckon` is an agent workspace for talking to your infrastructure — investigating incidents, running RCAs, and understanding production behavior. It wires together twelve read-only observability, CI/CD, and infrastructure CLIs, including `clickhouse client` for analytics and event data, plus optional `es` for ES/ELK logs, under a single isolated credential environment so a coding agent can correlate signals across systems in one session. It runs under **Claude Code** (subscription or API key), **Codex CLI** (ChatGPT subscription or API key), or any agent runtime that reads `AGENTS.md` — see [Agent runtimes](#agent-runtimes).
+`reckon` is an agent workspace for talking to your infrastructure — investigating incidents, running RCAs, and understanding production behavior. It wires together fourteen read-only observability, CI/CD, and infrastructure CLIs, including `clickhouse client` for analytics and event data and optional `es` for ES/ELK logs, under one isolated credential environment so a coding agent can correlate signals across systems in one session. It runs under **Claude Code** (subscription or API key), **Codex CLI** (ChatGPT subscription or API key), or any agent runtime that reads `AGENTS.md` — see [Agent runtimes](#agent-runtimes).
 
-This clone is intended to be **production-only**. Put only production Grafana, Jenkins, and CubeAPM credentials in this workspace. If you ever need staging or UAT, use a separate clone so the agent never mixes environments during an RCA.
+Reckon also provides **saved investigations**: service mappings, bounded evidence
+collection, findings and hypotheses, reports, history, and resume. Optional Jira
+and Nginx Proxy Manager integrations add ticket and routing context. Requires
+Python 3.9+; no Python packages to install.
+
+Try the complete offline walkthrough:
+
+```bash
+./scripts/reckon demo
+```
+
+It creates synthetic evidence and prints a report and resume command without
+contacting infrastructure. See [the investigation guide](docs/INVESTIGATIONS.md)
+for mapping a real service, starting `debug`, collecting evidence, and producing
+an RCA. The coding agent supplies the reasoning; Reckon preserves the work.
+
+One clone supports **production, staging, and UAT**, but exactly one is active at a time. Reckon never chooses production implicitly: select an environment explicitly, and never switch during one investigation.
 
 ### Quick start
 
 ```bash
-./scripts/reckon status      # what environment is active, what's actually connected
+./scripts/reckon use production # explicit first-time selection
+./scripts/reckon status      # what environment is active, what's locally configured
 ./scripts/reckon doctor      # diagnose setup problems
 ./scripts/reckon preflight   # the digest a coding agent reads first
 ./scripts/reckon use staging # switch environment (persists in .reckon-env)
 ./scripts/reckon verify      # live connection checks — the only one that hits your infra
 ```
 
-**direnv is optional.** It auto-loads `.envrc` when you `cd` in, but if it isn't installed or
-hooked into your shell, nothing warns you — `.envrc` simply never runs and the CLIs fall back to
-saved profiles. `./scripts/reckon doctor` detects that; to activate a shell without direnv:
+**direnv is optional.** `scripts/agent.sh` activates the selected environment itself.
+For direct CLI use, direnv can auto-load `.envrc`; `./scripts/reckon doctor` detects
+when the current shell is inactive. To activate a shell without direnv:
 
 ```bash
 eval "$(./scripts/reckon env)"
@@ -66,9 +83,9 @@ The methodology (`skills/reckon/`), the facts (`infra-knowledge/`), and the inci
 
 | Platform | How tools are installed | direnv | Notes |
 |---|---|---|---|
-| macOS (Apple Silicon or Intel) | Homebrew + `go install` | ✓ native | First-class; all tools available (12 CLIs + direnv + jq). |
-| Linux Debian/Ubuntu (`apt`) | signed packages + verified rpk/kubectl downloads + pinned `go install` | ✓ native | Some tools require their vendor's signed package repository. |
-| Linux Fedora/RHEL family (`dnf`) | signed packages + verified rpk/kubectl downloads + pinned `go install` | ✓ native | Some tools require their vendor's signed package repository. |
+| macOS (Apple Silicon or Intel) | Homebrew + `go install` | ✓ native | First-class; all 14 tools plus direnv and jq. |
+| Linux Debian/Ubuntu (`apt`) | signed packages + checksum-verified downloads + pinned `go install` | ✓ native | `rpk` is pinned; kubectl uses the checksum-verified current stable release. |
+| Linux Fedora/RHEL family (`dnf`) | signed packages + checksum-verified downloads + pinned `go install` | ✓ native | Some tools require their vendor's signed package repository. |
 | Other Linux (Arch, openSUSE, Alpine, …) | manual install | ✓ native | Use the manual command list per tool. |
 | Windows + WSL2 *(recommended for Windows users)* | inherits Linux path inside WSL | ✓ native | First-class — run `bash scripts/setup.sh` inside WSL. |
 | Windows native (PowerShell) | winget + `go install` | ✗ — use [`scripts/activate.ps1`](scripts/activate.ps1) | Partial: `direnv`, `kcat`, `rpk` have no native Windows port. |
@@ -85,7 +102,7 @@ cd reckon
 bash scripts/setup.sh
 ```
 
-Requires [Homebrew](https://brew.sh/). `scripts/setup.sh` installs missing tools via brew, installs the custom Go-based CLIs via `go install`, seeds `.env` from `.env.example`, seeds `infra-knowledge/*.md` from the `.example.md` templates, and runs `direnv allow`.
+Requires [Homebrew](https://brew.sh/). `scripts/setup.sh` installs missing tools via brew, installs the custom Go-based CLIs via pinned `go install` versions, seeds `.env.production` and the per-environment `infra-knowledge/` directories, and wires the repo-local skill. Select an environment before running `direnv allow`.
 
 ### Linux (Debian/Ubuntu or Fedora/RHEL family)
 
@@ -95,7 +112,7 @@ cd reckon
 bash scripts/setup.sh
 ```
 
-The same `scripts/setup.sh` auto-detects the distro via `/etc/os-release` and dispatches to `apt` or `dnf`. It verifies checksums for pinned `rpk` and `kubectl` downloads and uses signed package repositories for AWS CLI and mongosh; when a trusted repository is unavailable it fails closed with manual verification guidance. Other distros print a "manual install required" message.
+The same `scripts/setup.sh` auto-detects the distro via `/etc/os-release` and dispatches to `apt` or `dnf`. It verifies checksums for pinned `rpk` and the current stable kubectl download and uses signed package repositories where available; when a trusted repository is unavailable it fails closed with manual verification guidance. Other distros print a "manual install required" message.
 
 > **Hooking direnv into your shell** (one-time): add `eval "$(direnv hook bash)"` to `~/.bashrc` (or the zsh equivalent to `~/.zshrc`). Without this, `.envrc` won't auto-load when you `cd` into the repo.
 
@@ -112,17 +129,19 @@ cd reckon
 bash scripts/setup.sh
 ```
 
-**Native PowerShell (partial support):** if WSL isn't an option, `scripts/setup.ps1` installs 9 of the 14 tools natively — 6 via winget (`aws`, `gh`, `mongosh`, `psql`, `mysql`, `kubectl`) and 3 via `go install` (`grafana`, `jenkins`, `cubeapm`); `direnv`, `kcat`, `rpk`, and `redis-cli` have no clean Windows port and need WSL2. Note that the winget `psql`/`mysql` packages install the full server bundles and may not place the client on `PATH` — see [`scripts/setup.ps1`](scripts/setup.ps1) comments. Then `scripts/activate.ps1` is the direnv replacement — dot-source it once per PowerShell session to load `.env` and apply the safety env vars.
+**Native PowerShell (partial support):** if WSL isn't an option, `scripts/setup.ps1` installs 10 of the 14 integrations natively — 6 via winget (`aws`, `gh`, `mongosh`, `psql`, `mysql`, `kubectl`) and 4 via `go install` (`grafana`, `jenkins`, `cubeapm`, `es`). `kcat`, `rpk`, `redis-cli`, and ClickHouse need WSL2 or manual installation. `scripts/reckon.ps1`, `scripts/activate.ps1`, and `scripts/agent.ps1` provide the native control, activation, and launcher surfaces.
 
 ```powershell
 git clone https://github.com/piyush-gambhir/reckon.git
 cd reckon
 .\scripts\setup.ps1
-notepad .env                      # fill in real credentials
+.\scripts\reckon.ps1 use production
+notepad .env.production           # fill in real credentials
 . .\scripts\activate.ps1          # NOTE the leading dot+space
+.\scripts\reckon.ps1 status
 ```
 
-To auto-activate `.env` in every PowerShell session inside this folder, add to your `$PROFILE`:
+To auto-activate the selected `.env.<env>` in every PowerShell session inside this folder, add to your `$PROFILE`:
 
 ```powershell
 if ($PWD.Path -like '*\reckon*') { . .\scripts\activate.ps1 }
@@ -176,26 +195,26 @@ clickhouse client --host "$CLICKHOUSE_HOST" --port "$CLICKHOUSE_PORT" --user "$C
 Either way, credentials stay isolated from your global `~/.config/` and `~/.aws/` profiles. You can have different credentials per clone of this repo.
 
 Config files land at:
-- `.config/grafana-cli/config.yaml`
-- `.config/jenkins-cli/config.yaml`
-- `.config/cubeapm-cli/config.yaml`
-- `.config/aws/{config,credentials}`
-- `.config/gh/{config.yml,hosts.yml}`
+- `.config/<env>/grafana-cli/config.yaml`
+- `.config/<env>/jenkins-cli/config.yaml`
+- `.config/<env>/cubeapm-cli/config.yaml`
+- `.config/<env>/aws/{config,credentials}`
+- `.config/<env>/gh/{config.yml,hosts.yml}`
 
-Kafka and database tools (`kcat`, `rpk`, `mongosh`, `psql`, `mysql`, and `clickhouse client`) don't have a saved-profile mode here — they read credentials directly from the env vars you set in `.env`.
+Kafka and database tools (`kcat`, `rpk`, `mongosh`, `psql`, `mysql`, and `clickhouse client`) don't have a saved-profile mode here — they read credentials directly from `.env.<env>`.
 
 ### Kafka access — read this once
 
 `kcat` and `rpk` have **no read-only mode**, so Kafka safety is two layers, like the databases:
 
-1. **Broker-level (the real guard)** — the SASL principal in `.env` should carry only `Describe`/`Read` ACLs (MSK IAM: `kafka-cluster:Connect`, `Describe*`, `ReadData`; no `WriteData`/`Create*`/`Delete*`/`Alter*`). Provision it like the read-only DB role.
+1. **Broker-level (the real guard)** — the SASL principal in `.env.<env>` should carry only `Describe`/`Read` ACLs (MSK IAM: `kafka-cluster:Connect`, `Describe*`, `ReadData`; no `WriteData`/`Create*`/`Delete*`/`Alter*`). Provision it like the read-only DB role.
 2. **Usage-level** — only read commands are documented and should be allowlisted (`kcat -L/-C/-Q`, `rpk cluster info`, `topic list/describe/consume`, `group list/describe`). One trap that looks like a read but isn't: consuming **with a group id** (`kcat -G`, `rpk topic consume -g`) joins the production consumer group, triggering a rebalance and committing offsets. Always consume group-less.
 
 ### Database access — read this once
 
 The DB clients (`mongosh`, `psql`, `mysql`) can in principle modify production data. The workspace defends against this in three layers, but **only layer 1 actually denies writes across every access path** — the other two harden the CLI clients and are defence-in-depth, not substitutes:
 
-1. **Role-level (the real guard)** — every DB user named in `.env` MUST be a true read-only role at the database. This is your responsibility to provision; the CLI cannot enforce it, and a read-write role can still write through a non-libpq driver (e.g. a `python3` script using psycopg2/pymysql), so this layer is mandatory.
+1. **Role-level (the real guard)** — every DB user named in `.env.<env>` MUST be a true read-only role at the database. This is your responsibility to provision; the CLI cannot enforce it, and a read-write role can still write through a non-libpq driver (e.g. a `python3` script using psycopg2/pymysql), so this layer is mandatory.
 2. **Session-level (CLI clients only)** — `.envrc` sets `PGOPTIONS=-c default_transaction_read_only=on`, which `psql` honours as the session *default* (a session can still opt back in with `BEGIN READ WRITE`). For MySQL there is no read-only env var, so `.envrc` writes `$XDG_CONFIG_HOME/mysql/my.cnf` with `init-command=SET SESSION TRANSACTION READ ONLY` — apply it by invoking `mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf"`. MongoDB's `MONGODB_URI` carries `?readPreference=secondary`, which is read *routing*, not a write block.
 3. **Agent-level (per-clone convention)** — the Claude Code allowlist in `.claude/settings.local.json` should deliberately *not* pre-approve `psql`, `mysql`, or `mongosh`, so every query prompts you for permission. Friction = safety. Because `.claude/` is gitignored, this is a convention each clone must uphold — keep the allowlist tight and never add a broad `Bash(python3 -c ...)` wildcard, which would let an agent reach a DB driver around the prompt.
 
@@ -214,11 +233,11 @@ The workspace is runtime-agnostic. `CLAUDE.md` guides Claude Code; [`AGENTS.md`]
 
 ```bash
 scripts/agent.sh             # auto-detects: claude → codex → opencode
-scripts/agent.sh claude      # Claude Code — Pro/Max subscription login, or ANTHROPIC_API_KEY in .env
-scripts/agent.sh codex       # Codex CLI — ChatGPT subscription login, or OPENAI_API_KEY in .env
+scripts/agent.sh claude      # Claude Code — Pro/Max subscription login, or ANTHROPIC_API_KEY in .env.<env>
+scripts/agent.sh codex       # Codex CLI — ChatGPT subscription login, or OPENAI_API_KEY in .env.<env>
 ```
 
-Subscription logins need no keys in this workspace; API-key billing reads `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` from `.env` (see `.env.example`). Keep approval prompts ON in any runtime — the per-query DB approval is a load-bearing safety layer here, not friction to optimize away.
+The launcher activates the selected environment itself, so it does not depend on direnv state. Subscription logins need no keys; API-key billing reads `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` from `.env.<env>` (see `.env.example`). Keep approval prompts ON in any runtime — the per-query DB approval is a load-bearing safety layer here, not friction to optimize away.
 
 ## RCA Workflow (summary)
 

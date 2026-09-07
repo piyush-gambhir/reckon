@@ -19,9 +19,9 @@ UAT never share credential state.
 ./scripts/reckon status          # confirm what is active and how it resolved
 ```
 
-Precedence is `RECKON_ENV` (exported) → `.reckon-env` (file) → `production`. An
-unrecognised value in either **fails closed**: no credentials are loaded at all,
-rather than silently selecting a real environment.
+Precedence is `RECKON_ENV` (exported) → `.reckon-env` (file). A missing or
+unrecognised value **fails closed**: no credentials are loaded. Reckon never
+silently selects production.
 
 ## Preferred: environment credentials
 
@@ -36,15 +36,14 @@ direnv allow            # optional, see below
 <Callout type="warn">
   Values left at their `.env.example` defaults (`replace_me`, `*.example.com`)
   are treated as **unconfigured**. `./scripts/reckon preflight` will report the
-  integration as unavailable rather than claim a connection that cannot work.
+  integration as unconfigured rather than claim local readiness.
 </Callout>
 
 ## direnv is optional
 
-direnv auto-loads `.envrc` when you `cd` in. If it is not installed or not hooked
-into your shell, **nothing warns you** — `.envrc` simply never runs and the CLIs
-fall back to saved profiles. `./scripts/reckon doctor` detects exactly this. To
-activate a shell without direnv:
+direnv auto-loads `.envrc` when you `cd` in. `scripts/agent.sh` also activates it
+before launching a runtime. For direct CLI use, `./scripts/reckon doctor` detects
+an inactive shell. Activate a shell without direnv with:
 
 ```bash
 eval "$(./scripts/reckon env)"

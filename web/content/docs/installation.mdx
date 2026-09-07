@@ -1,6 +1,6 @@
 ---
 title: Setup
-description: Clone reckon and prepare its isolated production tool workspace.
+description: Clone reckon and prepare an isolated, explicitly selected environment.
 ---
 
 reckon is a repository workspace, not a standalone binary. Setup starts with
@@ -52,13 +52,15 @@ wsl --install
 After rebooting, run the Linux clone and setup commands inside WSL.
 
 Native PowerShell support is partial. `scripts/setup.ps1` installs the available
-tools, and `scripts/activate.ps1` replaces direnv for the current session:
+tools; `scripts/reckon.ps1`, `scripts/activate.ps1`, and `scripts/agent.ps1`
+provide the native control, activation, and launcher surfaces:
 
 ```powershell
 git clone https://github.com/piyush-gambhir/reckon.git
 cd reckon
 .\scripts\setup.ps1
-notepad .env
+.\scripts\reckon.ps1 use production
+notepad .env.production
 . .\scripts\activate.ps1
 ```
 
@@ -69,9 +71,10 @@ notepad .env
 
 ## Finish the workspace
 
-Edit `.env.production` with real production credentials and fill the seeded
-`infra-knowledge/*.md` files with your service inventory, naming conventions,
-server quirks, and known issues. Then confirm the workspace is actually wired up:
+Select an environment, edit its `.env.<env>` file, and fill the seeded
+`infra-knowledge/<env>/*.md` files with your service inventory, naming
+conventions, server quirks, and known issues. Then inspect local readiness and
+prove live connectivity:
 
 ```bash
 ./scripts/reckon doctor      # setup problems, with the fix for each

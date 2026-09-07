@@ -35,17 +35,9 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 
-# ---------------------------------------------------------------------------
-# 1. Resolve the environment before loading any credentials
-# ---------------------------------------------------------------------------
-$requestedEnv = $Env
-if ([string]::IsNullOrEmpty($requestedEnv)) {
-    $requestedEnv = $env:RECKON_ENV
-}
-
 # Dot-sourcing a second environment in the same PowerShell session must not
 # retain credentials that existed only in the first one. Restore every env var
-# managed by the previous activation before validating or loading the next one.
+# managed by the previous activation before resolving and loading the next one.
 if (Get-Variable -Name ReckonManagedEnvironment -Scope Script -ErrorAction SilentlyContinue) {
     foreach ($key in @($script:ReckonManagedEnvironment.Keys)) {
         $original = $script:ReckonManagedEnvironment[$key]
@@ -57,6 +49,26 @@ if (Get-Variable -Name ReckonManagedEnvironment -Scope Script -ErrorAction Silen
     }
 }
 $script:ReckonManagedEnvironment = @{}
+
+# Authentication is environment-local, including on the first activation from
+# a shell that already has provider credentials. Clear inherited namespaces.
+Get-ChildItem Env: | Where-Object {
+    $_.Name -match '^(GRAFANA_|JENKINS_|CUBEAPM_|GH_|GITHUB_|AWS_|KAFKA_|RPK_|REDIS_|MONGODB_|PG|MYSQL_|CLICKHOUSE_|ES_|JIRA_|NGINXPM_|KUBECONFIG$)'
+} | ForEach-Object { Remove-Item -Path "Env:$($_.Name)" }
+
+# ---------------------------------------------------------------------------
+# 1. Resolve the environment before loading any credentials
+# ---------------------------------------------------------------------------
+$requestedEnv = $Env
+if ([string]::IsNullOrEmpty($requestedEnv)) {
+    $requestedEnv = $env:RECKON_ENV
+}
+if ([string]::IsNullOrEmpty($requestedEnv)) {
+    $selectionFile = Join-Path $repoRoot '.reckon-env'
+    if (Test-Path $selectionFile) {
+        $requestedEnv = (Get-Content $selectionFile -Raw).Trim()
+    }
+}
 
 function Set-ReckonEnvValue {
     param(
@@ -74,8 +86,8 @@ function Set-ReckonEnvValue {
 }
 
 if ([string]::IsNullOrEmpty($requestedEnv)) {
-    $requestedEnv = 'production'
-    Write-Host 'reckon: RECKON_ENV was unset; defaulting to production' -ForegroundColor Yellow
+    Write-Error 'reckon: no environment selected. Run .\scripts\reckon.ps1 use <production|staging|uat> first.'
+    return
 }
 if ($requestedEnv -cnotin @('production', 'staging', 'uat')) {
     Write-Error "reckon: invalid RECKON_ENV='$requestedEnv'. Valid values: production, staging, uat"
@@ -148,6 +160,9 @@ if ($env:GITHUB_TOKEN -and -not $env:GH_TOKEN) {
 # ---------------------------------------------------------------------------
 # 6. Database safety defaults (only applied if env files didn't already set them)
 # ---------------------------------------------------------------------------
+foreach ($prefix in @('GRAFANA', 'JENKINS', 'ES', 'JIRA', 'NGINXPM')) {
+    Set-ReckonEnvValue -Name "${prefix}_READ_ONLY" -Value 'true'
+}
 # PostgreSQL: psql honours PGOPTIONS as the session default (the read-only role
 # remains the real write guard).
 if (-not $env:PGOPTIONS) {

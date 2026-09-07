@@ -15,6 +15,19 @@ yarn dev
 
 Open http://localhost:3000 with your browser to see the result.
 
+## Build and deploy
+
+The static export is packaged as a Cloudflare Workers Assets deployment:
+
+```bash
+pnpm build:cloudflare
+pnpm deploy:cloudflare          # production custom route
+pnpm deploy:cloudflare:preview  # preview workers.dev environment
+```
+
+From the repository root, `bash scripts/deploy-docs.sh production` performs the
+production build and deployment; pass `development` for the preview environment.
+
 ## Explore
 
 In the project, you can see:

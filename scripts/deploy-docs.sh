@@ -1,20 +1,26 @@
 #!/usr/bin/env bash
 # Build the Next.js site in web/ and deploy its static export as the Cloudflare
 # Worker (static assets) that serves projects.piyushgambhir.com/reckon.
-# Run as `bash scripts/deploy-docs.sh` from an up-to-date main.
+# Run as `bash scripts/deploy-docs.sh [production|development]` from an up-to-date main.
 #
-# Credentials come from .env.deploy.production when present (for example
+# `development` deploys the `preview` Wrangler environment to workers.dev instead.
+# Credentials come from .env.deploy.<env> when present (for example
 # CLOUDFLARE_API_TOKEN), otherwise from a local Wrangler login.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
+mkdir -p "$ROOT_DIR/.wrangler"
+export WRANGLER_LOG_PATH="${WRANGLER_LOG_PATH:-$ROOT_DIR/.wrangler/wrangler.log}"
 
 ENV="${1:-production}"
-if [[ "$ENV" != "production" ]]; then
-  echo "error: only 'production' is supported; the site has no preview environment." >&2
-  exit 1
-fi
+case "$ENV" in
+  production|development) ;;
+  *)
+    echo "error: expected production or development, got '$ENV'" >&2
+    exit 1
+    ;;
+esac
 DEPLOY_ENV_FILE=".env.deploy.${ENV}"
 
 if [[ -f "$DEPLOY_ENV_FILE" ]]; then
@@ -36,5 +42,10 @@ if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]] && ! ( cd "$WEB_DIR" && pnpm exec wrangl
   exit 1
 fi
 
-echo "==> Deploying the Worker to projects.piyushgambhir.com/reckon"
-( cd "$WEB_DIR" && pnpm deploy:cloudflare )
+if [[ "$ENV" == "production" ]]; then
+  echo "==> Deploying the Worker to projects.piyushgambhir.com/reckon"
+  ( cd "$WEB_DIR" && pnpm deploy:cloudflare )
+else
+  echo "==> Deploying the preview Worker to workers.dev"
+  ( cd "$WEB_DIR" && pnpm deploy:cloudflare:preview )
+fi

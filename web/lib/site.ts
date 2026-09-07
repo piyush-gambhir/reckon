@@ -83,7 +83,7 @@ export const site: SiteConfig = {
     {
       icon: Zap,
       title: 'One operations toolbelt',
-      body: 'Use twelve wired CLIs plus optional Elasticsearch access without switching credential contexts or stitching together separate workspaces.',
+      body: 'Use fourteen wired CLIs without switching credential contexts or stitching together separate workspaces.',
     },
     {
       icon: Bot,
@@ -120,6 +120,7 @@ kubectl get events -n checkout --sort-by=.lastTimestamp | tail -30
     'MongoDB',
     'PostgreSQL',
     'MySQL',
+    'ClickHouse',
     'Elasticsearch',
   ],
 };

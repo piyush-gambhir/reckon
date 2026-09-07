@@ -17,9 +17,10 @@ workspace.
 | Codex CLI | `AGENTS.md`, which points to the canonical guide and skill |
 | OpenCode and other compatible agents | `AGENTS.md` |
 
-Launch with `scripts/agent.sh`, or select `claude`, `codex`, or `opencode`
-explicitly. Subscription logins require no API key in this workspace; API-key
-billing reads `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` from `.env.<env>`.
+Launch with `scripts/agent.sh` (`scripts/agent.ps1` on native Windows), or select
+`claude`, `codex`, or `opencode` explicitly. The launcher activates the selected
+environment itself. Subscription logins require no API key in this workspace;
+API-key billing reads `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` from `.env.<env>`.
 
 ## Investigation behavior
 
@@ -49,7 +50,7 @@ The agent should:
 <Callout type="warn">
   Client defaults are defence-in-depth. True read-only database roles and
   read-only Kafka ACLs are the real server-side enforcement. Do not place
-  privileged production credentials in this workspace.
+  privileged credentials in this workspace.
 </Callout>
 
 ## Runtime approvals

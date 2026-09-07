@@ -10,11 +10,17 @@
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "404-page"
   },
+  "workers_dev": false,
   "routes": [
     {
       "pattern": "projects.piyushgambhir.com/reckon*",
       "zone_name": "piyushgambhir.com"
     }
-  ]
+  ],
+  "env": {
+    "preview": {
+      "workers_dev": true,
+      "routes": []
+    }
+  }
 }
-

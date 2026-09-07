@@ -4,7 +4,7 @@ reckon is an agent workspace for talking to your infrastructure, powered by Graf
 
 ## Purpose
 
-This project is a workspace for spinning up a coding agent to investigate production incidents, debug service issues, and perform root cause analysis. The agent has access to twelve read-only CLIs (plus `direnv` and `jq` as supporting tools):
+This project is a workspace for spinning up a coding agent to investigate production incidents, debug service issues, and perform root cause analysis. The agent has access to fourteen core read-oriented CLI integrations, plus optional Jira and Nginx Proxy Manager (and `direnv`, `jq`, and Python 3.9+ as supporting tools):
 
 **Observability & CI/CD**
 - **Grafana CLI** (`grafana`) -- dashboards, datasources, alerts, annotations
@@ -25,10 +25,10 @@ This project is a workspace for spinning up a coding agent to investigate produc
 - **mongosh** -- MongoDB shell (Atlas-compatible)
 - **psql** -- PostgreSQL shell
 - **mysql** -- MySQL shell
-- **ClickHouse** (`clickhouse client`) -- analytics/event tables and system diagnostics. Wired when `CLICKHOUSE_HOST` is set in `.env`; requires a server-side `readonly=1` user profile and `--readonly=1` on every invocation.
+- **ClickHouse** (`clickhouse client`) -- analytics/event tables and system diagnostics. Wired when `CLICKHOUSE_HOST` is set in `.env.<env>`; requires a server-side `readonly=1` user profile and `--readonly=1` on every invocation.
 
 **Optional integrations**
-- **es** ([es-cli](https://github.com/piyush-gambhir/es-cli)) -- Elasticsearch/ELK: cluster health, index state, Query DSL / SQL search. Only wired when `ES_URL` is set in `.env`. `.envrc` exports `ES_READ_ONLY=true`, which the CLI enforces client-side — mutating commands are refused before any request is sent.
+- **es** ([es-cli](https://github.com/piyush-gambhir/es-cli)) -- Elasticsearch/ELK: cluster health, index state, Query DSL / SQL search. Only wired when `ES_URL` is set in `.env.<env>`. `.envrc` exports `ES_READ_ONLY=true`, which the CLI enforces client-side — mutating commands are refused before any request is sent.
 
 ## Environments — read before any query
 
@@ -36,7 +36,7 @@ This workspace targets **three environments: `production`, `staging`, `uat`**, s
 
 **The rule the whole design exists to enforce:** never query one environment while believing you are on another. It is silent, easy, and no tool will catch it.
 
-**Start every task with `./scripts/reckon preflight`.** It reports the active environment, which integrations are genuinely usable, which are not and why, what knowledge exists, and any warnings — in ~8 lines, without touching infrastructure. **Trust it over the toolbelt list below**: this file describes what reckon *can* connect to, preflight describes what *is* connected right now. Discovering a missing credential mid-investigation wastes the whole cascade.
+**Start every task with `./scripts/reckon preflight`.** It reports the active environment, which integrations are locally configured, which are not and why, what knowledge exists, and any warnings — without touching infrastructure. Local configuration is not a live connectivity claim; use `./scripts/reckon verify` when a connection must be proven before an investigation.
 
 1. **Resolve `RECKON_ENV` before the first query** (preflight prints it). If unset, empty, or uncertain — **stop and ask**. Never infer the environment from service names, hostnames, or context.
 2. **State it explicitly** in your first substantive message: *"Working against **production**."* Restate on any switch.
@@ -51,16 +51,16 @@ Switching:
 . .\scripts\activate.ps1 -Env staging          # Windows
 ```
 
-Precedence is `RECKON_ENV` (exported) → `.reckon-env` (file) → `production`. An unrecognised value in **either** fails closed: no credentials load at all.
+Precedence is `RECKON_ENV` (exported) → `.reckon-env` (file). A missing or unrecognised value fails closed: no credentials load at all. Select one explicitly with `./scripts/reckon use <env>`.
 
-**direnv is optional.** If it is not hooked into your shell, `.envrc` never runs and nothing warns you — the CLIs silently fall back to saved profiles. `./scripts/reckon doctor` detects exactly this; activate manually with `eval "$(./scripts/reckon env)"`.
+**direnv is optional.** `scripts/agent.sh` sources `.envrc` before launching the agent. For direct CLI use, `./scripts/reckon doctor` detects an inactive shell; activate it manually with `eval "$(./scripts/reckon env)"`.
 
 **The read-only posture is identical in all three environments** — the split is about *which* infrastructure you touch, never about relaxing safety. But blast radius is not identical: in production, prefer the cheaper signal, bound queries harder, and escalate to a human sooner.
 
 ## Database safety contract
 
 The DB clients (`mongosh`, `psql`, `mysql`, and `clickhouse client`) can in principle modify data. The layers below are defence-in-depth; **only layer 1 actually denies writes across every access path**, so it is mandatory, not optional. Before issuing any DB query, confirm:
-1. **The DB user in `.env` is a true read-only role.** This is the user's responsibility, not the CLI's, and it is the real write barrier. For ClickHouse, the user MUST have a server-side profile with `readonly=1`. PGOPTIONS/option-files/readPreference/client flags below only narrow the CLI paths; a read-write role can still write through another driver (e.g. `python3 -c` with psycopg2/pymysql/clickhouse-connect) — so refuse, at the approval prompt, any query that opts back into read-write (`SET ... READ WRITE`, `SET default_transaction_read_only=off`, `BEGIN READ WRITE`, or a ClickHouse invocation without `--readonly=1`).
+1. **The DB user in `.env.<env>` is a true read-only role.** This is the user's responsibility, not the CLI's, and it is the real write barrier. For ClickHouse, the user MUST have a server-side profile with `readonly=1`. PGOPTIONS/option-files/readPreference/client flags below only narrow the CLI paths; a read-write role can still write through another driver (e.g. `python3 -c` with psycopg2/pymysql/clickhouse-connect) — so refuse, at the approval prompt, any query that opts back into read-write (`SET ... READ WRITE`, `SET default_transaction_read_only=off`, `BEGIN READ WRITE`, or a ClickHouse invocation without `--readonly=1`).
 2. **Session-level read-only is applied on every CLI path (Postgres + MySQL + ClickHouse).** `.envrc` sets `PGOPTIONS=-c default_transaction_read_only=on` (libpq honours it for `psql`) and writes a MySQL option file at `$XDG_CONFIG_HOME/mysql/my.cnf` with `init-command=SET SESSION TRANSACTION READ ONLY` (used when you invoke `mysql --defaults-extra-file=...`). Every ClickHouse command MUST include `--readonly=1`; unlike the connection defaults, this is deliberately explicit at each invocation. These block *accidental* writes but do not replace layer 1. Verify: `psql -c "SHOW default_transaction_read_only;"` → `on`; `mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SELECT @@transaction_read_only;"` → `1`; ClickHouse queries include `--readonly=1`.
 3. **Mongo URIs carry `?readPreference=secondary`.** This is request *routing*, not authorization — it steers reads to secondaries but does not reject writes. The read-only Atlas role (layer 1) is what prevents writes.
 4. **Each `psql` / `mysql` / `mongosh` / `clickhouse` call prompts for permission.** The allowlist deliberately omits these. Don't pre-approve them — read each query before approving. The friction *is* the safety mechanism. (This holds only as long as no broad `Bash(python3 -c ...)` or similar wildcard re-opens a write path around the CLIs — keep the allowlist tight.)
@@ -110,9 +110,27 @@ configured integration, bounded by a timeout, and reports a pass/fail table:
 ./scripts/reckon verify grafana      # just one
 ```
 
-This is the only `reckon` subcommand that contacts your infrastructure; `status`,
-`doctor`, and `preflight` are purely local inspection. The individual commands it
+`verify` and the saved workflow's `collect` (including start commands with
+`--collect`) contact infrastructure; `status`, `doctor`, and `preflight` are local
+inspection. The individual verification commands it
 runs are listed per-tool in the sections below.
+
+## Saved investigation support
+
+Follow [docs/INVESTIGATIONS.md](docs/INVESTIGATIONS.md) to create and resume
+sessions, resolve structured service mappings, collect bounded evidence, record
+findings/hypotheses, generate a briefing, and promote a session into an incident.
+`scripts/reckon debug --help` is the starting command; `scripts/reckon demo`
+provides an offline example. Use `resume <session> --json` to retrieve saved
+context and evidence paths. The agent still performs the reasoning using the
+methodology below; a successful collector command does not establish a root cause.
+
+Supported collection uses exact read operations, fresh per-provider child
+environments, deadlines and output limits. Database/queue clients continue through
+the existing methodology and approval rules. Optional `jira` and `nginxpm`
+provide prior-ticket and current routing/certificate evidence, with client-side
+read-only settings enabled on activation. Routine debugging stays in private
+`sessions/`; a full RCA stays in `incidents/`.
 
 ## RCA Workflow
 
@@ -200,7 +218,7 @@ Use when CubeAPM data is missing, lagging, or attribution is weak (e.g. `host.na
 Use when the symptom is "consumer is slow / lagging / stuck", a deadletter topic is suspected, or a service that talks to Kafka is misbehaving. The team's stack uses many consumer groups — see [`infra-knowledge/_shared/service-name-mapping.md`](infra-knowledge/_shared/service-name-mapping.md) for the mapping from service to consumer group.
 
 **Kafka safety contract** (kcat/rpk have no read-only mode — these rules are the only client-side guard):
-1. **The SASL principal in `.env` should be read-only at the broker** — ACLs limited to `Describe`/`Read` (for MSK IAM: `kafka-cluster:Connect`, `Describe*`, `ReadData` — no `WriteData`/`Create*`/`Delete*`/`Alter*`). That's the real enforcement; provision it like the read-only DB role.
+1. **The SASL principal in `.env.<env>` should be read-only at the broker** — ACLs limited to `Describe`/`Read` (for MSK IAM: `kafka-cluster:Connect`, `Describe*`, `ReadData` — no `WriteData`/`Create*`/`Delete*`/`Alter*`). That's the real enforcement; provision it like the read-only DB role.
 2. **Read commands only**: `kcat -L` / `-C` / `-Q`, `rpk cluster info`, `rpk topic list/describe/consume`, `rpk group list/describe`. **Never** `kcat -P`, `rpk topic produce/create/delete/alter-config`, or `rpk group delete/seek`.
 3. **Never join a production consumer group.** Reading with `kcat -G <group>` or `rpk topic consume -g <group>` *joins* the group, triggering a rebalance of the real consumers and committing offsets — production impact from a "read". Always consume group-less (plain `kcat -C`, `rpk topic consume` without `-g`), which reads partitions directly with no side effects.
 4. **Keep the allowlist read-shaped**: pre-approve only the read commands above; let anything else prompt.
