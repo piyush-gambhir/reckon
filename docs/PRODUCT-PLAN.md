@@ -1,182 +1,216 @@
-# Reckon product and delivery plan
+# Reckon: remaining product and delivery plan
 
-Drafted 2026-09-08 from the local Reckon repository, six sibling CLI repositories, and the existing incident conventions. This is a proposed build plan, not a claim that the features below already exist.
+Reviewed 2026-09-08 against the workspace implementation. This replaces the earlier
+proposal. Features marked implemented exist locally; live-server and coding-agent
+quality acceptance remain open.
 
-## Implementation checkpoint — 2026-09-08
+Reckon should shorten the path from an operational question to a supported
+explanation, a useful next check, and a way to verify recovery. Its value comes
+from connecting evidence across the tools we already have and remembering what
+was learned. The first product surface remains the coding-agent workspace.
 
-The first workspace implementation is now in `scripts/reckonlib/`, exposed through
-the existing `scripts/reckon` and PowerShell entrypoints. See
-[INVESTIGATIONS.md](INVESTIGATIONS.md) for the shipped command surface and limitations.
+See [INVESTIGATIONS.md](INVESTIGATIONS.md) for current commands and
+[READINESS-REVIEW.md](READINESS-REVIEW.md) for the isolation review and development
+boundaries. Hosted execution remains deferred in [EDITIONS.md](../EDITIONS.md).
 
-Implemented: Bash/Zsh credential-switch isolation fixes, fresh provider-scoped
-child environments, a shared readiness registry, bounded process execution,
-versioned service mappings, saved sessions, 18 typed collection operations,
-evidence provenance, findings/hypotheses, reports, history, resume, preliminary
-incident promotion, and an offline cross-tool demo. Collection is sequential in
-this first implementation. Jira/NPM are optional integrations, not additional
-default setup installs.
+## Where we are
 
-The deterministic workflow has offline acceptance tests including a non-CubeAPM
-metric source. This does not complete M3's agent-quality/speed evaluation or
-live-server acceptance. Windows execution, persisted verification history,
-parallel collection, and the wider operations/hosted milestones remain open.
-The roadmap below is retained to show those remaining gates.
-
-## Product outcome
-
-Reckon helps an engineer move from a question about their systems to an evidence-backed explanation and a useful next action. It combines existing provider CLIs, our custom CLIs, source code, infrastructure knowledge, and prior investigations.
-
-The first release should make these questions materially faster to answer:
-
-- Why did this request, endpoint, job, or service fail or slow down?
-- What changed before the problem started, and does that change explain it?
-- Which upstream or downstream dependency is responsible?
-- Is the problem still happening, and how can a human validate recovery?
-- Have we seen this before, and was the earlier recommended fix implemented?
-
-Health sweeps and capacity/performance analysis already have methodology in the repo. Keep them usable, then give them the same evidence and session support after the debugging workflow is proven.
-
-## Starting point
-
-Already present: three investigation modes, causal drill-down methodology, knowledge templates, nine private incident folders in this clone, fourteen integration entries, setup/activation/diagnostics scripts, coding-agent launchers, and a documentation website.
-
-The current implementation relies heavily on the agent following Markdown instructions. Service mapping, query execution, evidence capture, and investigation continuity are largely manual. The main investigation recipe is CubeAPM-specific even though the intended methodology is broader.
-
-There is an existing uncommitted hardening pass. Preserve it, review it, and finish it as part of the foundation milestone. Do not restart the repository or rewrite the sibling CLIs.
-
-Planning assumption, open to user correction: the first-use surface is the existing coding-agent workspace. The data and capability contracts below also support a later standalone terminal or hosted runtime. This draft does not supersede EDITIONS.md's deferral of hosted execution.
-
-## User experience
-
-An engineer asks: “Checkout latency increased after the last deploy. Investigate staging from 14:00 to 14:30 UTC.”
-
-1. Reckon confirms the environment, affected service, time window, and available signals. It retrieves relevant service mappings and previous findings.
-2. It produces a short first assessment: whether the symptom is visible, its approximate start, affected scope, and the strongest next checks.
-3. It compares symptom metrics with a baseline, attributes the change to endpoints/dependencies, and checks the actual deployed revision and relevant configuration history.
-4. It maintains competing explanations with supporting evidence, contradicting evidence, and the next discriminating query. Temporal correlation alone does not confirm a cause.
-5. It saves each useful observation as it works. Missing access, expired telemetry, failed queries, and inconclusive checks remain explicit.
-6. It returns a concise answer with evidence links, confirmed and unresolved claims, recovery checks, and ranked next actions. A full RCA is generated when the task warrants one.
-7. A later session can resume from the evidence and open questions. Rechecking live conditions is explicit; stored evidence is never presented as a current reading.
-
-Routine debugging should not require completing a long RCA template. A short investigation can be promoted into an incident while preserving its evidence and reasoning history.
-
-## Capability map
-
-| Investigation need | Existing tools to reuse | Work inside Reckon |
+| Area | Implemented | Still required |
 | --- | --- | --- |
-| Metrics, traces, logs, alert state | `cubeapm`, `grafana`, `es`, `aws` | Discover available signals, select source-specific recipes, normalize time and provenance |
-| Deployment and code changes | `jenkins`, `gh`, local `git` and `rg` | Resolve service to repository/job/workload; establish deployed revision before inspecting code |
-| Workload and cloud health | `kubectl`, `aws` | Bounded workload/event/resource reads; correlate with symptom window |
-| Queues and caches | `kcat`, `rpk`, `redis-cli` | Lag and saturation recipes, source constraints, explicit unsupported signals |
-| Datastore investigation | `psql`, `mysql`, `mongosh`, `clickhouse client` | Narrow diagnosis after telemetry points to a datastore; preserve query approval and role requirements |
-| Earlier incidents and unresolved fixes | Local corpus, `jira`, `gh` | Add Jira integration; retrieve related tickets and distinguish proposed fixes from verified shipped fixes |
-| Proxy and certificate context | `nginxpm` | Add integration for configured NPM deployments; read routing/certificate/audit information the server actually exposes |
+| Integrations | Shared readiness registry for 16 integrations, including six custom CLIs; four custom CLIs in the default installer | Version/output contracts, verification history, optional-install experience |
+| Collection | 18 typed operations across 10 providers including Git; argument validation, deadlines, output caps, cancellation | Payload/pagination semantics, source identity, overall budgets, bounded concurrency |
+| Service context | Versioned environment-local mappings, aliases, provenance, frozen session context | Guided mapping, stricter field validation, stale mapping warnings, dependency joins |
+| Debugging | Start, collect, resume, notes, reports, history, close | Evidence-aware next checks, hypothesis lifecycle, causal timelines |
+| Incidents | Promotion to a preliminary snapshot with evidence and RCA template links | Supported explanation, impact/timeline generation, recovery and learning lifecycle |
+| Monitor/analyze | Saved mode labels and existing Markdown methodologies | Distinct collection plans, suitable comparisons, sweep aggregation; no scheduler exists |
+| Isolation | Environment switching, scoped collector configuration, private local state, guarded paths and checked artifact hashes | Remaining profile/auth contract tests and platform acceptance; this is not an OS sandbox |
+| Evaluation | Offline cross-tool demo, non-CubeAPM metric case, deterministic regressions | Eight diagnostic scenarios, coding-agent runs, speed/correctness baseline, controlled live acceptance |
+| Website | Workspace documentation and static site | Keep support claims accurate; it is not an operational dashboard |
 
-Jira and Nginx Proxy Manager exist as sibling CLIs but are not in Reckon's current integration registry or installer release table. Validate their installed command/auth contracts before adding pins and probes.
+The foundation is substantial. The missing product work is a reliable investigation
+loop: establish onset and scope, connect actual deployment and dependency evidence,
+test competing explanations, and validate recovery. More command wrappers alone
+will not finish that loop.
 
-Support providers through capabilities such as `metrics.range`, `logs.search`, `trace.get`, `deployments.list`, and `workload.events`. A workflow asks for a capability, then uses an available implementation. It must work with partial coverage; all integrations are never an onboarding prerequisite.
+## First complete workflow
 
-Do not implement every command of every CLI inside Reckon. Start with the bounded reads required by the release workflows. Extend an existing CLI only when a demonstrated API or output gap blocks a real investigation.
+For “checkout became slow after a deploy”:
 
-## Architecture
+1. Resolve explicit environment, service, window, available sources and baseline.
+   Explain mapping ambiguity or missing access.
+2. Establish the symptom independently of deployment timing: latency/error rate,
+   traffic, onset, affected endpoints and telemetry coverage.
+3. Build a timeline from deployment, workload, configuration and signal evidence.
+   A successful CI run is not proof that its revision was deployed.
+4. Resolve the deployed revision/image to source and inspect relevant changes.
+   Follow a representative failing request into its dependencies.
+5. Maintain explanations with supporting evidence, contradicting evidence and the
+   next distinguishing query. Separate trigger from contributor.
+6. Produce a supported answer, unknowns and recovery checks. Abstain when evidence
+   cannot establish a cause.
+7. Resume without losing reasoning; promote when an RCA is warranted. Store a
+   reviewed learning and distinguish proposed fixes from verified shipped fixes.
 
-```text
-Engineer question / alert text
-             |
-      Investigation method
-      frame -> collect -> test explanations -> conclude
-             |
-      Local investigation services
-      service resolver | capability registry | execution and evidence | session history
-             |
-      Existing custom and provider CLIs + local source repositories
-             |
-      Environment-scoped infrastructure
-```
+The coding agent supplies reasoning. Reckon supplies context, typed reads,
+provenance, continuity and evaluation. Retain this division for the first release.
 
-The coding agent can supply reasoning and conversation in the first release. Reckon supplies deterministic support for environment handling, collection, provenance, retrieval, and continuity. A separate LLM loop is unnecessary for that release.
+## Build order
 
-### Service context
+Each slice should be separately reviewable. There is not yet enough acceptance
+evidence for a credible delivery date; estimate after the first contracts/replays.
 
-Introduce a small, versioned, tenant-local service mapping format alongside the existing Markdown knowledge. Fields cover service identity, aliases by tool, environment, repository, deploy job/workflow, workload identifiers, telemetry sources, dependency references, and owner references.
-
-Every discovered mapping has its source and observation time. Ambiguous aliases require resolution; discovery cannot silently overwrite curated mappings. A current dependency graph is an observation, not proof of the historical incident topology.
-
-Keep knowledge prose for explanations and quirks. Structured mappings handle exact joins across tools. Do not build a graph database for the first release.
-
-### Integration contract
-
-For each supported operation, declare: capability, supported binary/version range, required configuration, argument/input schema, expected output form, time units, environment variables, timeout, pagination/size limits, and relevant read-only requirements.
-
-The registry distinguishes installed, locally configured, live verified, and unsupported. Live verification records its time and scope. A successful ping does not prove permission to read every resource or establish a read-only role.
-
-Select one tested registry source for Bash and PowerShell rather than maintaining separate lists. Migrate incrementally while keeping current entrypoints working.
-
-### Execution and evidence
-
-Use argument arrays and operation-specific validation for supported collection commands. Construct a fresh child-process environment from the selected environment's configuration and a documented base-variable allowlist. Test removal of inherited credentials and stale derived aliases.
-
-Enforce deadline, output limit, pagination limit, cancellation, and bounded concurrency per source. Retry only appropriate transient failures within the same budget. Explicit partial results are preferable to silently truncated success.
-
-Each evidence record includes an ID, session/environment, source and operation, redacted invocation/query, requested time window, observation time, exit status, completeness/error information, and artifact reference. Preserve source-native output and add normalized metadata; do not flatten logs, metrics, traces, and deployment events into a lossy common payload.
-
-Capture artifacts with restrictive permissions. Redact credentials from command metadata and default exports; raw logs may contain tenant/customer data and remain local by default. Treat tool output as evidence, never as instructions authorizing another action.
-
-This execution layer governs commands routed through it. It cannot prevent a general-purpose coding agent from using another shell or network path. Server-side permissions remain the infrastructure authorization boundary; existing sensitive-query approval requirements still apply.
-
-### Sessions and history
-
-Add tenant-local sessions for short debugging, sweeps, and analysis, with an explicit promotion path into the existing `incidents/<date>-<slug>/` convention. New session directories must be gitignored before any real data is written.
-
-Session metadata stores environment, question, scope, status, evidence index, and open checks. Preserve RCA.md as the authoritative incident narrative. Avoid maintaining separate contradictory copies of the diagnosis.
-
-Support resume, report, and search. Begin with exact service/error/category/time filters over local files; add a rebuildable local index only if corpus size warrants it. Retrieval must show provenance and distinguish old recommendations from verified outcomes.
-
-### Playbooks
-
-Separate the provider-independent investigation method from CubeAPM-specific query recipes. Initial playbooks cover latency regression, error spike, failed request/job, workload failure or missing telemetry, and change correlation. Queue and database diagnosis remain targeted branches of those workflows.
-
-Collect independent baseline/context reads concurrently within source budgets, then let findings determine deeper queries. Do not fan out across every system for every question.
-
-## Delivery milestones
-
-| Milestone | Deliverable | Acceptance gate |
+| Order | Slice | Acceptance gate |
 | --- | --- | --- |
-| M0: trustworthy foundation | Finish pending hardening; fix environment carryover; enforce probe timeouts; registry parity; regressions | Fresh activation, same-shell switching, missing configuration, aliases, timeout/cancellation, and launch behavior pass isolated tests; existing website checks remain green |
-| M1: one complete debugging workflow | Service mapping; session creation; bounded collection with provenance; latency/error playbook using configured observability plus deploy/code context | A synthetic cross-tool incident yields a useful short answer with evidence and open questions; interruption/resume works without losing evidence; no database access required |
-| M2: complete incident workflow | Additional failure playbooks; hypothesis tracking; promote to RCA; recovery verification; prior-incident retrieval; optional Jira/NPM reads | Cross-tool cases distinguish trigger from contributor, wrong deploy from causal deploy, missing telemetry from health, and old evidence from current state |
-| M3: releasable workspace product | Partial-stack onboarding; documented commands; sanitized demo; evaluation suite; supported-platform checks | A fresh clone with one observability source can complete the documented workflow; all release gates below pass |
-| M4: broader operations | Durable monitor/analyze sessions; deploy comparison; richer recurrence and follow-up tracking | Extend evidence/session contracts without separate workflow implementations; evaluate false alarms and usefulness on representative tasks |
-| M5: team/hosted surface | Decide trigger/delivery surface, runtime, secrets, tenant isolation, durable jobs, audit and operational budgets | Separate design and explicit scope decision; same core playbooks/evidence contract; enforced permissions and isolation tested before unattended infrastructure access |
+| 1 | Collector contracts and evidence completion | Every exposed operation has success/empty/error/partial fixtures; partial output is not silently reused as complete; source provenance is stable and non-secret |
+| 2 | Service/deployment/code correlation | Join metrics → build/run → actual deployed revision → code with evidence; an unrelated nearby deploy remains unconfirmed |
+| 3 | Hypotheses and adaptive playbooks | Latency, errors, workload and changes choose different next reads; explanations have evidence-backed state transitions |
+| 4 | Recovery and incident memory | Compare a new recovery window to the symptom/baseline; preserve coherent promotion snapshots; retrieve reviewed lessons and fix status |
+| 5 | Workspace release acceptance | Fresh partial-stack onboarding, eight scenarios, measured agent runs, macOS/Linux execution, controlled live checks, accurate support matrix |
+| 6 | Broader operational modes | Distinct monitor/analyze plans, appropriate comparisons, bounded multi-service sweeps and follow-up tracking using the same core |
 
-M0 and the first M1 workflow are the next implementation scope. M3 defines the first complete workspace release. M4/M5 describe expansion, not prerequisites for shipping it.
+Build the replay scenarios alongside slices 1–4. Record the before/after baseline
+before changing agent-facing investigation guidance.
 
-## Release evidence
+### 1. Finish the collection contract
 
-Create at least eight sanitized replay cases covering: a causal deploy, an unrelated nearby deploy, increased request volume against an existing bottleneck, a downstream failure, missing telemetry, lagged telemetry, a configuration/proxy issue, and insufficient access/evidence.
+- Declare each operation's parameter/output schemas, time semantics, supported CLI
+  versions, pagination/result caps and retryable errors. Keep source-native output
+  plus metadata; logs, traces and metric matrices have different meanings.
+- Resolve `completeness=partial|limit_reached` versus `status=ok`. Preserve usable
+  partial observations, but prevent automatic reuse from concealing missing
+  pages/shards. Make exit/report behavior consistent.
+- Record non-secret endpoint/profile identity and executable version. Define when
+  configuration changes require refresh; current fingerprints cover only the task.
+- Persist live verification time, source scope and permission failures. Installed,
+  locally configured, live verified and supported are distinct states.
+- Test saved profiles, SSO/cache behavior, Kubernetes credential plugins, and local
+  Git configuration/partial clones. Private collector HOME deliberately does not
+  reuse global login caches. Probe and collector configuration must converge on
+  one tested contract.
+- Add saved-profile secret redaction and an explicit reviewed export path. Notes,
+  questions and arbitrary log fields are not currently a sanitized export.
+- Add a total collection deadline and per-source concurrency limits. Retry only
+  transient reads within that budget, preserving cancellation and attempt history.
 
-Separate deterministic tests of collectors/session handling from agent evaluations. For agent evaluations, freeze available evidence, keep reference answers hidden from the run, pin the evaluated runtime/model configuration, repeat runs, and score findings against a human-reviewed rubric. Live collection is a separate acceptance exercise against explicitly chosen infrastructure.
+Prioritize CubeAPM, Grafana, Jenkins and GitHub; cover every other exposed operation
+before claiming the whole surface is supported. No new provider is required here.
 
-Track time to first useful evidence, time to supported diagnosis, number of queries, user interventions, evidence-link validity, and unsupported top-level claims. Compare against the current workspace on the same cases. Proposed performance target: at least 30% lower median time to supported diagnosis without a drop in correctness; establish the baseline before treating this as a release promise.
+### 2. Connect service, deployment and code
 
-Hard gates: no cross-environment evidence/credential leakage in the test suite; bounded/cancellable collection; every top-level factual claim cites evidence; explicit abstention in insufficient-evidence cases; zero confirmed causal claims in the negative-control case. Mock/replay success is not certification against every production server.
+- Validate source fields and aliases before creating a session. Guide mapping from
+  observed identifiers with provenance and review of ambiguity. Never invent
+  metric names or silently replace curated mappings during discovery.
+- Add deployment observations linking environment, service/workload, rollout time,
+  build/run, artifact/image and revision, with evidence for each join.
+- Normalize event times into a timeline while retaining requested/observed times,
+  ingestion lag and limits of current-only snapshots.
+- Establish actual deployment attribution before treating a revision as a causal
+  candidate. Handle absent checkout/revision and ambiguous deployment outcomes.
+- Derive remaining gaps from evidence. The current plan can still say code is
+  missing after a manual `git.show`, because it only inspects the mapping.
 
-Platform claims require actual execution on the claimed platforms. Native Windows stays experimental until activation, process control, and evidence handling pass Windows CI. Do not block the first macOS/Linux workflow on complete native Windows parity.
+Acceptance cases: causal deploy, failed/non-deploy CI run, unrelated nearby deploy,
+and a known deployment with unavailable local source.
 
-## Implementation decisions and boundaries
+### 3. Make the investigation loop useful
 
-- Retain the current Bash/PowerShell bootstrap and launcher entrypoints. Choose the smallest maintainable implementation for structured local services at M1; a Go helper is a reasonable candidate because the sibling CLIs already use Go. Do not commit to a rewrite merely for consistency.
-- Proposed product verbs are `debug`, `investigate`, `resume`, `report`, `history`, `monitor`, and `analyze`. Final command syntax follows the first-use surface decision; none of these are claimed to exist today.
-- Prioritize the configured Grafana/CubeAPM/Jenkins/GitHub workflow, then a non-CubeAPM fixture to prove capability portability. Add Jira and NPM where they close a demonstrated context gap.
-- Mitigation suggestions and ticket/message drafts belong in outputs. Executing remediation, posting messages, or creating tickets is a separate explicitly authorized action, not an automatic consequence of investigating.
-- Avoid an early hosted dashboard, broad provider marketplace, custom model runtime, vector database, or autonomous remediation. Revisit each when measured user needs justify the additional system.
+- Add hypotheses with stable IDs, state, supporting/contradicting evidence, next
+  checks and transition history. Keep existing notes readable.
+- Select the smallest useful next read. Establish signal presence before accepting
+  zero errors; compare rates and volume; follow a trace/dependency before opening
+  broad database queries.
+- Give latency, errors, workloads and changes distinct plans. Currently playbooks
+  change guidance while mapped sources determine the same collection fan-out.
+- Separate observation, inference, confirmed mechanism and unknowns in reports.
+  An evidence reference proves provenance, not that the prose is true.
+- Retain investigator control, explicit live reads, rejected explanations and
+  inconclusive outcomes.
 
-## Next implementation checklist
+Acceptance cases include traffic growth exposing an existing bottleneck, downstream
+failure, lagged/missing telemetry and insufficient access. No confirmed causal claim
+is acceptable in the unrelated-deploy negative control.
 
-- [x] Proceed with the existing coding-agent workspace as the first-use surface.
-- [x] Add isolated regression cases and fixes for credential carryover and timeout gaps. Native Windows execution remains unverified.
-- [ ] Select a sanitized latency/error scenario and record the current workflow baseline.
-- [x] Specify service mapping, session metadata, operation, and evidence-record fixtures for the synthetic scenario.
-- [x] Build the deterministic M1 path: resolve -> collect -> investigator notes -> report -> resume. The coding agent supplies the explanation.
-- [ ] Run the scenario with existing coding agents; inspect actual query count, latency, correctness, and user effort.
-- [ ] Use those results to size M2; keep a visible backlog with acceptance criteria rather than adding integrations opportunistically.
+### 4. Recovery and accumulated knowledge
+
+- Add follow-up windows without rewriting the original incident window or
+  silently presenting stored evidence as current health.
+- Separate diagnosis from recovery. `close --outcome diagnosed` currently requires
+  only a recorded finding; it is not a recovery test.
+- Compose preliminary impact, timeline, explanation and open questions from the
+  session; retain `RCA.md` as the reviewed incident narrative.
+- Track learnings/actions through reviewed, implemented and verified states with
+  sources. Jira/GitHub reads provide context; posting remains separately authorized.
+- Retrieve prior sessions/incidents with explicit environment, age and provenance.
+  Start with structured filters; add a rebuildable index only when measured corpus
+  size or latency warrants it.
+
+## Reuse the existing CLIs
+
+| Need | Reuse | Reckon's responsibility |
+| --- | --- | --- |
+| Signals and annotations | `cubeapm`, `grafana`, `es`, `aws` | Selection, bounds, baseline, coverage and provenance |
+| Deployment/source changes | `jenkins`, `gh`, local `git`/`rg` | Attribution, timeline joins, causal checks |
+| Workload context | `kubectl`, `aws` | Narrow resource scope and historical limits |
+| Prior issues | `jira`, `gh`, local RCA corpus | Recurrence, reviewed knowledge and verified fix status |
+| Routing/certificates | `nginxpm` | Current configuration evidence with temporal limits |
+| Queues/caches/databases | `kcat`, `rpk`, `redis-cli`, `psql`, `mysql`, `mongosh`, `clickhouse` | Later targeted recipes under existing role/query-approval contracts |
+
+Keep provider API/auth/pagination implementation in the CLIs where possible.
+Reckon owns bounded operations and cross-tool investigation. Jira and Nginx Proxy
+Manager are already optional integrations, not default installer entries. Add pins
+only after their release contracts have been validated.
+
+## Architecture and isolation
+
+Retain the Python 3.9+ standard-library core; there is no demonstrated reason to
+rewrite it in Go. Bash/PowerShell remain activation/setup/entrypoint layers.
+
+- `environment.py`: environment, profiles, readiness and subprocess configuration.
+- `operations.py`: capability contracts, arguments and plans. Split adapters by
+  provider as contracts grow; keep them out of the reasoning/session layer.
+- `process.py`: bounded execution, cancellation and process cleanup.
+- `store.py`: versioned private storage, atomic writes, locks and integrity checks.
+- `investigation.py`: orchestration. Extract report/history functions when their
+  next feature warrants it; avoid a framework refactor before acceptance.
+- `skills/reckon/`: investigation methodology and provider recipes.
+- `tests/` and `examples/`: synthetic fixtures only; never copied tenant data.
+- `web/`: documentation, with no collector imports or tenant state.
+
+One session has one environment and frozen context. Path scoping does not prevent
+a program running as the same user from opening other files. Read-only server roles
+remain the authorization boundary. Hosted execution needs separately enforced
+tenant/process/network isolation, secrets, durable jobs and audit controls.
+
+## Release gates and measurement
+
+Create eight sanitized scenarios: causal deploy, unrelated nearby deploy, traffic
+growth against an existing bottleneck, downstream failure, missing telemetry,
+lagged telemetry, configuration/proxy issue, and insufficient access. Include a
+non-CubeAPM stack and a minimal partial stack.
+
+Keep these evidence types separate:
+
+1. Deterministic tests: contracts, bounds, partial results, environment/path
+   isolation, integrity, interruption/resume and command lifecycle.
+2. Coding-agent evaluations: frozen evidence, hidden reference conclusions,
+   recorded runtime/model, repeated runs and human-reviewed scoring.
+3. Live acceptance: explicitly selected environment/service, narrow reads, known
+   role constraints, tool/server versions and observed limitations.
+
+Measure time to first useful evidence, time to supported diagnosis, query count,
+user interventions, evidence validity and unsupported claims. Compare against the
+current workspace on identical cases. A 30% lower median diagnosis time is a
+proposed target, not a measured result or promise.
+
+Hard gates: no cross-environment credential/evidence leakage in fixtures; bounded,
+cancellable collection; valid evidence for top-level factual claims; abstention
+with insufficient evidence; no confirmed cause in the negative control. Platform
+claims need actual execution. Native Windows remains experimental until native
+activation, process-tree cleanup and storage tests pass.
+
+## Deferred deliberately
+
+Unattended monitoring, alert/chat-triggered execution, a hosted dashboard, another
+LLM runtime, provider marketplace, vector/graph databases and autonomous remediation
+follow demonstrated workspace usefulness. Preserve the contracts that enable them
+without making them prerequisites for the workspace release.

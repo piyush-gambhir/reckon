@@ -122,7 +122,24 @@ Sessions live in gitignored `sessions/<id>/`. Each evidence record includes oper
 
 State files are written atomically with restrictive permissions, and an OS lock prevents concurrent session writers. A stopped collection leaves completed evidence intact; interrupted in-flight records are marked on the next collection. Current-state snapshots and recent Jenkins builds are labelled explicitly instead of being represented as historical window-filtered data.
 
+State paths below the workspace reject symlinks/junctions. Evidence reads verify
+artifact paths, byte counts and hashes before reuse, citation, reporting or
+promotion. Missing or changed artifacts fail with an integrity error; restore the
+original files from a trusted local backup or start a new session. Do not edit
+checksums to bypass the error. Promotion validates its snapshot and refuses extra
+linked files. These checks detect local corruption; they do not authenticate data
+against someone who can rewrite both the artifact and its metadata.
+
 Provider commands inherit a fresh selected environment and a limited set of operating-system, locale, proxy, and certificate variables. Provider credentials inherited from another shell/clone are cleared. The shell activation paths now clear stale provider credentials and derived aliases as well. Store credentials in the selected environment's files/profiles rather than relying on an unrelated shell export.
+
+Collector children use private HOME, cache, state and temporary directories under
+`.config/<environment>/runtime/<provider>/`; explicit CLI configuration remains in
+`.config/<environment>/`. Global login caches are not copied or used as a fallback.
+Direct shell activation and `verify` retain the operator's HOME, so a successful
+direct probe does not yet guarantee a collector's SSO/cache flow works. Use the
+selected environment's explicit credentials/profiles; SSO and credential-helper
+acceptance remain release work. `.env` and profile files are trusted configuration,
+and scoped default paths are not an operating-system filesystem sandbox.
 
 The runner constrains commands routed through it. It cannot constrain every action of a general-purpose coding agent. Server-side read-only roles and existing database/query approval rules remain necessary. Source artifacts are untrusted data, not instructions to execute more commands.
 
@@ -131,3 +148,7 @@ The runner constrains commands routed through it. It cannot constrain every acti
 Run `python3 -B -m unittest discover -s tests -p 'test_*.py' -v` plus the existing shell/installer tests. The suite exercises an offline cross-tool workflow, a non-CubeAPM metrics path, lifecycle commands, isolation, process limits, evidence references, redaction, and storage behavior.
 
 This release implements the first deterministic workspace workflow. Automatic service discovery, persisted live-verification history, bounded parallel collection, calibrated agent evaluations, quantitative speed comparisons, live-server acceptance, and a hosted runtime remain follow-up work. A synthetic walkthrough proves the plumbing, not an agent's diagnostic accuracy or a speed improvement.
+
+The ordered build slices and release gates are in [PRODUCT-PLAN.md](PRODUCT-PLAN.md).
+See [READINESS-REVIEW.md](READINESS-REVIEW.md) for tested isolation boundaries and
+remaining profile, redaction, output-contract and platform limitations.

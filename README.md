@@ -24,6 +24,9 @@ contacting infrastructure. See [the investigation guide](docs/INVESTIGATIONS.md)
 for mapping a real service, starting `debug`, collecting evidence, and producing
 an RCA. The coding agent supplies the reasoning; Reckon preserves the work.
 
+Development status and next steps: [product plan](docs/PRODUCT-PLAN.md) and
+[readiness/isolation review](docs/READINESS-REVIEW.md).
+
 One clone supports **production, staging, and UAT**, but exactly one is active at a time. Reckon never chooses production implicitly: select an environment explicitly, and never switch during one investigation.
 
 ### Quick start

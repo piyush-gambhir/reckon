@@ -32,7 +32,7 @@ This project is a workspace for spinning up a coding agent to investigate produc
 
 ## Environments — read before any query
 
-This workspace targets **three environments: `production`, `staging`, `uat`**, selected by the `RECKON_ENV` variable. Each has its own credentials (`.env.<env>`) and its own CLI config directory (`.config/<env>/`), so no two environments ever share credential state.
+This workspace targets **three environments: `production`, `staging`, `uat`**, selected by the `RECKON_ENV` variable. Each has its own credentials (`.env.<env>`) and CLI config directory (`.config/<env>/`). The collector also scopes default home/cache/temp paths by provider and environment. Direct CLI fallback paths and credential helpers require the adapter checks described in [the isolation review](docs/READINESS-REVIEW.md); directory scoping is not an OS sandbox.
 
 **The rule the whole design exists to enforce:** never query one environment while believing you are on another. It is silent, easy, and no tool will catch it.
 
@@ -73,7 +73,7 @@ Skills are installed **repo-locally** (the skills CLI honours `XDG_CONFIG_HOME`,
 
 ## Authentication
 
-This project uses **per-environment, folder-specific credentials** via `.envrc`. It resolves `RECKON_ENV`, sets `XDG_CONFIG_HOME` to `.config/<env>/` within this directory, and loads credentials in this order (later wins): `.env.common` → `.env.<env>` → `.env.<env>.local`. Because each environment gets its own config directory, no two environments ever share CLI credential state. Environment variables are the preferred setup because they make the workspace usable immediately when you `cd` into it, without interactive CLI logins. Saved CLI profiles under `.config/<env>/` remain a fallback option.
+This project uses **per-environment, folder-specific credentials** via `.envrc`. It resolves `RECKON_ENV`, sets `XDG_CONFIG_HOME` to `.config/<env>/` within this directory, and loads credentials in this order (later wins): `.env.common` → `.env.<env>` → `.env.<env>.local`. Put only intentionally shared values in `.env.common`. Environment variables are the preferred setup because they make the workspace usable immediately when you `cd` into it, without interactive CLI logins. Saved CLI profiles under `.config/<env>/` remain a fallback option. Collector commands use private default HOME/cache/temp paths; direct activation and verification retain the operator's HOME. Global SSO caches are not imported into collection automatically.
 
 An unrecognised `RECKON_ENV` **fails closed** — no credentials are loaded at all, rather than silently falling back to a real environment.
 
