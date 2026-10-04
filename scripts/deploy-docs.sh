@@ -29,7 +29,9 @@ WEB_DIR="${WEB_DIR:-web}"
 echo "==> Building the site in ${WEB_DIR}/"
 ( cd "$WEB_DIR" && pnpm install --frozen-lockfile && pnpm build:cloudflare && pnpm test:search )
 
-if ! ( cd "$WEB_DIR" && pnpm exec wrangler whoami >/dev/null 2>&1 ); then
+# Only check the interactive login: whoami needs account-list access that a
+# scoped deploy token may lack, and wrangler deploy reports token errors itself.
+if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]] && ! ( cd "$WEB_DIR" && pnpm exec wrangler whoami >/dev/null 2>&1 ); then
   echo "error: Wrangler is not authenticated. Run 'cd web && pnpm exec wrangler login' or create $DEPLOY_ENV_FILE." >&2
   exit 1
 fi
