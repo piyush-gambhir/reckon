@@ -2,7 +2,7 @@
 
 An agent workspace for talking to your infrastructure — investigating incidents, running RCAs, and understanding production behavior with a read-only ops toolbelt.
 
-📖 **Docs site:** see [`web/`](web/) (Next.js + Fumadocs, static-exported to Cloudflare Pages). Run `cd web && pnpm install && pnpm dev` for local preview.
+📖 **Docs site:** see [`web/`](web/) (Next.js + Fumadocs, static-exported to Cloudflare Workers Assets). Run `cd web && pnpm install && pnpm dev` for local preview.
 
 ## Overview
 
