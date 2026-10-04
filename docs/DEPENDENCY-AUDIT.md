@@ -28,7 +28,7 @@ Other direct docs dependencies were refreshed to the registry's latest stable re
 ## Fixes beyond version bumps
 
 - **Correct executable installation:** all six `make install` targets now build the public binary name. Their main package directory is named `cli-go`, so the previous `go install .` targets could overwrite a shared `cli-go` executable. `INSTALL_DIR` and `GOBIN` are honored.
-- **Working Reckon release pins:** Bash and PowerShell share [cli-releases.csv](../scripts/cli-releases.csv). It maps the latest public releases (Grafana/Jenkins/CubeAPM 0.2.6; Elasticsearch 0.1.6) to matching nested-module semantic version tags. Private staging directories prevent binary collisions. Setup remains idempotent and leaves already-installed commands in place.
+- **Working Reckon release pins:** Bash and PowerShell share [cli-releases.csv](../scripts/cli-releases.csv). It maps the latest public releases (Grafana/Jenkins 0.2.10, CubeAPM 0.2.11, Elasticsearch 0.1.11 as of 2026-10-05) to matching nested-module semantic version tags. Private staging directories prevent binary collisions. Setup remains idempotent and leaves already-installed commands in place.
 - **CubeAPM request contract:** trace search sends `query`; trace search/fetch send Unix seconds as documented. Promoting the environment filter no longer mutates the caller's tag map. Jaeger-shaped output still uses its existing internal time representation. Contract tests cover the request units and repeated use of filters.
 - **Table output:** Jenkins/Jira use the current tablewriter API, preserve borderless output, and propagate writer errors. Tests cover long values, Unicode content, empty slices, pointers to slices, JSON fallback, and broken output writers.
 - **Maintained YAML:** all six CLIs use the maintained YAML organization v3 package, with existing config/output tests retained.
@@ -74,13 +74,15 @@ In each `cli-go/` directory, run `go list -m -u all` for new modules and the che
 
 ## Published releases
 
+Updated 2026-10-05 to the latest release of each CLI.
+
 | CLI | Release | Documentation |
 | --- | --- | --- |
-| cubeapm-cli | [0.2.6](https://github.com/piyush-gambhir/cubeapm-cli/releases/tag/v0.2.6) | [Live docs](https://projects.piyushgambhir.com/cubeapm-cli/docs/compatibility) |
-| grafana-cli | [0.2.6](https://github.com/piyush-gambhir/grafana-cli/releases/tag/v0.2.6) | [Live docs](https://projects.piyushgambhir.com/grafana-cli/docs/compatibility) |
-| jenkins-cli | [0.2.6](https://github.com/piyush-gambhir/jenkins-cli/releases/tag/v0.2.6) | [Live docs](https://projects.piyushgambhir.com/jenkins-cli/docs/compatibility) |
-| es-cli | [0.1.6](https://github.com/piyush-gambhir/es-cli/releases/tag/v0.1.6) | [Live docs](https://projects.piyushgambhir.com/es-cli/docs/compatibility) |
-| jira-cli | [0.1.6](https://github.com/piyush-gambhir/jira-cli/releases/tag/v0.1.6) | [Live docs](https://projects.piyushgambhir.com/jira-cli/docs/compatibility) |
-| nginxpm-cli | [0.1.6](https://github.com/piyush-gambhir/nginxpm-cli/releases/tag/v0.1.6) | [Live docs](https://projects.piyushgambhir.com/nginxpm-cli/docs/compatibility) |
+| cubeapm-cli | [0.2.11](https://github.com/piyush-gambhir/cubeapm-cli/releases/tag/v0.2.11) | [Live docs](https://projects.piyushgambhir.com/cubeapm-cli/docs/compatibility) |
+| grafana-cli | [0.2.10](https://github.com/piyush-gambhir/grafana-cli/releases/tag/v0.2.10) | [Live docs](https://projects.piyushgambhir.com/grafana-cli/docs/compatibility) |
+| jenkins-cli | [0.2.10](https://github.com/piyush-gambhir/jenkins-cli/releases/tag/v0.2.10) | [Live docs](https://projects.piyushgambhir.com/jenkins-cli/docs/compatibility) |
+| es-cli | [0.1.11](https://github.com/piyush-gambhir/es-cli/releases/tag/v0.1.11) | [Live docs](https://projects.piyushgambhir.com/es-cli/docs/compatibility) |
+| jira-cli | [0.1.12](https://github.com/piyush-gambhir/jira-cli/releases/tag/v0.1.12) | [Live docs](https://projects.piyushgambhir.com/jira-cli/docs/compatibility) |
+| nginxpm-cli | [0.1.12](https://github.com/piyush-gambhir/nginxpm-cli/releases/tag/v0.1.12) | [Live docs](https://projects.piyushgambhir.com/nginxpm-cli/docs/compatibility) |
 
 [Reckon installation documentation](https://projects.piyushgambhir.com/reckon/docs/installation) includes the shared release pins. Public documentation and search endpoints returned HTTP 200; all seven search exports matched the local builds.

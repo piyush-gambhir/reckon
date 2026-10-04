@@ -1,6 +1,7 @@
 """Small read-shaped capability surface over existing CLIs.
 
-Custom CLI argument contracts checked against the sibling 0.2.6/0.1.6 source.
+Custom CLI argument contracts are checked against the releases pinned in
+scripts/cli-releases.csv; recheck them whenever those pins change.
 No arbitrary shell, database, mutation, or remote git operation is accepted.
 """
 from datetime import timedelta
