@@ -35,6 +35,14 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 
+# A RECKON_ENV that differs from the value the previous activation set was
+# changed in this shell (set or removed). It stays the shell's own setting:
+# the restoration below must not put back the value from before activation.
+$previousEnv = Get-Variable -Name ReckonActivatedEnv -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+$shellChangedEnv = $previousEnv -and $env:RECKON_ENV -cne $previousEnv
+$shellEnv = $env:RECKON_ENV
+$script:ReckonActivatedEnv = $null
+
 # Dot-sourcing a second environment in the same PowerShell session must not
 # retain credentials that existed only in the first one. Restore every env var
 # managed by the previous activation before resolving and loading the next one.
@@ -47,6 +55,9 @@ if (Get-Variable -Name ReckonManagedEnvironment -Scope Script -ErrorAction Silen
             Remove-Item -Path "Env:$key" -ErrorAction SilentlyContinue
         }
     }
+}
+if ($shellChangedEnv) {
+    if ($shellEnv) { $env:RECKON_ENV = $shellEnv } else { Remove-Item -Path Env:RECKON_ENV -ErrorAction SilentlyContinue }
 }
 $script:ReckonManagedEnvironment = @{}
 
@@ -142,6 +153,7 @@ Import-DotEnv (Join-Path $repoRoot ".env.$requestedEnv.local")
 # Environment files cannot redirect the selected environment or its CLI state.
 Set-ReckonEnvValue -Name 'RECKON_ENV' -Value $requestedEnv
 Set-ReckonEnvValue -Name 'XDG_CONFIG_HOME' -Value $xdg
+$script:ReckonActivatedEnv = $requestedEnv
 
 # ---------------------------------------------------------------------------
 # 4. CLI path overrides

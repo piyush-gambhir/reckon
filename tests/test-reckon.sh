@@ -141,6 +141,15 @@ test_targeted_skip_fails() {
     assert_contains "$output" "skipped"
 }
 
+test_untargeted_verify_runs() {
+    new_fixture
+    write_selection
+    local output
+    # macOS ships Bash 3.2 as /bin/bash, where nounset rejects empty array expansions.
+    output="$(/bin/bash "$FIXTURE/scripts/reckon" verify 2>&1)"
+    assert_contains "$output" "0 failed"
+}
+
 test_kafka_probe_uses_security_settings() {
     new_fixture
     write_selection
@@ -216,6 +225,7 @@ tests=(
     test_invalid_environment_fails_closed
     test_verify_rejects_unknown_target
     test_targeted_skip_fails
+    test_untargeted_verify_runs
     test_kafka_probe_uses_security_settings
     test_agent_launcher_activates_environment
     test_env_output_works_outside_repo

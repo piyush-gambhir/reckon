@@ -279,6 +279,13 @@ class WorkflowTests(Fixture):
             self.assertIn("[REDACTED]", output)
             self.assertNotIn("secret-for-test", json.dumps(record))
 
+    def test_indented_log_stream_is_parsed(self):
+        # The pinned cubeapm prints each log entry as an indented JSON object.
+        stream = json.dumps({"_msg": "a"}, indent=2) + "\n" + json.dumps({"_msg": "b"}, indent=2) + "\n"
+        summary = work.payload_summary(stream, "ndjson", 100)
+        self.assertEqual((summary["summary"], summary["completeness"]), ("2 entries captured.", "bounded"))
+        self.assertEqual(work.payload_summary('{"_msg": "a"}\n{"_msg"', "ndjson", 100)["completeness"], "invalid_output")
+
     def test_working_directory_is_not_redacted_as_a_secret(self):
         values = {"PWD": "/work/reckon", "OLDPWD": "/work", "MYSQL_PWD": "db-secret"}
         self.assertEqual(envs.redact("cd /work/reckon using db-secret", values), "cd /work/reckon using [REDACTED]")

@@ -137,7 +137,12 @@ if ($Command -eq 'use') {
     }
     Set-Content -Path (Join-Path $RepoRoot '.reckon-env') -Value $wanted -Encoding ASCII
     Write-Host "  ✓ active environment -> $wanted" -ForegroundColor Green
-    Write-Host '  dot-source .\scripts\activate.ps1 to apply it to this shell'
+    if ($env:RECKON_ENV -and $env:RECKON_ENV -cne $wanted) {
+        Write-Warning "RECKON_ENV=$($env:RECKON_ENV) is set in this shell and takes precedence"
+        Write-Host "  apply '$wanted' with: . .\scripts\activate.ps1 -Env $wanted"
+    } else {
+        Write-Host '  dot-source .\scripts\activate.ps1 to apply it to this shell'
+    }
     return
 }
 
@@ -156,103 +161,114 @@ if ($Command -notin @('status', 'doctor', 'preflight', 'verify')) {
     throw "unknown command: $Command"
 }
 
-if (-not (Initialize-ReckonEnvironment)) { throw 'failed to initialize reckon environment' }
-$registry = @(Get-IntegrationRegistry)
+# A script shares the calling shell's process environment, so activation here
+# would leave this environment's selection and credentials behind in the shell.
+# Restore the caller's environment afterwards; activate.ps1 activates a shell.
+$callerEnvironment = @{}
+Get-ChildItem Env: | ForEach-Object { $callerEnvironment[$_.Name] = $_.Value }
+try {
+    if (-not (Initialize-ReckonEnvironment)) { throw 'failed to initialize reckon environment' }
+    $registry = @(Get-IntegrationRegistry)
 
-switch ($Command) {
-    'status' {
-        Write-Host "`nreckon — environment" -ForegroundColor White
-        Write-Host "  ENV=$($env:RECKON_ENV)"
-        Write-Host "  config $($env:XDG_CONFIG_HOME)"
-        Write-Host "`nintegrations"
-        $ready = 0
-        foreach ($integration in $registry) {
-            $hasCli = Test-CommandAvailable $integration.Binary
-            $configured = Test-IntegrationConfigured $integration
-            if ($hasCli -and $configured) { $ready++ }
-            '{0,-16} CLI={1,-3} credentials={2}' -f
-                $integration.Name,
-                $(if ($hasCli) { 'yes' } else { 'no' }),
-                $(if ($configured) { 'configured' } else { '-' }) | Write-Host
-        }
-        Write-Host "`n  $ready of $($registry.Count) integrations locally configured"
-        Write-Host '  run reckon.ps1 verify to prove live connectivity'
-    }
-    'doctor' {
-        Write-Host "`nreckon doctor — $($env:RECKON_ENV)"
-        $problems = 0
-        $envFile = Join-Path $RepoRoot ".env.$($env:RECKON_ENV)"
-        if (Test-Path $envFile) { Write-Host "  ✓ $([IO.Path]::GetFileName($envFile)) present" -ForegroundColor Green }
-        else { Write-Warning "missing $envFile" }
-        if (Test-Path $env:XDG_CONFIG_HOME) { Write-Host '  ✓ environment config directory exists' -ForegroundColor Green }
-        else { Write-Warning 'environment config directory is missing' }
-        $skillFile = Join-Path $RepoRoot '.claude\skills\reckon\SKILL.md'
-        if (Test-Path $skillFile) { Write-Host '  ✓ skill link resolves' -ForegroundColor Green }
-        else { Write-Warning 'skill link is missing'; $problems++ }
-        foreach ($knowledgePath in @('infra-knowledge\_shared', "infra-knowledge\$($env:RECKON_ENV)")) {
-            $fullPath = Join-Path $RepoRoot $knowledgePath
-            $count = @(Get-ChildItem $fullPath -Filter '*.md' -ErrorAction SilentlyContinue).Count
-            if ($count -gt 0) { Write-Host "  ✓ $knowledgePath — $count file(s)" -ForegroundColor Green }
-            else { Write-Warning "$knowledgePath is empty" }
-        }
-        if ($problems -gt 0) { throw "$problems workspace problem(s) need fixing" }
-        Write-Host "`n  workspace healthy" -ForegroundColor Green
-    }
-    'preflight' {
-        $configured = @()
-        $unavailable = @()
-        foreach ($integration in $registry) {
-            if (-not (Test-CommandAvailable $integration.Binary)) {
-                $unavailable += "$($integration.Name)(no cli)"
-            } elseif (-not (Test-IntegrationConfigured $integration)) {
-                $unavailable += "$($integration.Name)(no creds)"
-            } else {
-                $configured += $integration.Name
+    switch ($Command) {
+        'status' {
+            Write-Host "`nreckon — environment" -ForegroundColor White
+            Write-Host "  ENV=$($env:RECKON_ENV)"
+            Write-Host "  config $($env:XDG_CONFIG_HOME)"
+            Write-Host "`nintegrations"
+            $ready = 0
+            foreach ($integration in $registry) {
+                $hasCli = Test-CommandAvailable $integration.Binary
+                $configured = Test-IntegrationConfigured $integration
+                if ($hasCli -and $configured) { $ready++ }
+                '{0,-16} CLI={1,-3} credentials={2}' -f
+                    $integration.Name,
+                    $(if ($hasCli) { 'yes' } else { 'no' }),
+                    $(if ($configured) { 'configured' } else { '-' }) | Write-Host
             }
+            Write-Host "`n  $ready of $($registry.Count) integrations locally configured"
+            Write-Host '  run reckon.ps1 verify to prove live connectivity'
         }
-        Write-Host "reckon preflight — ENV=$($env:RECKON_ENV)"
-        Write-Host "configured:  $(if ($configured.Count) { $configured -join ' ' } else { '(none)' })"
-        Write-Host "unavailable: $(if ($unavailable.Count) { $unavailable -join ' ' } else { '(none)' })"
-        Write-Host 'note:        configured is local state; run reckon.ps1 verify for live connectivity'
-    }
-    'verify' {
-        $verboseOutput = $Arguments -contains '--verbose' -or $Arguments -contains '-v'
-        $targets = @($Arguments | Where-Object { $_ -notin @('--verbose', '-v') })
-        $known = @($registry.Name)
-        foreach ($target in $targets) {
-            if ($target.StartsWith('-') -or $target -notin $known) {
-                throw "unknown integration or option: $target"
+        'doctor' {
+            Write-Host "`nreckon doctor — $($env:RECKON_ENV)"
+            $problems = 0
+            $envFile = Join-Path $RepoRoot ".env.$($env:RECKON_ENV)"
+            if (Test-Path $envFile) { Write-Host "  ✓ $([IO.Path]::GetFileName($envFile)) present" -ForegroundColor Green }
+            else { Write-Warning "missing $envFile" }
+            if (Test-Path $env:XDG_CONFIG_HOME) { Write-Host '  ✓ environment config directory exists' -ForegroundColor Green }
+            else { Write-Warning 'environment config directory is missing' }
+            $skillFile = Join-Path $RepoRoot '.claude\skills\reckon\SKILL.md'
+            if (Test-Path $skillFile) { Write-Host '  ✓ skill link resolves' -ForegroundColor Green }
+            else { Write-Warning 'skill link is missing'; $problems++ }
+            foreach ($knowledgePath in @('infra-knowledge\_shared', "infra-knowledge\$($env:RECKON_ENV)")) {
+                $fullPath = Join-Path $RepoRoot $knowledgePath
+                $count = @(Get-ChildItem $fullPath -Filter '*.md' -ErrorAction SilentlyContinue).Count
+                if ($count -gt 0) { Write-Host "  ✓ $knowledgePath — $count file(s)" -ForegroundColor Green }
+                else { Write-Warning "$knowledgePath is empty" }
             }
+            if ($problems -gt 0) { throw "$problems workspace problem(s) need fixing" }
+            Write-Host "`n  workspace healthy" -ForegroundColor Green
         }
-        Write-Host "`nreckon verify — $($env:RECKON_ENV)"
-        if ($env:RECKON_ENV -eq 'production') {
-            Write-Warning 'these are live reads against PRODUCTION'
-        }
-        $ok = 0
-        $failed = 0
-        $skipped = 0
-        foreach ($integration in $registry) {
-            if ($targets.Count -gt 0 -and $integration.Name -notin $targets) { continue }
-            if (-not (Test-CommandAvailable $integration.Binary) -or
-                -not (Test-IntegrationConfigured $integration)) {
-                Write-Host "  — $($integration.Name) skipped (not locally ready)"
-                $skipped++
-                continue
-            }
-            if (Invoke-Verification $integration.Name -VerboseOutput:$verboseOutput) {
-                Write-Host "  ✓ $($integration.Name)" -ForegroundColor Green
-                $ok++
-            } else {
-                Write-Host "  ✗ $($integration.Name) — probe failed" -ForegroundColor Red
-                if (-not $verboseOutput) {
-                    Write-Host "    retry with: .\scripts\reckon.ps1 verify --verbose $($integration.Name)"
+        'preflight' {
+            $configured = @()
+            $unavailable = @()
+            foreach ($integration in $registry) {
+                if (-not (Test-CommandAvailable $integration.Binary)) {
+                    $unavailable += "$($integration.Name)(no cli)"
+                } elseif (-not (Test-IntegrationConfigured $integration)) {
+                    $unavailable += "$($integration.Name)(no creds)"
+                } else {
+                    $configured += $integration.Name
                 }
-                $failed++
+            }
+            Write-Host "reckon preflight — ENV=$($env:RECKON_ENV)"
+            Write-Host "configured:  $(if ($configured.Count) { $configured -join ' ' } else { '(none)' })"
+            Write-Host "unavailable: $(if ($unavailable.Count) { $unavailable -join ' ' } else { '(none)' })"
+            Write-Host 'note:        configured is local state; run reckon.ps1 verify for live connectivity'
+        }
+        'verify' {
+            $verboseOutput = $Arguments -contains '--verbose' -or $Arguments -contains '-v'
+            $targets = @($Arguments | Where-Object { $_ -notin @('--verbose', '-v') })
+            $known = @($registry.Name)
+            foreach ($target in $targets) {
+                if ($target.StartsWith('-') -or $target -notin $known) {
+                    throw "unknown integration or option: $target"
+                }
+            }
+            Write-Host "`nreckon verify — $($env:RECKON_ENV)"
+            if ($env:RECKON_ENV -eq 'production') {
+                Write-Warning 'these are live reads against PRODUCTION'
+            }
+            $ok = 0
+            $failed = 0
+            $skipped = 0
+            foreach ($integration in $registry) {
+                if ($targets.Count -gt 0 -and $integration.Name -notin $targets) { continue }
+                if (-not (Test-CommandAvailable $integration.Binary) -or
+                    -not (Test-IntegrationConfigured $integration)) {
+                    Write-Host "  — $($integration.Name) skipped (not locally ready)"
+                    $skipped++
+                    continue
+                }
+                if (Invoke-Verification $integration.Name -VerboseOutput:$verboseOutput) {
+                    Write-Host "  ✓ $($integration.Name)" -ForegroundColor Green
+                    $ok++
+                } else {
+                    Write-Host "  ✗ $($integration.Name) — probe failed" -ForegroundColor Red
+                    if (-not $verboseOutput) {
+                        Write-Host "    retry with: .\scripts\reckon.ps1 verify --verbose $($integration.Name)"
+                    }
+                    $failed++
+                }
+            }
+            Write-Host "`n  $ok ok, $failed failed, $skipped skipped"
+            if ($failed -gt 0 -or ($targets.Count -gt 0 -and $skipped -gt 0)) {
+                throw 'one or more requested verification probes did not succeed'
             }
         }
-        Write-Host "`n  $ok ok, $failed failed, $skipped skipped"
-        if ($failed -gt 0 -or ($targets.Count -gt 0 -and $skipped -gt 0)) {
-            throw 'one or more requested verification probes did not succeed'
-        }
     }
+} finally {
+    Get-ChildItem Env: | Where-Object { -not $callerEnvironment.ContainsKey($_.Name) } |
+        ForEach-Object { Remove-Item -Path "Env:$($_.Name)" }
+    foreach ($name in $callerEnvironment.Keys) { Set-Item -Path "Env:$name" -Value $callerEnvironment[$name] }
 }

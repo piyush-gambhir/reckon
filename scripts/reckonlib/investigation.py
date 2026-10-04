@@ -13,6 +13,21 @@ from .store import (evidence, identifier, instant, local_path, lock, now, privat
                     read_bytes, session_path, validate_tree, write, write_json)
 
 
+def json_values(text):
+    """Parse an "ndjson" stream: concatenated JSON values, one per line or indented.
+
+    cubeapm logs query -o json prints each entry as an indented object.
+    """
+    decoder, index, values = json.JSONDecoder(), 0, []
+    while True:
+        while index < len(text) and text[index].isspace():
+            index += 1
+        if index == len(text):
+            return values
+        value, index = decoder.raw_decode(text, index)
+        values.append(value)
+
+
 def payload_summary(text, output_format, limit):
     """Describe saved output; no heuristic root-cause attribution."""
     if not text.strip():
@@ -20,7 +35,7 @@ def payload_summary(text, output_format, limit):
     if output_format == "text":
         return {"summary": "Source text captured; inspect artifact.", "completeness": "bounded"}
     try:
-        data = json.loads(text) if output_format == "json" else [json.loads(line) for line in text.splitlines() if line.strip()]
+        data = json.loads(text) if output_format == "json" else json_values(text)
     except (ValueError, TypeError):
         return {"summary": "Output did not match the declared format; inspect artifact.", "completeness": "invalid_output"}
     if isinstance(data, dict) and (data.get("error") or data.get("status") == "error"):

@@ -265,8 +265,9 @@ cmd_verify() {
             *) targets+=("$arg") ;;
         esac
     done
-    reckon_validate_integrations "${targets[@]}" || return 1
-    local wanted=" ${targets[*]} "
+    # The ${x+...} forms keep an empty array legal under nounset on Bash 3.2 (macOS).
+    reckon_validate_integrations ${targets[@]+"${targets[@]}"} || return 1
+    local wanted=" ${targets[*]+${targets[*]}} "
 
     header "reckon verify — $RECKON_ENV"
     if [ "$RECKON_ENV" = production ]; then
