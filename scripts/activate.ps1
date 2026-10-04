@@ -105,6 +105,9 @@ if ($requestedEnv -cnotin @('production', 'staging', 'uat')) {
     return
 }
 
+# An explicit -Env is this shell's own choice, like setting $env:RECKON_ENV, so
+# later activations without -Env keep it instead of restoring an older value.
+if ($Env) { $env:RECKON_ENV = $Env }
 Set-ReckonEnvValue -Name 'RECKON_ENV' -Value $requestedEnv
 if ($requestedEnv -ceq 'production') {
     Write-Host '!!! reckon: ENV=production (PRODUCTION) !!!' -ForegroundColor Red -BackgroundColor Yellow

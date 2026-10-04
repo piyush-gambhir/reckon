@@ -164,7 +164,9 @@ if ($Command -notin @('status', 'doctor', 'preflight', 'verify')) {
 # A script shares the calling shell's process environment, so activation here
 # would leave this environment's selection and credentials behind in the shell.
 # Restore the caller's environment afterwards; activate.ps1 activates a shell.
-$callerEnvironment = @{}
+# Variable names are case-sensitive everywhere except Windows.
+$nameComparer = if ($env:OS -eq 'Windows_NT') { [StringComparer]::OrdinalIgnoreCase } else { [StringComparer]::Ordinal }
+$callerEnvironment = New-Object 'System.Collections.Generic.Dictionary[string,string]' $nameComparer
 Get-ChildItem Env: | ForEach-Object { $callerEnvironment[$_.Name] = $_.Value }
 try {
     if (-not (Initialize-ReckonEnvironment)) { throw 'failed to initialize reckon environment' }
