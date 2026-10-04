@@ -4,30 +4,17 @@ Reviewed 2026-09-08: local source, configuration boundaries, collection, storage
 remaining product work. No infrastructure queries, database access, publishing,
 deployments or external messages were performed.
 
-## Separate development checkout
+## Development checkout (resolved 2026-10-05)
 
-The existing `reckon/` checkout was on `main` at `53cba0b` with 48 modified/untracked
-source files, including earlier unfinished work. Its source changes were preserved.
+During this review the operator checkout held 48 uncommitted source files, so the
+work moved to a separate `reckon-dev/` worktree on `codex/workspace-readiness`
+(snapshot commit `e706a77`). No credentials, `.config/`, `.reckon-env`,
+`infra-knowledge/`, `incidents/`, `sessions/` or build output were copied.
 
-A sibling `reckon-dev/` worktree on `codex/workspace-readiness` contains a
-byte-verified snapshot of all 163 tracked/nonignored source files. Initial snapshot
-commit `e706a77` is a WIP preservation checkpoint, not a release approval. Review
-fixes and planning changes follow separately.
-
-No environment credentials, `.config/`, `.reckon-env`, `infra-knowledge/`,
-`incidents/`, `sessions/`, demo output, installed binaries or web dependencies were
-copied. Development selects no infrastructure environment by default. Synthetic
-runs create their own ignored state. Worktrees share Git objects/refs but have
-separate checked-out files and tenant data directories.
-
-Continue source work in `reckon-dev/`; keep real credentials and investigations in
-the operator checkout. Do not copy ignored operator directories into development.
-The original checkout intentionally retains its uncommitted work; do not reset or
-clean it to make its status look tidy.
-
-The preservation commit is local and unsigned because the configured signing agent
-was unavailable. No signing configuration was changed and nothing was pushed. Use
-the normal signed review/release process when publishing.
+That branch merged in #29 after review fixes. The operator checkout's uncommitted
+files were verified byte-identical to the snapshot before it moved to `main`, and
+the worktree was removed. Develop on branches from `main`; real credentials,
+knowledge and investigations stay in ignored directories and never enter commits.
 
 ## Findings fixed
 
