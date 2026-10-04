@@ -92,8 +92,8 @@ prove live connectivity:
 
 ## Pinned CLI releases
 
-Both setup scripts read `scripts/cli-releases.csv`. It pins Grafana, Jenkins,
-and CubeAPM to release 0.2.6 and Elasticsearch to 0.1.6. The source modules live
+Both setup scripts read `scripts/cli-releases.csv`. It pins Grafana and Jenkins
+to release 0.2.10, CubeAPM to 0.2.11, and Elasticsearch to 0.1.11. The source modules live
 under `cli-go/` and have matching `cli-go/v*` version tags. The installer stages
 each build and installs it using its public name (`grafana`, `jenkins`,
 `cubeapm`, or `es`). Existing commands on PATH are left in place when setup is rerun.
