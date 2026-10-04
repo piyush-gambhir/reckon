@@ -10,11 +10,17 @@
 #   scripts/agent.sh claude --continue
 #
 # Each runtime picks up its guide automatically: Claude Code reads CLAUDE.md
-# (+ skills); Codex and OpenCode read AGENTS.md. Credentials come from .env
-# via direnv — run this from the workspace root so direnv has loaded.
+# (+ skills); Codex and OpenCode read AGENTS.md. This launcher activates the
+# explicitly selected .env.<env> itself; it does not depend on direnv.
 
 set -euo pipefail
 cd "$(cd "$(dirname "$0")" && pwd)/.."
+export RECKON_ROOT="$PWD"
+
+# Do not depend on the parent shell having direnv enabled. The launched runtime
+# must inherit the same selected environment that `scripts/reckon` reports.
+# shellcheck source=../.envrc
+. "$RECKON_ROOT/.envrc"
 
 runtime="${1:-}"
 [ $# -gt 0 ] && shift
@@ -38,7 +44,7 @@ fi
 case "$runtime" in
     claude)
         have claude || { echo "claude not on PATH — npm install -g @anthropic-ai/claude-code" >&2; exit 1; }
-        # Subscription login needs no key; ANTHROPIC_API_KEY from .env enables API billing.
+        # Subscription login needs no key; ANTHROPIC_API_KEY enables API billing.
         exec claude "$@"
         ;;
     codex)

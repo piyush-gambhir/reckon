@@ -1,0 +1,87 @@
+---
+title: Saved investigations
+description: Capture evidence, preserve findings, and resume debugging across sessions.
+---
+
+Reckon provides local support for investigations driven by your coding agent:
+service mappings, bounded collection, evidence records, findings, reports, and
+resume. Python 3.9+ is required; there are no external Python dependencies.
+
+## Try the offline walkthrough
+
+```bash
+./scripts/reckon demo
+```
+
+The demo uses synthetic CubeAPM, Grafana, and Jenkins executables in an isolated
+workspace. It prints a report path and a command to resume the investigation.
+It does not connect to your infrastructure.
+
+## Map a service and start
+
+Create `infra-knowledge/<environment>/services.json` using the repository's
+`examples/services.json` as a starting point. Replace the synthetic names and
+queries with your actual inventory. Keep only the sources you use. Each service
+needs an ID, optional aliases, mapping provenance, and source-specific settings.
+
+```bash
+./scripts/reckon services validate --env staging
+./scripts/reckon capabilities --env staging
+
+./scripts/reckon debug --env staging --service checkout \
+  --question 'Why did checkout latency increase?' \
+  --from 2026-09-08T14:00:00Z --to 2026-09-08T14:30:00Z
+```
+
+Starting a session is local. Add `--collect` to start live collection immediately,
+or collect separately using the returned session ID:
+
+```bash
+./scripts/reckon collect SESSION_ID --env staging
+./scripts/reckon resume SESSION_ID --json
+```
+
+The collector uses mapped queries and compares metric readings with the preceding
+equal-length window. Each command has a deadline and output cap. Missing access,
+failed queries, and partial results are saved explicitly. Retrying reuses successful
+evidence; `--refresh` makes new live reads. Session environments cannot be mixed.
+
+## Explain and preserve
+
+The coding agent reads the artifacts and tests explanations. Reckon does not run
+its own model or infer a root cause from a successful query.
+
+```bash
+./scripts/reckon note SESSION_ID --kind finding \
+  --text 'Latency increased while request volume remained steady.' \
+  --evidence EVIDENCE_ID_1 EVIDENCE_ID_2
+
+./scripts/reckon note SESSION_ID --kind hypothesis \
+  --text 'The pricing dependency may explain the change.' \
+  --next-check 'Compare pricing spans and the deployed revision.'
+
+./scripts/reckon report SESSION_ID
+./scripts/reckon history --env staging --service checkout
+./scripts/reckon promote SESSION_ID --slug checkout-latency
+```
+
+Findings must reference successful evidence from the same session. This checks
+references, not the truth of the explanation. Promotion creates a preliminary
+snapshot in the existing incident convention; finish `RCA.md` with the RCA template.
+
+## Coverage and limits
+
+Typed collection operations cover CubeAPM, Grafana, Jenkins, GitHub, local Git,
+Elasticsearch, Kubernetes, AWS CloudWatch logs, Jira, and Nginx Proxy Manager.
+The rest of the toolbelt remains available through the existing methodology.
+Database commands retain their existing approval requirements and are not
+automatically executed by this collector.
+
+Sessions and evidence remain local and gitignored. Known credentials are redacted
+from collected artifacts, but logs can contain customer data and require review
+before sharing. Current snapshots and recent-build lists carry explicit temporal
+limits. A nearby deployment alone is not evidence that it caused an incident.
+
+For complete source mappings, operation parameters, storage behavior, and current
+limitations, read `docs/INVESTIGATIONS.md` in the repository. Native Windows support
+for the shared Python core remains experimental pending execution validation.

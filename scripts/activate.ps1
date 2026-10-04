@@ -35,17 +35,17 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 
-# ---------------------------------------------------------------------------
-# 1. Resolve the environment before loading any credentials
-# ---------------------------------------------------------------------------
-$requestedEnv = $Env
-if ([string]::IsNullOrEmpty($requestedEnv)) {
-    $requestedEnv = $env:RECKON_ENV
-}
+# A RECKON_ENV that differs from the value the previous activation set was
+# changed in this shell (set or removed). It stays the shell's own setting:
+# the restoration below must not put back the value from before activation.
+$previousEnv = Get-Variable -Name ReckonActivatedEnv -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+$shellChangedEnv = $previousEnv -and $env:RECKON_ENV -cne $previousEnv
+$shellEnv = $env:RECKON_ENV
+$script:ReckonActivatedEnv = $null
 
 # Dot-sourcing a second environment in the same PowerShell session must not
 # retain credentials that existed only in the first one. Restore every env var
-# managed by the previous activation before validating or loading the next one.
+# managed by the previous activation before resolving and loading the next one.
 if (Get-Variable -Name ReckonManagedEnvironment -Scope Script -ErrorAction SilentlyContinue) {
     foreach ($key in @($script:ReckonManagedEnvironment.Keys)) {
         $original = $script:ReckonManagedEnvironment[$key]
@@ -56,7 +56,30 @@ if (Get-Variable -Name ReckonManagedEnvironment -Scope Script -ErrorAction Silen
         }
     }
 }
+if ($shellChangedEnv) {
+    if ($shellEnv) { $env:RECKON_ENV = $shellEnv } else { Remove-Item -Path Env:RECKON_ENV -ErrorAction SilentlyContinue }
+}
 $script:ReckonManagedEnvironment = @{}
+
+# Authentication is environment-local, including on the first activation from
+# a shell that already has provider credentials. Clear inherited namespaces.
+Get-ChildItem Env: | Where-Object {
+    $_.Name -match '^(GRAFANA_|JENKINS_|CUBEAPM_|GH_|GITHUB_|AWS_|KAFKA_|RPK_|REDIS_|MONGODB_|PG|MYSQL_|CLICKHOUSE_|ES_|JIRA_|NGINXPM_|KUBECONFIG$)'
+} | ForEach-Object { Remove-Item -Path "Env:$($_.Name)" }
+
+# ---------------------------------------------------------------------------
+# 1. Resolve the environment before loading any credentials
+# ---------------------------------------------------------------------------
+$requestedEnv = $Env
+if ([string]::IsNullOrEmpty($requestedEnv)) {
+    $requestedEnv = $env:RECKON_ENV
+}
+if ([string]::IsNullOrEmpty($requestedEnv)) {
+    $selectionFile = Join-Path $repoRoot '.reckon-env'
+    if (Test-Path $selectionFile) {
+        $requestedEnv = (Get-Content $selectionFile -Raw).Trim()
+    }
+}
 
 function Set-ReckonEnvValue {
     param(
@@ -74,14 +97,17 @@ function Set-ReckonEnvValue {
 }
 
 if ([string]::IsNullOrEmpty($requestedEnv)) {
-    $requestedEnv = 'production'
-    Write-Host 'reckon: RECKON_ENV was unset; defaulting to production' -ForegroundColor Yellow
+    Write-Error 'reckon: no environment selected. Run .\scripts\reckon.ps1 use <production|staging|uat> first.'
+    return
 }
 if ($requestedEnv -cnotin @('production', 'staging', 'uat')) {
     Write-Error "reckon: invalid RECKON_ENV='$requestedEnv'. Valid values: production, staging, uat"
     return
 }
 
+# An explicit -Env is this shell's own choice, like setting $env:RECKON_ENV, so
+# later activations without -Env keep it instead of restoring an older value.
+if ($Env) { $env:RECKON_ENV = $Env }
 Set-ReckonEnvValue -Name 'RECKON_ENV' -Value $requestedEnv
 if ($requestedEnv -ceq 'production') {
     Write-Host '!!! reckon: ENV=production (PRODUCTION) !!!' -ForegroundColor Red -BackgroundColor Yellow
@@ -130,6 +156,7 @@ Import-DotEnv (Join-Path $repoRoot ".env.$requestedEnv.local")
 # Environment files cannot redirect the selected environment or its CLI state.
 Set-ReckonEnvValue -Name 'RECKON_ENV' -Value $requestedEnv
 Set-ReckonEnvValue -Name 'XDG_CONFIG_HOME' -Value $xdg
+$script:ReckonActivatedEnv = $requestedEnv
 
 # ---------------------------------------------------------------------------
 # 4. CLI path overrides
@@ -148,6 +175,9 @@ if ($env:GITHUB_TOKEN -and -not $env:GH_TOKEN) {
 # ---------------------------------------------------------------------------
 # 6. Database safety defaults (only applied if env files didn't already set them)
 # ---------------------------------------------------------------------------
+foreach ($prefix in @('GRAFANA', 'JENKINS', 'ES', 'JIRA', 'NGINXPM')) {
+    Set-ReckonEnvValue -Name "${prefix}_READ_ONLY" -Value 'true'
+}
 # PostgreSQL: psql honours PGOPTIONS as the session default (the read-only role
 # remains the real write guard).
 if (-not $env:PGOPTIONS) {

@@ -12,11 +12,12 @@ and existing issues — it is per-environment: `_shared/` first, then `<env>/`
 overlaid, with the environment winning.
 
 ```bash
+./scripts/reckon use production
 $EDITOR .env.production
 direnv allow                 # optional — see Connections
 ```
 
-## 2. Confirm what is actually connected
+## 2. Inspect local readiness and verify connectivity
 
 Before launching anything, check the workspace's own state. Values still left at
 their `.env.example` defaults are reported as unconfigured, so this will not
@@ -28,9 +29,9 @@ flatter you:
 ./scripts/reckon verify      # live connection checks (touches your infra)
 ```
 
-`doctor` catches the failure that is otherwise silent: if direnv is not hooked
-into your shell, `.envrc` never loads, no credentials are exported, and the CLIs
-quietly fall back to saved profiles.
+`status` and `preflight` only inspect local binaries and configuration. `verify`
+performs the bounded live probes. `doctor` also warns when the current shell is
+inactive; the agent launcher activates it automatically.
 
 ## 3. Launch an agent
 
@@ -49,9 +50,10 @@ scripts/agent.sh opencode
 ```
 
 The agent's first action should be `./scripts/reckon preflight` — a compact digest
-of the active environment, which integrations are genuinely usable, which are not
-and why, and what knowledge exists. It is what stops an investigation from
-discovering a missing credential five queries in.
+of the active environment, which integrations are locally configured, which are
+not and why, and what knowledge exists. It makes no network calls; use `verify`
+when live connectivity must be proven. The launcher activates `.envrc` itself, so
+agent credentials do not depend on direnv being active in the parent shell.
 
 ## 4. Pick a mode
 

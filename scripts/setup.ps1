@@ -75,7 +75,7 @@ function Test-Preflight {
     Write-Warn '  - kcat    (no Windows binary)'
     Write-Warn '  - rpk     (no Windows binary)'
     Write-Warn 'For the full experience, use WSL2 + scripts/setup.sh.'
-    Write-Warn 'After install, dot-source scripts/activate.ps1 each session to load .env.'
+    Write-Warn 'After install, select an environment and dot-source scripts/activate.ps1.'
 }
 
 # ---------------------------------------------------------------------------
@@ -179,57 +179,119 @@ function Protect-EnvFile {
 function Setup-Workspace {
     Write-Header 'Workspace setup'
 
-    if ((Test-Path .env) -or (Test-Path .env.local)) {
-        Write-Ok '.env or .env.local already exists — leaving alone'
+    @(
+        '.config\production', '.config\staging', '.config\uat',
+        'infra-knowledge\_shared', 'infra-knowledge\production',
+        'infra-knowledge\staging', 'infra-knowledge\uat',
+        'incidents'
+    ) | ForEach-Object {
+        New-Item -ItemType Directory -Path $_ -Force | Out-Null
+    }
+    Write-Ok 'per-environment config, infra-knowledge, and incidents directories ready'
+
+    if (Test-Path .env.production) {
+        Write-Ok '.env.production already exists — leaving alone'
+    } elseif (Test-Path .env) {
+        Copy-Item .env .env.production
+        Write-Ok 'migrated legacy .env to .env.production'
+        Write-Warn 'the original .env was left in place; remove it after checking .env.production'
     } elseif (Test-Path .env.example) {
-        Copy-Item .env.example .env
-        Write-Ok '.env created from .env.example'
-        Write-Warn 'EDIT .env with real production credentials before using any CLI'
+        Copy-Item .env.example .env.production
+        Write-Ok '.env.production created from .env.example'
+        Write-Warn 'EDIT .env.production with real production credentials before using any CLI'
     } else {
         Write-Err '.env.example missing — are you running this from the repo root?'
+        $Script:Failed++
     }
-    Protect-EnvFile (Join-Path (Get-Location) '.env')
-    Protect-EnvFile (Join-Path (Get-Location) '.env.local')
 
-    if (Test-Path infra-knowledge) {
-        $seeded = 0
-        Get-ChildItem -Path infra-knowledge -Filter '*.example.md' | ForEach-Object {
-            $target = $_.FullName -replace '\.example\.md$', '.md'
+    Get-ChildItem -Path . -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^\.env\.(common|production|staging|uat)(\.local)?$' } |
+        ForEach-Object { Protect-EnvFile $_.FullName }
+
+    $seeded = 0
+    $sharedTemplates = 'skills\reckon\templates\infra-knowledge\_shared'
+    $environmentTemplates = 'skills\reckon\templates\infra-knowledge\env'
+    if ((Test-Path $sharedTemplates) -and (Test-Path $environmentTemplates)) {
+        foreach ($template in (Get-ChildItem -Path $sharedTemplates -Filter '*.md')) {
+            $target = Join-Path 'infra-knowledge\_shared' $template.Name
             if (-not (Test-Path $target)) {
-                Copy-Item $_.FullName $target
+                Copy-Item $template.FullName $target
                 $seeded++
+            }
+        }
+        foreach ($environment in @('production', 'staging', 'uat')) {
+            foreach ($template in (Get-ChildItem -Path $environmentTemplates -Filter '*.md')) {
+                $target = Join-Path "infra-knowledge\$environment" $template.Name
+                if (-not (Test-Path $target)) {
+                    Copy-Item $template.FullName $target
+                    $seeded++
+                }
             }
         }
         if ($seeded -gt 0) {
             Write-Ok "infra-knowledge: seeded $seeded file(s) from templates"
-            Write-Warn 'edit infra-knowledge\*.md with your real service inventory and quirks'
+            Write-Warn 'edit infra-knowledge\<environment>\*.md with real inventory and quirks'
         } else {
             Write-Ok 'infra-knowledge: all template files already seeded'
         }
+    } else {
+        Write-Err 'infra-knowledge templates are missing'
+        $Script:Failed++
+    }
+
+    New-Item -ItemType Directory -Path '.agents\skills', '.claude\skills' -Force | Out-Null
+    $trackedSkill = Join-Path (Get-Location) 'skills\reckon'
+    $agentsSkill = Join-Path (Get-Location) '.agents\skills\reckon'
+    $claudeSkill = Join-Path (Get-Location) '.claude\skills\reckon'
+    try {
+        if (-not (Test-Path $agentsSkill)) {
+            New-Item -ItemType Junction -Path $agentsSkill -Target $trackedSkill | Out-Null
+        }
+        if (-not (Test-Path $claudeSkill)) {
+            New-Item -ItemType Junction -Path $claudeSkill -Target $agentsSkill | Out-Null
+        }
+        if (Test-Path (Join-Path $claudeSkill 'SKILL.md')) {
+            Write-Ok 'reckon skill linked (.claude -> .agents -> skills\reckon)'
+        } else {
+            Write-Err 'reckon skill link did not resolve'
+            $Script:Failed++
+        }
+    } catch {
+        Write-Warn "could not create skill junctions: $($_.Exception.Message)"
+        Write-Warn 'agents can still read skills\reckon\SKILL.md through AGENTS.md'
+    }
+
+    if (Test-Path .reckon-env) {
+        $selected = (Get-Content .reckon-env -Raw).Trim()
+        if ($selected -in @('production', 'staging', 'uat')) {
+            Write-Ok "active environment already selected ($selected)"
+        } else {
+            Write-Err '.reckon-env is invalid — run: .\scripts\reckon.ps1 use <environment>'
+            $Script:Failed++
+        }
+    } else {
+        Write-Warn 'no active environment selected — run: .\scripts\reckon.ps1 use production'
     }
 }
 
 function Show-NextSteps {
     Write-Header 'Next steps'
     @'
-  1. Edit .env with your real production credentials:
-       notepad .env
-  2. Load .env into your current PowerShell session (every new session):
+  1. Select an environment explicitly (reckon never defaults to production):
+       .\scripts\reckon.ps1 use production
+  2. Edit its credential file:
+       notepad .env.production
+  3. Load it into your current PowerShell session:
        . .\scripts\activate.ps1
      (Add this to your $PROFILE if you want it to auto-load.)
-  3. Verify each connection (one safe read per tool):
-       grafana user current -o json
-       jenkins status -o json
-       cubeapm metrics label-values service -o json
-       aws sts get-caller-identity --output json
-       gh auth status
-       psql -c "SHOW default_transaction_read_only;"   # must report 'on'
-       mysql --defaults-extra-file="$env:XDG_CONFIG_HOME\mysql\my.cnf" -e "SELECT @@transaction_read_only;"  # must report 1
-       mongosh "$env:MONGODB_URI" --eval "db.runCommand({ping:1})"
-  4. For Kafka tools (kcat, rpk) and direnv-style auto-loading, use WSL2:
+  4. Inspect and verify the workspace:
+       .\scripts\reckon.ps1 doctor
+       .\scripts\reckon.ps1 status
+       .\scripts\reckon.ps1 verify
+  5. For Kafka tools (kcat, rpk) and direnv-style auto-loading, use WSL2:
        wsl --install
        # then inside WSL: bash scripts/setup.sh
-  5. Read CLAUDE.md "Database safety contract" before any DB query.
+  6. Read CLAUDE.md "Database safety contract" before any DB query.
 
 '@ | Write-Host
 }
@@ -248,11 +310,22 @@ function Main {
 
     Test-Preflight
 
+    if (Get-Command python3 -ErrorAction SilentlyContinue) {
+        & python3 -c 'import sys; sys.exit(sys.version_info < (3, 9))'
+        if ($LASTEXITCODE -ne 0) {
+            Write-Err 'Python 3.9+ is required for investigations; upgrade python3 on PATH'
+            $Script:Failed++
+        }
+    } else {
+        Write-Warn 'Install Python 3.9+ and expose it as python3 for investigations and bounded verification'
+        $Script:Failed++
+    }
+
     Write-Header 'Observability & CI/CD'
     Install-Winget -Id 'jqlang.jq'         -Bin 'jq'
     Install-Winget -Id 'Amazon.AWSCLI'     -Bin 'aws'
     Install-Winget -Id 'GitHub.cli'        -Bin 'gh'
-    Mark-Skipped 'direnv' 'no maintained Windows port — use WSL2 or manual .env sourcing'
+    Mark-Skipped 'direnv' 'no maintained Windows port — use activate.ps1'
 
     Write-Header 'Kafka'
     Mark-Skipped 'kcat' 'no Windows binary — use WSL2'
@@ -262,6 +335,7 @@ function Main {
     Install-Winget -Id 'MongoDB.Shell'                 -Bin 'mongosh'
     Install-Winget -Id 'PostgreSQL.PostgreSQL'         -Bin 'psql'  -DisplayName 'psql (PostgreSQL)'
     Install-Winget -Id 'Oracle.MySQL'                  -Bin 'mysql' -DisplayName 'mysql (MySQL Installer)'
+    Mark-Skipped 'clickhouse' 'install manually or use WSL2'
 
     Write-Header 'Kubernetes & cache'
     Install-Winget -Id 'Kubernetes.kubectl'            -Bin 'kubectl'

@@ -10,7 +10,7 @@ Kubernetes, and database CLIs inside one isolated, per-environment credential
 setup.
 
 It is not a single CLI or installable binary. Clone the workspace, run its
-idempotent setup script, add production credentials, and launch Claude Code,
+idempotent setup script, select an environment, add its credentials, and launch Claude Code,
 Codex CLI, OpenCode, or another runtime that follows `AGENTS.md`. The agent can
 then correlate signals across systems in one session instead of investigating
 each tool in isolation.
@@ -73,8 +73,8 @@ agent has to guess what is connected:
 - **Queues and infrastructure:** `kcat` and `rpk` for Kafka metadata, messages,
   and consumer lag; `kubectl` for Kubernetes state and events; `redis-cli` for
   cache diagnostics.
-- **Databases:** `mongosh`, `psql`, and `mysql` for narrowly scoped,
-  approval-gated production reads after observability has identified a suspect.
+- **Databases:** `mongosh`, `psql`, `mysql`, and `clickhouse client` for narrowly
+  scoped, approval-gated reads after observability has identified a suspect.
 
 ## How an investigation works
 
@@ -91,7 +91,7 @@ across incidents instead of a pile of prose.
 
 <Cards>
   <Card title="Setup" href="/docs/installation" description="Clone the workspace and install the toolbelt on macOS, Linux, or Windows with WSL2." />
-  <Card title="Connections & credentials" href="/docs/connections" description="Keep production credentials and CLI profiles isolated inside the clone." />
+  <Card title="Connections & credentials" href="/docs/connections" description="Keep each environment's credentials and CLI profiles isolated inside the clone." />
   <Card title="Quick start" href="/docs/quickstart" description="Launch an agent and run a disciplined cross-tool investigation." />
   <Card title="Tool belt" href="/docs/toolbelt" description="See every wired CLI and the evidence each one covers." />
 </Cards>

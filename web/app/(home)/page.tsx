@@ -33,7 +33,7 @@ const contextualBodyLinks: Record<
   },
   'One operations toolbelt': {
     href: '/docs/toolbelt',
-    text: 'twelve wired CLIs',
+    text: 'fourteen wired CLIs',
   },
   'Runtime-agnostic agents': {
     href: '/docs/agents',

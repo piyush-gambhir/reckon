@@ -3,14 +3,14 @@
 # reckon — workspace control surface.
 #
 # Makes the workspace's own state legible: which environment is active, which
-# integrations are actually usable, and what is misconfigured. Everything here
-# is read-only with respect to your infrastructure; only `verify` touches the
-# network, and only with the safe single reads documented in CLAUDE.md.
+# integrations are locally configured, and what is misconfigured. Everything here
+# is read-only with respect to your infrastructure. `verify` and investigation
+# collection contact infrastructure with documented read operations.
 #
 # Usage:
 #   scripts/reckon status              active environment + integration matrix
 #   scripts/reckon doctor              diagnose workspace setup problems
-#   scripts/reckon verify [name...]    live connection checks (touches infra)
+#   scripts/reckon verify [--verbose] [name...]  live checks (touches infra)
 #   scripts/reckon preflight           compact digest for a coding agent
 #   scripts/reckon env                 print activation lines (use with eval)
 #   scripts/reckon use <environment>   switch the active environment
@@ -43,84 +43,13 @@ info()   { printf "  %s→%s %s\n" "$C_BLUE" "$C_RESET" "$*"; }
 warn()   { printf "  %s⚠%s %s\n" "$C_YELLOW" "$C_RESET" "$*"; }
 err()    { printf "  %s✗%s %s\n" "$C_RED" "$C_RESET" "$*" >&2; }
 header() { printf "\n%s%s%s\n" "$C_BOLD" "$*" "$C_RESET"; }
-have()   { command -v "$1" >/dev/null 2>&1; }
-
 VALID_ENVS="production staging uat"
 
 # -----------------------------------------------------------------------------
 # Integration registry
-#
-# The single place mapping an integration to its binary, its credentials, and
-# its saved-profile fallback. Every subcommand is a projection of this table.
-#
-#   name | binary | required_vars | config_file
-#
-# required_vars: "," = all of, "/" = any of, "-" = none.
-# config_file:   path under $XDG_CONFIG_HOME that also counts as configured
-#                (a saved CLI profile), or "-" if the tool has none.
-#
-# Verification commands deliberately live in verify_one() rather than in this
-# table, so no row is ever eval'd as a shell command.
 # -----------------------------------------------------------------------------
-registry() {
-    cat <<'EOF'
-grafana|grafana|GRAFANA_URL,GRAFANA_TOKEN|grafana-cli/config.yaml
-jenkins|jenkins|JENKINS_URL,JENKINS_USER,JENKINS_TOKEN|jenkins-cli/config.yaml
-cubeapm|cubeapm|CUBEAPM_HOST,CUBEAPM_EMAIL,CUBEAPM_PASSWORD|cubeapm-cli/config.yaml
-github|gh|GH_TOKEN/GITHUB_TOKEN|gh/hosts.yml
-aws|aws|AWS_REGION,AWS_ACCESS_KEY_ID/AWS_PROFILE|aws/credentials
-kubernetes|kubectl|-|kube/config
-kafka|kcat|KAFKA_BOOTSTRAP_SERVERS|-
-kafka-rpk|rpk|KAFKA_BOOTSTRAP_SERVERS|-
-redis|redis-cli|REDIS_URL|-
-mongodb|mongosh|MONGODB_URI|-
-postgres|psql|PGHOST,PGUSER|-
-mysql|mysql|MYSQL_HOST,MYSQL_USER|mysql/my.cnf
-clickhouse|clickhouse|CLICKHOUSE_HOST,CLICKHOUSE_USER,CLICKHOUSE_PASSWORD|-
-elasticsearch|es|ES_URL|-
-EOF
-}
-
-# Does a value still look like an unedited .env.example placeholder?
-# Without this, a freshly seeded .env reports every integration as configured and
-# preflight confidently tells the agent that grafana.example.com is reachable —
-# the exact false confidence preflight exists to prevent.
-#
-# Tokens below are the ones .env.example actually uses; keep them in sync with it.
-is_placeholder() {
-    case "$1" in
-        replace_me|REPLACE_ME|*replace_me*) return 0 ;;
-        *example.com*|*.example.*|*@example*) return 0 ;;
-        *xxxx*|*XXXX*|*changeme*|*CHANGEME*|*your-*|'<'*'>') return 0 ;;
-        *) return 1 ;;
-    esac
-}
-
-# Is a required-vars spec satisfied by the current environment?
-vars_satisfied() {
-    local spec="$1" group v val hit
-    [ "$spec" = "-" ] && return 1
-    for group in $(printf '%s' "$spec" | tr ',' ' '); do
-        hit=0
-        for v in $(printf '%s' "$group" | tr '/' ' '); do
-            eval "val=\${$v:-}"
-            if [ -n "${val:-}" ] && ! is_placeholder "$val"; then hit=1; break; fi
-        done
-        [ "$hit" -eq 0 ] && return 1
-    done
-    return 0
-}
-
-# Is an integration configured — credentials in env, or a saved profile on disk?
-is_configured() {
-    local required="$1" config_file="$2"
-    vars_satisfied "$required" && return 0
-    if [ "$config_file" != "-" ] && [ -n "${XDG_CONFIG_HOME:-}" ] \
-       && [ -f "$XDG_CONFIG_HOME/$config_file" ]; then
-        return 0
-    fi
-    return 1
-}
+# shellcheck source=scripts/lib/integrations.sh
+. "$REPO_ROOT/scripts/lib/integrations.sh"
 
 # -----------------------------------------------------------------------------
 # Environment resolution
@@ -143,6 +72,7 @@ detect_env_source() {
 
 load_environment() {
     detect_env_source
+    export RECKON_ROOT="$REPO_ROOT"
     # shellcheck disable=SC1091
     if ! . "$REPO_ROOT/.envrc" >/dev/null 2>&1; then
         err "environment failed to resolve — invalid RECKON_ENV or .reckon-env"
@@ -186,11 +116,11 @@ cmd_status() {
     while IFS='|' read -r name binary required config_file; do
         [ -z "$name" ] && continue
         n_total=$((n_total + 1))
-        if have "$binary"; then cli_word="yes"; cli_col="$C_GREEN"
+        if reckon_have "$binary"; then cli_word="yes"; cli_col="$C_GREEN"
         else cli_word="no"; cli_col="$C_DIM"; fi
-        if is_configured "$required" "$config_file"; then
+        if reckon_is_configured "$required" "$config_file"; then
             cred_word="configured"; cred_col="$C_GREEN"
-            have "$binary" && n_ready=$((n_ready + 1))
+            reckon_have "$binary" && n_ready=$((n_ready + 1))
         else
             cred_word="—"; cred_col="$C_DIM"
         fi
@@ -199,11 +129,12 @@ cmd_status() {
         printf "  %-14s %s%-9s%s %s%s%s\n" \
             "$name" "$cli_col" "$cli_word" "$C_RESET" "$cred_col" "$cred_word" "$C_RESET"
     done <<EOF
-$(registry)
+$(reckon_registry)
 EOF
 
-    printf "\n  %s%d of %d integrations usable%s in %s\n" \
+    printf "\n  %s%d of %d integrations locally configured%s in %s\n" \
         "$C_BOLD" "$n_ready" "$n_total" "$C_RESET" "$RECKON_ENV"
+    printf "  %srun scripts/reckon verify to prove live connectivity%s\n" "$C_DIM" "$C_RESET"
     return 0
 }
 
@@ -217,9 +148,14 @@ d_err()  { err "$*"; DOCTOR_ERRORS=$((DOCTOR_ERRORS + 1)); }
 cmd_doctor() {
     load_environment || return 1
     header "reckon doctor — $RECKON_ENV"
+    if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys; sys.exit(sys.version_info < (3, 9))'; then
+        ok "Python 3.9+ available for investigations and bounded probes"
+    else
+        d_err "Python 3.9+ (python3) is required for investigations and bounded probes"
+    fi
 
     # -- activation ----------------------------------------------------------
-    if have direnv; then
+    if reckon_have direnv; then
         ok "direnv installed"
         if grep -qs 'direnv hook' "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.zprofile" \
                                   "$HOME/.bash_profile" 2>/dev/null; then
@@ -230,6 +166,12 @@ cmd_doctor() {
     else
         warn "direnv not installed — .envrc will not auto-load"
         info "activate manually with: eval \"\$(scripts/reckon env)\""
+    fi
+    if direnv_active; then
+        ok "workspace environment active in this shell"
+    else
+        warn "workspace environment is not active in this shell"
+        info "scripts/agent.sh activates it automatically; for direct CLI use: eval \"\$(scripts/reckon env)\""
     fi
 
     # -- environment state ---------------------------------------------------
@@ -279,8 +221,8 @@ cmd_doctor() {
 
     # -- knowledge base ------------------------------------------------------
     local shared_n env_n
-    shared_n="$(find "$REPO_ROOT/infra-knowledge/_shared" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
-    env_n="$(find "$REPO_ROOT/infra-knowledge/$RECKON_ENV" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+    shared_n="$( { find "$REPO_ROOT/infra-knowledge/_shared" -name '*.md' 2>/dev/null || true; } | wc -l | tr -d ' ')"
+    env_n="$( { find "$REPO_ROOT/infra-knowledge/$RECKON_ENV" -name '*.md' 2>/dev/null || true; } | wc -l | tr -d ' ')"
     if [ "$shared_n" -gt 0 ]; then ok "infra-knowledge/_shared — $shared_n file(s)"
     else warn "infra-knowledge/_shared is empty — run: bash scripts/setup.sh"; fi
     if [ "$env_n" -gt 0 ]; then ok "infra-knowledge/$RECKON_ENV — $env_n file(s)"
@@ -312,37 +254,20 @@ cmd_doctor() {
 # -----------------------------------------------------------------------------
 # verify — the only subcommand that touches infrastructure
 # -----------------------------------------------------------------------------
-run_bounded() {
-    # Bound every probe so a hung endpoint can't stall the sweep.
-    if have timeout; then timeout 15 "$@"
-    elif have gtimeout; then gtimeout 15 "$@"
-    else "$@"; fi
-}
-
-verify_one() {
-    case "$1" in
-        grafana)       run_bounded grafana user current -o json ;;
-        jenkins)       run_bounded jenkins status -o json ;;
-        cubeapm)       run_bounded cubeapm metrics label-values service -o json ;;
-        github)        run_bounded gh auth status ;;
-        aws)           run_bounded aws sts get-caller-identity --output json ;;
-        kubernetes)    run_bounded kubectl get ns -o name ;;
-        kafka)         run_bounded kcat -L -b "$KAFKA_BOOTSTRAP_SERVERS" -J ;;
-        kafka-rpk)     run_bounded rpk cluster info ;;
-        redis)         run_bounded redis-cli -u "$REDIS_URL" PING ;;
-        mongodb)       run_bounded mongosh "$MONGODB_URI" --quiet --eval 'db.runCommand({ping:1})' ;;
-        postgres)      run_bounded psql -c 'SELECT 1' ;;
-        mysql)         run_bounded mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e 'SELECT 1' ;;
-        clickhouse)    run_bounded clickhouse client --host "$CLICKHOUSE_HOST" --user "$CLICKHOUSE_USER" \
-                           --password "$CLICKHOUSE_PASSWORD" --secure --readonly=1 --query 'SELECT 1' ;;
-        elasticsearch) run_bounded es cluster health -o json ;;
-        *) return 127 ;;
-    esac
-}
-
 cmd_verify() {
     load_environment || return 1
-    local wanted="$*"
+    local verbose=0 arg
+    local -a targets=()
+    for arg in "$@"; do
+        case "$arg" in
+            --verbose|-v) verbose=1 ;;
+            -*) err "unknown verify option: $arg"; return 1 ;;
+            *) targets+=("$arg") ;;
+        esac
+    done
+    # The ${x+...} forms keep an empty array legal under nounset on Bash 3.2 (macOS).
+    reckon_validate_integrations ${targets[@]+"${targets[@]}"} || return 1
+    local wanted=" ${targets[*]+${targets[*]}} "
 
     header "reckon verify — $RECKON_ENV"
     if [ "$RECKON_ENV" = production ]; then
@@ -351,35 +276,49 @@ cmd_verify() {
     fi
     printf "  %sone safe read per configured integration%s\n\n" "$C_DIM" "$C_RESET"
 
-    local name binary required config_file n_ok=0 n_fail=0
+    local name binary required config_file output_file
+    local n_ok=0 n_fail=0 n_skipped=0
+    local verify_tmp
+    verify_tmp="$(mktemp -d)"
     while IFS='|' read -r name binary required config_file; do
         [ -z "$name" ] && continue
-        if [ -n "$wanted" ]; then
-            case " $wanted " in *" $name "*) ;; *) continue ;; esac
+        if [ "${#targets[@]}" -gt 0 ]; then
+            case "$wanted" in *" $name "*) ;; *) continue ;; esac
         fi
-        if ! have "$binary"; then
+        if ! reckon_have "$binary"; then
             printf "  %s—%s %-14s %sskipped (no %s)%s\n" \
                 "$C_DIM" "$C_RESET" "$name" "$C_DIM" "$binary" "$C_RESET"
+            n_skipped=$((n_skipped + 1))
             continue
         fi
-        if ! is_configured "$required" "$config_file"; then
+        if ! reckon_is_configured "$required" "$config_file"; then
             printf "  %s—%s %-14s %sskipped (not configured)%s\n" \
                 "$C_DIM" "$C_RESET" "$name" "$C_DIM" "$C_RESET"
+            n_skipped=$((n_skipped + 1))
             continue
         fi
-        if verify_one "$name" >/dev/null 2>&1; then
+        output_file="$verify_tmp/$name.log"
+        if reckon_verify_one "$name" >"$output_file" 2>&1; then
             ok "$name"
             n_ok=$((n_ok + 1))
         else
-            err "$name — probe failed (run the command by hand for detail)"
+            err "$name — probe failed"
+            if [ "$verbose" -eq 1 ]; then
+                sed -n '1,40p' "$output_file" | sed 's/^/      /' >&2
+            else
+                info "retry with: scripts/reckon verify --verbose $name"
+            fi
             n_fail=$((n_fail + 1))
         fi
     done <<EOF
-$(registry)
+$(reckon_registry)
 EOF
+    rm -rf "$verify_tmp"
 
-    printf "\n  %s%d ok, %d failed%s\n" "$C_BOLD" "$n_ok" "$n_fail" "$C_RESET"
-    [ "$n_fail" -eq 0 ]
+    printf "\n  %s%d ok, %d failed, %d skipped%s\n" \
+        "$C_BOLD" "$n_ok" "$n_fail" "$n_skipped" "$C_RESET"
+    [ "$n_fail" -eq 0 ] &&
+        { [ "${#targets[@]}" -eq 0 ] || [ "$n_skipped" -eq 0 ]; }
 }
 
 # -----------------------------------------------------------------------------
@@ -388,34 +327,34 @@ EOF
 cmd_preflight() {
     load_environment || return 1
 
-    local name binary required config_file available="" unavailable=""
+    local name binary required config_file configured="" unavailable=""
     while IFS='|' read -r name binary required config_file; do
         [ -z "$name" ] && continue
-        if ! have "$binary"; then
+        if ! reckon_have "$binary"; then
             unavailable="$unavailable $name(no cli)"
-        elif ! is_configured "$required" "$config_file"; then
+        elif ! reckon_is_configured "$required" "$config_file"; then
             unavailable="$unavailable $name(no creds)"
         else
-            available="$available $name"
+            configured="$configured $name"
         fi
     done <<EOF
-$(registry)
+$(reckon_registry)
 EOF
 
     local shared_n env_n
-    shared_n="$(find "$REPO_ROOT/infra-knowledge/_shared" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
-    env_n="$(find "$REPO_ROOT/infra-knowledge/$RECKON_ENV" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+    shared_n="$( { find "$REPO_ROOT/infra-knowledge/_shared" -name '*.md' 2>/dev/null || true; } | wc -l | tr -d ' ')"
+    env_n="$( { find "$REPO_ROOT/infra-knowledge/$RECKON_ENV" -name '*.md' 2>/dev/null || true; } | wc -l | tr -d ' ')"
 
     local inc_n latest=""
-    inc_n="$(find "$REPO_ROOT/incidents" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')"
+    inc_n="$( { find "$REPO_ROOT/incidents" -maxdepth 1 -mindepth 1 -type d 2>/dev/null || true; } | wc -l | tr -d ' ')"
     if [ "$inc_n" -gt 0 ]; then
         latest="$(find "$REPO_ROOT/incidents" -maxdepth 1 -mindepth 1 -type d 2>/dev/null \
                   | sed 's|.*/||' | sort | tail -1)"
     fi
 
-    local avail_out="${available# }"
+    local configured_out="${configured# }"
     printf "reckon preflight — ENV=%s (resolved from %s)\n" "$RECKON_ENV" "$ENV_SOURCE"
-    printf "available:   %s\n" "${avail_out:-(none)}"
+    printf "configured:  %s\n" "${configured_out:-(none)}"
     printf "unavailable: %s\n" "${unavailable# }"
     printf "knowledge:   _shared %s files · %s %s files\n" "$shared_n" "$RECKON_ENV" "$env_n"
     if [ "$inc_n" -gt 0 ]; then
@@ -429,10 +368,11 @@ EOF
     if [ "$env_n" -eq 0 ]; then
         printf "warnings:    no infra-knowledge for %s — do not invent facts\n" "$RECKON_ENV"
     fi
-    if [ -z "$avail_out" ]; then
+    if [ -z "$configured_out" ]; then
         printf "warnings:    nothing configured — edit .env.%s (values still look like .env.example placeholders)\n" \
             "$RECKON_ENV"
     fi
+    printf "note:        configured is local state; run scripts/reckon verify for live connectivity\n"
     return 0
 }
 
@@ -448,7 +388,8 @@ cmd_env() {
     # Emit only plumbing — never credential values. .envrc does the rest, so
     # there is exactly one implementation of credential loading.
     printf 'export RECKON_ENV=%s\n' "$RECKON_ENV"
-    printf '. %s/.envrc\n' "$REPO_ROOT"
+    printf 'export RECKON_ROOT=%q\n' "$REPO_ROOT"
+    printf '. %q\n' "$REPO_ROOT/.envrc"
     return 0
 }
 
@@ -482,14 +423,27 @@ reckon — workspace control surface
 
   scripts/reckon status              active environment + integration matrix
   scripts/reckon doctor              diagnose workspace setup problems
-  scripts/reckon verify [name...]    live connection checks (touches infrastructure)
+  scripts/reckon verify [--verbose] [name...]  live checks (touches infrastructure)
   scripts/reckon preflight           compact digest for a coding agent
   scripts/reckon env                 print activation lines — eval "$(scripts/reckon env)"
   scripts/reckon use <environment>   switch the active environment
 
+  scripts/reckon demo                offline investigation walkthrough
+  scripts/reckon services list       inspect service mappings (--env <env>)
+  scripts/reckon capabilities        supported operations + local readiness
+  scripts/reckon debug --help        start a saved debugging session
+  scripts/reckon collect <session>   collect mapped evidence (live reads)
+  scripts/reckon resume <session>    context, evidence and next checks
+  scripts/reckon note --help         evidence-backed findings and hypotheses
+  scripts/reckon report <session>    generate the investigation briefing
+  scripts/reckon history             search prior investigations
+  scripts/reckon promote --help      snapshot into a preliminary incident
+  scripts/reckon close --help        record an investigation outcome
+
 Environments: production, staging, uat
 
-Only `verify` contacts your infrastructure; everything else is local inspection.
+`verify`, `collect`, and start commands with `--collect` contact infrastructure.
+Investigation commands require Python 3.9+. Use --json for structured output.
 direnv is optional — without it, activate a shell with eval "$(scripts/reckon env)".
 EOF
 }
@@ -498,6 +452,10 @@ main() {
     local cmd="${1:-}"
     [ $# -gt 0 ] && shift
     case "$cmd" in
+        debug|investigate|monitor|analyze|services|capabilities|collect|resume|report|note|history|promote|close|demo)
+            command -v python3 >/dev/null 2>&1 || { err 'Python 3.9+ is required for investigation commands'; return 1; }
+            exec python3 "$REPO_ROOT/scripts/reckon.py" "$cmd" "$@"
+            ;;
         status)              cmd_status "$@" ;;
         doctor)              cmd_doctor "$@" ;;
         verify)              cmd_verify "$@" ;;

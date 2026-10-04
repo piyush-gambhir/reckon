@@ -22,6 +22,10 @@
 # so a fresh clone bootstraps without either being in git.
 /infra-knowledge/
 /incidents/
+/sessions/
+/.reckon-demo/
+__pycache__/
+*.pyc
 
 # Locally built binaries. The `reckon` control-surface CLI is a tracked shell
 # script at scripts/reckon, deliberately NOT here, so this stays a pure

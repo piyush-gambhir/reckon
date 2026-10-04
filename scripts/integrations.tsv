@@ -1,0 +1,16 @@
+grafana|grafana|GRAFANA_URL,GRAFANA_TOKEN|grafana-cli/config.yaml
+jenkins|jenkins|JENKINS_URL,JENKINS_USER,JENKINS_TOKEN|jenkins-cli/config.yaml
+cubeapm|cubeapm|CUBEAPM_HOST/CUBEAPM_SERVER,CUBEAPM_EMAIL,CUBEAPM_PASSWORD|cubeapm-cli/config.yaml
+github|gh|GH_TOKEN/GITHUB_TOKEN|gh/hosts.yml
+aws|aws|AWS_REGION,AWS_ACCESS_KEY_ID/AWS_PROFILE|aws/credentials;aws/config
+kubernetes|kubectl|-|kube/config
+kafka|kcat|KAFKA_BOOTSTRAP_SERVERS|-
+kafka-rpk|rpk|KAFKA_BOOTSTRAP_SERVERS|-
+redis|redis-cli|REDIS_URL|-
+mongodb|mongosh|MONGODB_URI|-
+postgres|psql|PGHOST,PGUSER|-
+mysql|mysql|MYSQL_HOST,MYSQL_USER|-
+clickhouse|clickhouse|CLICKHOUSE_HOST,CLICKHOUSE_USER,CLICKHOUSE_PASSWORD|-
+elasticsearch|es|ES_URL|-
+jira|jira|JIRA_SITE,JIRA_TOKEN/JIRA_PASSWORD/JIRA_OAUTH_ACCESS_TOKEN|jira-cli/config.yaml
+nginxpm|nginxpm|NGINXPM_URL,NGINXPM_EMAIL,NGINXPM_PASSWORD|nginxpm-cli/config.yaml

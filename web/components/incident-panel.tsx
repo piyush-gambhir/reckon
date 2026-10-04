@@ -166,7 +166,7 @@ export function IncidentPanel() {
               Correlate the timeline
             </h2>
             <p className="incident-panel__description">
-              Wire together twelve read-only CLIs in one isolated credential
+              Wire together fourteen read-oriented CLIs in one isolated credential
               environment so a coding agent can correlate signals across systems
               in one session.
             </p>

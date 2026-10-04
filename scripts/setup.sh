@@ -218,6 +218,23 @@ install_direnv() {
     esac
 }
 
+install_python() {
+    if have python3 && python3 -c 'import sys; sys.exit(sys.version_info < (3, 9))'; then
+        mark_already 'Python 3.9+'
+        return
+    fi
+    info 'Python — installing for investigation support...'
+    case "$PLATFORM" in
+        macos) brew_install python3 || true ;;
+        linux) [ -z "$PKG" ] || pkg_install python3 python3 || true ;;
+    esac
+    if have python3 && python3 -c 'import sys; sys.exit(sys.version_info < (3, 9))'; then
+        mark_installed 'Python 3.9+'
+    else
+        mark_failed 'Python 3.9+ (python3) — install a supported Python and add it to PATH'
+    fi
+}
+
 install_jq() {
     have jq && { mark_already jq; return; }
     info "jq — installing..."
@@ -571,11 +588,27 @@ ensure_go() {
 
 setup_workspace() {
     header "Workspace setup"
+    local selection_valid=0
 
     mkdir -p .config/production .config/staging .config/uat
     mkdir -p infra-knowledge/_shared infra-knowledge/production \
         infra-knowledge/staging infra-knowledge/uat incidents
     ok "per-environment config, infra-knowledge, and incidents directories ready"
+
+    if [ -f .reckon-env ]; then
+        case "$(tr -d '[:space:]' < .reckon-env)" in
+            production|staging|uat)
+                ok "active environment already selected in .reckon-env"
+                selection_valid=1
+                ;;
+            *)
+                err ".reckon-env is invalid — run: scripts/reckon use <production|staging|uat>"
+                FAILED=$((FAILED + 1))
+                ;;
+        esac
+    else
+        warn "no active environment selected — run: scripts/reckon use production"
+    fi
 
     if [ -f .env.production ]; then
         ok ".env.production already exists — leaving alone"
@@ -586,6 +619,7 @@ setup_workspace() {
         warn "EDIT .env.production with real production credentials before using any CLI"
     else
         err ".env.example missing — are you running this from the repo root?"
+        FAILED=$((FAILED + 1))
     fi
 
     # Correct permissions on newly-created and pre-existing credential files.
@@ -627,6 +661,7 @@ setup_workspace() {
         fi
     else
         err "infra-knowledge templates missing — are you running this from the repo root?"
+        FAILED=$((FAILED + 1))
     fi
 
     # Skill wiring. .claude/ and .agents/ are gitignored (they hold local agent
@@ -642,45 +677,43 @@ setup_workspace() {
             ok "reckon skill linked (.claude → .agents → skills/reckon)"
         else
             err "reckon skill symlink chain did not resolve — agents will not load the skill"
+            FAILED=$((FAILED + 1))
         fi
     else
         err "skills/reckon missing — are you running this from the repo root?"
+        FAILED=$((FAILED + 1))
     fi
 
-    if have direnv; then
+    if have direnv && [ "$selection_valid" -eq 1 ]; then
         info "Approving .envrc with direnv..."
         if direnv allow . >/dev/null 2>&1; then
             ok ".envrc approved"
         else
             warn "direnv allow failed — run 'direnv allow' manually after hooking direnv into your shell"
         fi
-    else
+    elif ! have direnv; then
         warn "direnv not installed — workspace env vars won't auto-load; source the selected env files manually."
+    else
+        warn "skipping direnv allow until an environment is selected"
     fi
 }
 
 print_next_steps() {
     header "Next steps"
     cat <<'EOF'
-  1. Edit .env.production with your real production credentials:
+  1. Select the environment explicitly (reckon never defaults to production):
+       ./scripts/reckon use production
+  2. Edit its credential file:
        $EDITOR .env.production
-  2. Hook direnv into your shell (one-time, if not done already):
+  3. Hook direnv into your shell (one-time, if not done already):
        bash:  eval "$(direnv hook bash)"   # add to ~/.bashrc
        zsh:   eval "$(direnv hook zsh)"    # add to ~/.zshrc
-  3. Select production, staging, or uat and reload direnv:
-       export RECKON_ENV=production
+  4. Approve or reload the selected environment:
+       direnv allow
        direnv reload
-  4. Verify every connection (one safe read per tool):
-       grafana user current -o json
-       jenkins status -o json
-       cubeapm metrics label-values service -o json
-       aws sts get-caller-identity --output json
-       gh auth status
-       rpk cluster info --brokers "$KAFKA_BOOTSTRAP_SERVERS"
-       psql -c "SHOW default_transaction_read_only;"   # must report 'on'
-       mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SELECT @@transaction_read_only;"  # must report 1
-       mongosh "$MONGODB_URI" --eval 'db.runCommand({ping:1})'
-  5. Read CLAUDE.md "Database safety contract" before any DB query.
+  5. Verify configured connections:
+       ./scripts/reckon verify
+  6. Read CLAUDE.md "Database safety contract" before any DB query.
 
 EOF
 }
@@ -704,6 +737,7 @@ main() {
 
     header "Observability & CI/CD"
     install_direnv
+    install_python
     install_jq
     install_aws
     install_gh

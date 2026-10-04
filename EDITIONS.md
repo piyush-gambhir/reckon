@@ -47,15 +47,15 @@ These encode "a human is driving a shell on a laptop." The hosted edition will n
 | Asset | Why it's edition-specific |
 |---|---|
 | `.envrc`, `.env.<env>`, `.config/<env>/` | `RECKON_ENV` resolution + direnv/`XDG_CONFIG_HOME` per-environment credential isolation — a local-shell concept. A hosted agent needs the same *separation* but through secret management, not env files. |
-| `scripts/setup.sh`, `scripts/activate.ps1` | Per-machine install of the CLIs |
+| `scripts/setup.sh`, `scripts/setup.ps1`, `scripts/activate.ps1` | Per-machine install and activation of the CLIs |
 | `CLAUDE.md`, `AGENTS.md` | Instructions addressed to an *interactive* coding agent |
 | `.claude/skills/…` symlink chain | How one specific runtime discovers the skill |
-| `scripts/reckon` | The workspace control surface — status/doctor/verify/preflight/env/use. Assumes a shell; a hosted agent needs its own way to answer the same questions. |
+| `scripts/reckon`, `scripts/reckon.ps1` | The workspace control surface — status/doctor/verify/preflight/env/use. Assumes a local shell; a hosted agent needs its own way to answer the same questions. |
 | **Approval-prompt safety** (DB contract layer 4) | Depends on a human reading each query before approving |
 
 ## Outside the split entirely
 
-`web/` is the **project's documentation website** (Next.js + Fumadocs, static-exported to Cloudflare) — the
+`web/` is the **project's documentation website** (Next.js + Fumadocs, static-exported to Cloudflare Workers Assets) — the
 public front door for reckon as a whole. It is neither shared core nor edition-specific: it *documents*
 whichever editions exist, so when the hosted edition lands it gets described there too rather than getting a
 site of its own. Don't reason about it as an edition asset.
