@@ -10,6 +10,7 @@ export const suite: readonly SuiteProject[] = [
   { name: 'grafana-cli', href: 'https://projects.piyushgambhir.com/grafana-cli' },
   { name: 'jenkins-cli', href: 'https://projects.piyushgambhir.com/jenkins-cli' },
   { name: 'nginxpm-cli', href: 'https://projects.piyushgambhir.com/nginxpm-cli' },
+  { name: 'bing-webmaster-cli', href: 'https://projects.piyushgambhir.com/bing-webmaster-cli' },
   { name: 'reckon', href: 'https://projects.piyushgambhir.com/reckon' },
 ];
 
