@@ -322,13 +322,13 @@ install_rpk() {
             brew_install redpanda-data/tap/redpanda && mark_installed rpk || mark_failed rpk
             ;;
         linux)
-            local url checksum_url version="v26.1.12"
+            local url checksum_url version="v26.2.2"
             case "$ARCH" in
                 amd64) url="https://github.com/redpanda-data/redpanda/releases/download/${version}/rpk-linux-amd64.zip" ;;
                 arm64) url="https://github.com/redpanda-data/redpanda/releases/download/${version}/rpk-linux-arm64.zip" ;;
                 *) mark_skipped rpk; return ;;
             esac
-            checksum_url="https://github.com/redpanda-data/redpanda/releases/download/${version}/rpk_26.1.12_checksums.txt"
+            checksum_url="https://github.com/redpanda-data/redpanda/releases/download/${version}/rpk_26.2.2_checksums.txt"
             if download_install_bin "$url" zip rpk rpk "$checksum_url"; then
                 mark_installed rpk
             else
