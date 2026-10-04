@@ -279,6 +279,10 @@ class WorkflowTests(Fixture):
             self.assertIn("[REDACTED]", output)
             self.assertNotIn("secret-for-test", json.dumps(record))
 
+    def test_working_directory_is_not_redacted_as_a_secret(self):
+        values = {"PWD": "/work/reckon", "OLDPWD": "/work", "MYSQL_PWD": "db-secret"}
+        self.assertEqual(envs.redact("cd /work/reckon using db-secret", values), "cd /work/reckon using [REDACTED]")
+
     def test_bad_output_and_provider_errors_are_not_success(self):
         for output in ('not-json', '{"status":"error","error":"forbidden"}', '{"data":{"resultType":"matrix","result":[null]}}'):
             self.fake("print(" + repr(output) + ")")

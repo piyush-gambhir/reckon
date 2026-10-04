@@ -112,7 +112,7 @@ def readiness(root, values):
 
 
 def redact(text, values):
-    secrets = {v for k, v in values.items() if len(v) >= 4 and re.search(r"TOKEN|PASSWORD|SECRET|PASS$|PWD$|API_KEY|COOKIE", k, re.I)}
+    secrets = {v for k, v in values.items() if len(v) >= 4 and re.search(r"TOKEN|PASSWORD|SECRET|PASS$|_PWD$|API_KEY|COOKIE", k, re.I)}
     for secret in sorted(secrets, key=len, reverse=True):
         text = text.replace(secret, "[REDACTED]")
     text = re.sub(r"(://)[^\s/@:]+:[^\s/@]+@", r"\1[REDACTED]@", text)
