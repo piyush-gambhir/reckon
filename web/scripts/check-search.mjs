@@ -22,6 +22,10 @@ try {
   const prefixed = await Promise.all(files.map(async (f) => (await readFile(new URL(f, chunks), 'utf8')).includes('/reckon/api/search')));
   assert.ok(prefixed.some(Boolean), 'the search client does not request /reckon/api/search');
   console.log('Search client uses the basePath endpoint');
+  // Agent-facing Markdown is read outside the site, so it must not use root-relative links.
+  const llmsFull = await readFile(new URL('../out/llms-full.txt', import.meta.url), 'utf8');
+  assert.ok(!llmsFull.includes('](/'), 'llms-full.txt contains root-relative links');
+  console.log('llms-full.txt links are absolute');
 } finally {
   globalThis.fetch = originalFetch;
 }
