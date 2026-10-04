@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
-# Build the Next.js site in web/ and deploy the static export to Cloudflare Pages.
-# Run as `bash scripts/deploy-docs.sh [production|development]`.
+# Build the Next.js site in web/ and deploy its static export as the Cloudflare
+# Worker (static assets) that serves projects.piyushgambhir.com/reckon.
+# Run as `bash scripts/deploy-docs.sh` from an up-to-date main.
 #
-# Falls back to a local `wrangler login` session if no .env.deploy.<env> file is present.
+# Credentials come from .env.deploy.production when present (for example
+# CLOUDFLARE_API_TOKEN), otherwise from a local Wrangler login.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 ENV="${1:-production}"
+if [[ "$ENV" != "production" ]]; then
+  echo "error: only 'production' is supported; the site has no preview environment." >&2
+  exit 1
+fi
 DEPLOY_ENV_FILE=".env.deploy.${ENV}"
 
 if [[ -f "$DEPLOY_ENV_FILE" ]]; then
@@ -16,35 +22,19 @@ if [[ -f "$DEPLOY_ENV_FILE" ]]; then
   # shellcheck disable=SC1090
   source "$DEPLOY_ENV_FILE"
   set +a
-else
-  if ! npx --yes wrangler@4.110.0 whoami >/dev/null 2>&1; then
-    echo "error: not logged in to wrangler. Run \`wrangler login\` first (or create $DEPLOY_ENV_FILE)." >&2
-    exit 1
-  fi
 fi
 
-CF_PROJECT_NAME="${CF_PROJECT_NAME:-reckon}"
 WEB_DIR="${WEB_DIR:-web}"
-OUT_DIR="${OUT_DIR:-$WEB_DIR/out}"
 
 echo "==> Building the site in ${WEB_DIR}/"
-( cd "$WEB_DIR" && pnpm install --frozen-lockfile && pnpm build )
+( cd "$WEB_DIR" && pnpm install --frozen-lockfile && pnpm build:cloudflare && pnpm test:search )
 
-if [[ ! -f "$OUT_DIR/index.html" ]]; then
-  echo "error: $OUT_DIR/index.html not found — build produced no static export." >&2
+# Only check the interactive login: whoami needs account-list access that a
+# scoped deploy token may lack, and wrangler deploy reports token errors itself.
+if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]] && ! ( cd "$WEB_DIR" && pnpm exec wrangler whoami >/dev/null 2>&1 ); then
+  echo "error: Wrangler is not authenticated. Run 'cd web && pnpm exec wrangler login' or create $DEPLOY_ENV_FILE." >&2
   exit 1
 fi
 
-if [[ "$ENV" == "production" ]]; then
-  CF_BRANCH="${CF_PRODUCTION_BRANCH:-main}"
-else
-  CF_BRANCH="${CF_PREVIEW_BRANCH:-preview}"
-fi
-
-if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then export CLOUDFLARE_API_TOKEN; fi
-if [[ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then export CLOUDFLARE_ACCOUNT_ID; fi
-
-echo "==> Deploying ${OUT_DIR}/ to Cloudflare Pages project '${CF_PROJECT_NAME}' (branch: ${CF_BRANCH})"
-npx --yes wrangler@4.110.0 pages deploy "$OUT_DIR" \
-  --project-name="$CF_PROJECT_NAME" \
-  --branch="$CF_BRANCH"
+echo "==> Deploying the Worker to projects.piyushgambhir.com/reckon"
+( cd "$WEB_DIR" && pnpm deploy:cloudflare )

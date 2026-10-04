@@ -12,7 +12,7 @@ import { getMDXComponents } from '@/components/mdx';
 import type { Metadata } from 'next';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
 import { absoluteUrl, createPageMetadata, describePage } from '@/lib/metadata';
-import { gitConfig } from '@/lib/shared';
+import { gitConfig, sourcePath } from '@/lib/shared';
 import {
   licenseUrl,
   projectDescription,
@@ -118,7 +118,7 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
           <MarkdownCopyButton markdownUrl={markdownUrl} />
           <ViewOptionsPopover
             markdownUrl={markdownUrl}
-            githubUrl={`https://github.com/${gitConfig.user}/${gitConfig.repo}/blob/${gitConfig.branch}/content/docs/${page.path}`}
+            githubUrl={`https://github.com/${gitConfig.user}/${gitConfig.repo}/blob/${gitConfig.branch}/${sourcePath(page.path)}`}
           />
         </div>
         <DocsBody className="reckon-docs-body">
