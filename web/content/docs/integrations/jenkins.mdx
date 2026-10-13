@@ -1,17 +1,26 @@
 ---
 title: Jenkins
-description: Correlate Jenkins jobs, builds, pipelines, and logs with an incident window.
+description: Correlate Jenkins jobs, builds, stages, test reports and logs with a release or an incident window.
 ---
 
-## What it covers in an RCA
+## What it covers
 
-Jenkins provides deployment and CI evidence: failed jobs establish change
-context, build history supplies timestamps, and console logs can identify the
-deployed revision or a failed rollout step.
+Jenkins provides release and CI evidence: failed jobs, build history with
+timestamps, pipeline stages, test reports, and console logs that can identify
+the deployed revision or a failed rollout step.
 
-## Credentials
+## Connect
 
-The preferred environment wiring is:
+Jenkins usually runs a separate server per environment, so tie each connection
+to one environment:
+
+```bash
+reckon connect jenkins-prod --org acme --provider jenkins --for-env prod
+reckon connect jenkins-uat  --org acme --provider jenkins --for-env uat
+```
+
+Fill in each connection's file, for example
+`~/.reckon/orgs/acme/secrets/jenkins-prod.env`:
 
 ```bash
 JENKINS_URL=https://jenkins.example.com
@@ -19,25 +28,37 @@ JENKINS_USER=readonly-bot
 JENKINS_TOKEN=replace_me
 ```
 
-If `JENKINS_USERNAME` is set and `JENKINS_USER` is not, `.envrc` exports it as
-`JENKINS_USER`. The CLI honors the repo-local `XDG_CONFIG_HOME`; `jenkins login`
-stores a fallback profile at `.config/<env>/jenkins-cli/config.yaml`.
+`JENKINS_INSECURE` is optional. Instead of the file, you can run
+`reckon login jenkins-prod` in your own terminal: it runs `jenkins login` and
+keeps the profile in that connection's private config.
+
+`reckon verify jenkins-prod` runs `jenkins whoami -o json`.
 
 ## Read-only contract
 
-Never trigger a Jenkins build from this workspace. Jobs, builds, logs,
-pipelines, and nodes are investigation evidence only.
+Reckon runs `jenkins` with `JENKINS_READ_ONLY=true` and
+`JENKINS_NO_INPUT=true`, so the CLI refuses builds, stops, deletes and other
+writes. It also refuses `--server`, `--user`, `--token`, `--insecure` and their
+short forms (`-s`, `-u`, `-t`, `-k`), `--profile`, `--read-only`, `--no-input`
+and `--download`, and the `login`, `config` and `update` commands. Give the
+Jenkins user read-only permissions as well.
 
 ## Key commands
 
 ```bash
-jenkins status -o json
-jenkins job list --recursive --status FAILURE -o json
-jenkins build list <deploy-job> -o json
-jenkins build log <job> <number>
+reckon run jenkins -- job list --recursive --status FAILURE -o json
+reckon run jenkins -- build list <job> --limit 25 -o json
+reckon run jenkins -- build get <job> <number> -o json
+reckon run jenkins -- build stages <job> <number> -o json
+reckon run jenkins -- build test-report <job> <number> -o json
+reckon run jenkins -- build log <job> <number>
 ```
+
+`build list` has no time flags: filter by the returned timestamps. A successful
+build is not proof that its revision was deployed.
 
 ## Links
 
 - [Jenkins documentation](https://www.jenkins.io/doc/)
+- [jenkins-cli documentation](https://projects.piyushgambhir.com/jenkins-cli/)
 - [jenkins-cli source](https://github.com/piyush-gambhir/jenkins-cli)

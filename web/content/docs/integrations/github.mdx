@@ -1,43 +1,55 @@
 ---
 title: GitHub
-description: Use the gh CLI to correlate pull requests, Actions runs, and releases with production symptoms.
+description: Use the gh CLI to read pull requests, Actions runs, releases and issues through an allowlist of read commands.
 ---
 
-## What it covers in an RCA
+## What it covers
 
-GitHub supplies code and deployment context when a service deploys through
-Actions or when a recent change's intent and scope matter. Merges, failed runs,
-and releases are correlation points until telemetry establishes a mechanism.
+GitHub supplies code and release context: merged pull requests, Actions runs,
+releases and issues. A merge or a failed run is a correlation point until other
+evidence shows how it caused a symptom.
 
-## Credentials
+## Connect
 
-A fine-grained token with `repo:read` and `actions:read` is sufficient:
+A GitHub account usually serves every environment, so one shared connection is
+enough:
+
+```bash
+reckon connect github --org acme --provider github
+```
+
+Fill in `~/.reckon/orgs/acme/secrets/github.env` with a fine-grained token that
+can read contents, pull requests, issues and Actions:
 
 ```bash
 GH_TOKEN=replace_me
-GITHUB_TOKEN=replace_me
-GH_HOST=github.com
 ```
 
-`GITHUB_TOKEN` is an alias: `.envrc` maps it to `GH_TOKEN` when `GH_TOKEN` is not
-already set. Set `GH_HOST` for GitHub Enterprise. The CLI honors repo-local
-`XDG_CONFIG_HOME`; `gh auth login` stores its profile under
-`.config/<env>/gh/{config.yml,hosts.yml}`.
+`GITHUB_TOKEN` works instead of `GH_TOKEN`. Set `GH_HOST` for GitHub
+Enterprise. Instead of the file, you can run `reckon login github` in your own
+terminal: it runs `gh auth login --insecure-storage`, which keeps the token in
+that connection's private config instead of the OS keychain.
+
+`reckon verify github` runs `gh auth status`.
 
 ## Read-only contract
 
-Use a read-scoped token and keep the workspace to the pull-request, run, release,
-and authentication reads below. This workspace observes production and does not
-turn change correlation into a write or mitigation action.
+`gh` has no read-only mode, so Reckon allows only these commands:
+`pr list|view|diff|checks|status`, `run list|view`, `workflow list|view`,
+`release list|view`, `issue list|view|status`, `repo view|list`, `search`,
+`label list` and `auth status`. It also refuses `--web`, `-w` and `--hostname`.
+A token without write scopes is the server-side barrier.
 
 ## Key commands
 
+The org folder is not a Git checkout, so pass `--repo` every time:
+
 ```bash
-gh auth status
-gh pr list --search "merged:>=<ISO> closed" --json number,title,mergedAt,author,url
-gh pr view <num> --json title,body,files,mergedAt
-gh run list --workflow <wf> --status failure --json status,conclusion,createdAt,url
-gh release list --limit 10 --json tagName,publishedAt,name
+reckon run github -- pr list --repo <owner/repo> --search "merged:>=<date>" --json number,title,mergedAt,author,url
+reckon run github -- pr view <number> --repo <owner/repo> --json title,body,files,mergedAt
+reckon run github -- run list --repo <owner/repo> --workflow <workflow> --json databaseId,headSha,status,conclusion,createdAt,url
+reckon run github -- release list --repo <owner/repo> --limit 10 --json tagName,publishedAt,name
+reckon run github -- issue list --repo <owner/repo> --state open --json number,title,labels,updatedAt
 ```
 
 ## Links

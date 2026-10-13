@@ -1,0 +1,69 @@
+---
+title: Product & growth
+description: Read Jira, Microsoft Clarity, Google Search Console and Bing Webmaster Tools through reckon run.
+---
+
+These tools usually have no environments, so each is one shared connection.
+Start a session for recurring reviews so the evidence is kept:
+
+```bash
+reckon task --question "Weekly search review" --area gtm
+reckon run gsc --session <id> --label "top queries 28d" -- top queries --site sc-domain:example.com --last 28d --limit 25 -o json
+```
+
+## Jira
+
+```bash
+reckon run jira -- issue search --jql 'project = ABC AND updated >= "2026-10-01"' --limit 100 --fields summary,status,updated,labels -o json
+reckon run jira -- issue get ABC-123 --expand changelog -o json
+reckon run jira -- sprint list --board <board-id> --state active -o json
+reckon run jira -- sprint issues <sprint-id> -o json
+```
+
+JQL must contain a real restriction, such as a project or a date. The changelog
+shows when an issue moved and who moved it.
+
+## Microsoft Clarity
+
+```bash
+reckon run clarity -- recordings list --days 2 --rage-clicks --count 100 -o json
+reckon run clarity -- export --days 1 --dimension Device -o json
+reckon run clarity -- analytics query 'Top pages by rage clicks in the last 3 days' --timezone UTC -o json
+```
+
+The export covers only the last 1 to 3 days and allows 10 requests per project
+per day. Recordings are a sample, not a complete export.
+
+## Google Search Console
+
+```bash
+reckon run gsc -- sites list -o json
+reckon run gsc -- performance --site <site> --last 28d --compare previous -o json
+reckon run gsc -- trend --site <site> --last 3m --by week -o json
+reckon run gsc -- top queries --site <site> --last 28d --limit 25 -o json
+reckon run gsc -- top pages --site <site> --last 28d --limit 25 -o json
+reckon run gsc -- insights striking-distance --site <site> --last 28d --min-impressions 100 -o json
+reckon run gsc -- insights low-ctr --site <site> --last 28d -o json
+reckon run gsc -- inspect <url> --site <site> -o json
+```
+
+`<site>` is a property such as `sc-domain:example.com`. Dates are inclusive
+Pacific-time days, and the last two or three days are preliminary.
+
+## Bing Webmaster Tools
+
+```bash
+reckon run bing -- stats summary --days 28 --compare previous -o json
+reckon run bing -- stats queries --sort clicks --limit 100 -o json
+reckon run bing -- stats pages --sort clicks --limit 100 -o json
+reckon run bing -- crawl issues -o json
+```
+
+Bing returns its own top rows and `bwt` filters dates locally, so its numbers
+are not complete history.
+
+<Callout type="info">
+  Submitting a sitemap, requesting indexing or creating an issue is a write.
+  Reckon does not perform writes yet: the agent describes the exact change and
+  its target, and you make it.
+</Callout>

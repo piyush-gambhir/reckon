@@ -1,115 +1,104 @@
 ---
 title: Quick start
-description: Confirm what is connected, launch an agent runtime, and pick the right mode.
+description: Create an org, connect a tool, check it, and open Claude Code or Codex pinned to one environment.
 ---
 
-## 1. Prepare the clone
+After [setup](/docs/installation), with `reckon` on your PATH:
 
-After [setup](/docs/installation), fill `.env.production` with real credentials and
-edit the seeded `infra-knowledge/` files. The agent consults this knowledge
-before querying so it understands service names, data locations, known quirks,
-and existing issues — it is per-environment: `_shared/` first, then `<env>/`
-overlaid, with the environment winning.
+## 1. Create an org
 
 ```bash
-./scripts/reckon use production
-$EDITOR .env.production
-direnv allow                 # optional — see Connections
+reckon org add acme --envs prod,uat,dev
 ```
 
-## 2. Inspect local readiness and verify connectivity
+This creates `~/.reckon/orgs/acme/` with its own secrets, config and workspace
+folders. Your first org also becomes the default context.
 
-Before launching anything, check the workspace's own state. Values still left at
-their `.env.example` defaults are reported as unconfigured, so this will not
-flatter you:
+## 2. Connect tools
+
+Connect at least one tool. Jenkins runs a server per environment; CubeAPM holds
+every environment in one server with a label each:
 
 ```bash
-./scripts/reckon status      # active environment + integration matrix
-./scripts/reckon doctor      # setup problems, with the fix for each
-./scripts/reckon verify      # live connection checks (touches your infra)
+reckon connect jenkins-prod --org acme --provider jenkins --for-env prod
+reckon connect cubeapm --org acme --provider cubeapm --label prod=PROD --label uat=UAT
 ```
 
-`status` and `preflight` only inspect local binaries and configuration. `verify`
-performs the bounded live probes. `doctor` also warns when the current shell is
-inactive; the agent launcher activates it automatically.
-
-## 3. Launch an agent
-
-The launcher auto-detects Claude Code, Codex CLI, then OpenCode:
+Each command prints the credentials file it created. Fill it in with your
+editor, or run the CLI's own login for that connection:
 
 ```bash
-scripts/agent.sh
+$EDITOR ~/.reckon/orgs/acme/secrets/jenkins-prod.env
+reckon login cubeapm
 ```
 
-Or choose a runtime explicitly:
+[Orgs & connections](/docs/connections) explains the file format and the three
+connection shapes. Each [integration page](/docs/integrations) lists its
+settings.
+
+## 3. Check them
 
 ```bash
-scripts/agent.sh claude
-scripts/agent.sh codex
-scripts/agent.sh opencode
+reckon use acme/prod
+reckon status            # local readiness, no network
+reckon verify            # one live read per connection
 ```
 
-The agent's first action should be `./scripts/reckon preflight` — a compact digest
-of the active environment, which integrations are locally configured, which are
-not and why, and what knowledge exists. It makes no network calls; use `verify`
-when live connectivity must be proven. The launcher activates `.envrc` itself, so
-agent credentials do not depend on direnv being active in the parent shell.
+## 4. Open the agent
 
-## 4. Pick a mode
+```bash
+reckon open              # the default context, acme/prod
+reckon open acme/uat     # or name it
+reckon open acme/prod --runtime codex
+reckon open acme/prod -- --continue    # arguments after -- go to the agent
+```
 
-reckon routes by *what is known*, not by what you call it:
+`reckon open` starts Claude Code (or Codex when Claude Code is not installed) in
+`~/.reckon/orgs/acme/workspace`, pinned to that environment and without any tool
+credentials. A production environment gets a warning banner. The agent's first
+step is `reckon preflight`, and its first message states the context:
+*"Working on **acme**, environment **prod**."* See [Agents](/docs/agents) for
+what the agent can and cannot do.
 
-| Mode | Use when | Produces |
-| --- | --- | --- |
-| **investigate** | A specific bad thing in a specific window | An RCA under `incidents/<date>-<slug>/` |
-| **monitor** | Nothing known broken; sweeping for problems | A health report |
-| **analyze** | No fault — capacity, cost, profiling, growth | A ranked analysis |
+## 5. Ask for work
 
-You do not need to name the mode. Describe the situation and the agent selects
-it; a request phrased as "just check something" that names a bad number in a
-window is an investigation.
-
-Keep approval prompts on. Claude Code reads `CLAUDE.md` and the repo-local RCA
-skill; Codex, OpenCode, and other compatible runtimes read `AGENTS.md` and the
-same canonical safety contract.
-
-## 5. Describe the situation
-
-Give the agent a service, symptom, and narrow UTC window when possible:
+Describe the work in plain language. Give a time window when it matters:
 
 ```text
-The checkout service latency spiked from 14:30 to 14:50 UTC.
-Find the cause and write the RCA with supporting evidence.
+Checkout latency spiked from 14:30 to 14:50 UTC today. Find the cause.
 ```
-
-The agent starts broad, then follows the evidence across alert state, failed
-builds, traces, logs, metrics, deployments, dependencies, queues, Kubernetes,
-caches, and databases as needed.
-
-## 6. Review the evidence
-
-A completed investigation is written to:
 
 ```text
-incidents/<YYYY-MM-DD>-<slug>/
-├── RCA.md
-├── alert.txt
-├── learnings.md
-└── evidence/
+Which deploy-api builds failed this week, and why?
 ```
 
-The date is the UTC date the incident began. The RCA should distinguish
-evidence from inference, state uncertainty explicitly, and preserve the raw
-outputs needed to reproduce its conclusion.
+```text
+Weekly search review for sc-domain:acme.com: what moved, and which queries are close to page one?
+```
 
-<Callout type="warn">
-  The agent investigates only. It must not trigger Jenkins builds, produce to
-  Kafka, join a production consumer group, mutate a database, or run mutating
-  Kubernetes and Redis commands.
+The agent reaches each tool with `reckon run <tool> -- <arguments>` and saves
+work that matters in a session, so the evidence survives the conversation.
+
+## 6. Review saved work
+
+```bash
+reckon history                   # this org's sessions in this environment
+reckon resume <session-id>       # evidence, notes and gaps
+reckon report <session-id>       # writes the briefing and prints its path
+```
+
+Sessions live in `~/.reckon/orgs/acme/workspace/sessions/`. An investigation
+can be promoted to an RCA under `incidents/`. See
+[Saved work](/docs/investigations).
+
+<Callout type="info">
+  No infrastructure yet? `reckon demo` runs a synthetic investigation in a
+  throwaway org under `~/.reckon/demos/`. It uses no real credentials and makes
+  no network calls.
 </Callout>
 
-<Cards>
-  <Card title="Tool belt" href="/docs/toolbelt" description="Choose the right evidence source for each incident signal." />
-  <Card title="Command workflows" href="/docs/commands" description="Use grounded read-only commands grouped by operational domain." />
-  <Card title="Agents" href="/docs/agents" description="Understand runtime guides, safety boundaries, and investigation behavior." />
-</Cards>
+<Callout type="warn">
+  Reckon does not perform writes yet. When a change is needed (rerun a build,
+  create an issue, submit a sitemap), the agent describes the exact change and
+  its target, and you make it.
+</Callout>

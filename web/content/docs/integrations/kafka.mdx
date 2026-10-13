@@ -1,68 +1,72 @@
 ---
 title: Kafka
-description: Inspect Kafka metadata, group-less topic messages, and consumer lag with kcat and rpk.
+description: Read Kafka metadata, group-less topic messages and consumer lag with kcat and rpk, with every run approved by you.
 ---
 
-## What it covers in an RCA
+## What it covers
 
-Use Kafka when a consumer is slow, lagging, or stuck; when a dead-letter topic
-is suspected; or when a Kafka-connected service is misbehaving. `kcat` exposes
-cluster metadata and bounded topic tails, while `rpk` exposes consumer-group lag
-and cluster or topic state.
+Use Kafka when a consumer is slow, lagging or stuck, when a dead-letter topic is
+suspected, or when a Kafka-connected service misbehaves. `kcat` shows cluster
+metadata and bounded topic tails; `rpk` shows consumer-group lag and cluster or
+topic state.
 
-## Credentials
+## Connect
 
-Both clients are wired from the same environment values:
+The two clients are separate providers: `kafka` runs `kcat` and `kafka-rpk`
+runs `rpk`. Add the ones you use:
+
+```bash
+reckon connect kafka-prod --org acme --provider kafka --for-env prod
+reckon connect rpk-prod   --org acme --provider kafka-rpk --for-env prod
+```
+
+Both read the same `KAFKA_*` settings. Fill in each connection's file, for
+example `~/.reckon/orgs/acme/secrets/kafka-prod.env`:
 
 ```bash
 KAFKA_BOOTSTRAP_SERVERS=broker1.example.com:9092,broker2.example.com:9092
 KAFKA_SECURITY_PROTOCOL=SASL_SSL
 KAFKA_SASL_MECHANISM=SCRAM-SHA-512
-KAFKA_SASL_USERNAME=rca-readonly
+KAFKA_SASL_USERNAME=readonly
 KAFKA_SASL_PASSWORD=replace_me
 ```
 
-`kcat` receives these through the documented `-b` and `-X` flags. `rpk` reads
-`RPK_*` variables, so `.envrc` derives `RPK_BROKERS`, `RPK_USER`, `RPK_PASS`,
-`RPK_SASL_MECHANISM`, and, for TLS protocols, `RPK_TLS_ENABLED` from the
-configured `KAFKA_*` values.
+Reckon passes these to `kcat` as `-b` and `-X` options. For `rpk` it derives
+`RPK_BROKERS`, `RPK_USER`, `RPK_PASS`, `RPK_SASL_MECHANISM` and, for TLS
+protocols, `RPK_TLS_ENABLED`. An `rpk` connection can set `RPK_BROKERS`
+directly instead. There is no `reckon login` for Kafka.
 
-For MSK IAM, the environment example uses `SASL_SSL` with
-`KAFKA_SASL_MECHANISM=AWS_MSK_IAM` and AWS credentials resolving to the
-appropriate role.
+`reckon verify kafka-prod` runs `kcat -L -J`; `reckon verify rpk-prod` runs
+`rpk cluster info`.
 
 ## Read-only contract
 
-`kcat` and `rpk` have no read-only mode. The real barrier is a broker principal
-limited to `Describe` and `Read`; for MSK IAM, allow `kafka-cluster:Connect`,
-`Describe*`, and `ReadData`, with no `WriteData`, `Create*`, `Delete*`, or
-`Alter*`.
+Both are **approval** connections: the agent must ask you before each run, and
+Claude Code's settings in the org folder mark them as ask.
 
-Only use `kcat -L` / `-C` / `-Q`, `rpk cluster info`, `rpk topic
-list/describe/consume`, and `rpk group list/describe`. Never use `kcat -P`,
-`rpk topic produce/create/delete/alter-config`, or `rpk group delete/seek`.
+- **The broker principal is the real barrier.** Grant it only `Describe` and
+  `Read`.
+- `kcat`: Reckon refuses `-P` (produce), `-G` (consumer group), `-b`, `-F` and
+  `-X`.
+- `rpk`: Reckon allows only `cluster info`, `cluster health`, `topic list`,
+  `topic describe`, `topic consume`, `group list` and `group describe`, and
+  refuses `-g`, `--group`, `--brokers`, `-X`, `--profile` and `--config`.
 
 <Callout type="warn">
-  Never use `kcat -G <group>` or `rpk topic consume -g <group>`. A group-id read
-  joins the production consumer group, triggers a rebalance, and commits
-  offsets. Always consume group-less.
+  Never join a production consumer group. A group read rebalances the real
+  consumers and commits offsets. Always consume without a group.
 </Callout>
 
 ## Key commands
 
 ```bash
-kcat -L -b "$KAFKA_BOOTSTRAP_SERVERS" -X security.protocol=$KAFKA_SECURITY_PROTOCOL \
-     -X sasl.mechanism=$KAFKA_SASL_MECHANISM -X sasl.username=$KAFKA_SASL_USERNAME \
-     -X sasl.password=$KAFKA_SASL_PASSWORD -t <topic> -J | jq
-
-kcat -C -b "$KAFKA_BOOTSTRAP_SERVERS" -X security.protocol=$KAFKA_SECURITY_PROTOCOL \
-     -X sasl.mechanism=$KAFKA_SASL_MECHANISM -X sasl.username=$KAFKA_SASL_USERNAME \
-     -X sasl.password=$KAFKA_SASL_PASSWORD -t <topic> -o -10 -e -q
-
-rpk cluster info
-rpk group describe <consumer-group> --brokers "$KAFKA_BOOTSTRAP_SERVERS"
-rpk group list --brokers "$KAFKA_BOOTSTRAP_SERVERS"
-rpk topic describe <topic> --brokers "$KAFKA_BOOTSTRAP_SERVERS"
+reckon run kafka -- -L -J -t <topic>
+reckon run kafka -- -C -t <topic> -o -10 -e -q
+reckon run kafka-rpk -- cluster info
+reckon run kafka-rpk -- group list
+reckon run kafka-rpk -- group describe <consumer-group>
+reckon run kafka-rpk -- topic describe <topic>
+reckon run kafka-rpk -- topic consume <topic> -n 10
 ```
 
 ## Links

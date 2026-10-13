@@ -1,0 +1,77 @@
+---
+title: Google Search Console
+description: Read Search Console performance, trends, opportunities, sitemaps and URL inspection with the gsc CLI in read-only mode.
+---
+
+## What it covers
+
+Search Console shows how a site performs in Google Search: clicks,
+impressions, CTR and position by query, page, country and device, trends over
+time, computed opportunities such as striking-distance queries, sitemaps, and
+whether a URL is indexed.
+
+## Connect
+
+Search Console has no environments, so make one shared connection:
+
+```bash
+reckon connect gsc --org acme --provider gsc
+```
+
+The simplest setup is a browser login. Run it yourself in a terminal:
+
+```bash
+reckon login gsc
+```
+
+It runs `gsc auth login`, which opens Google's consent page once and stores the
+refresh token in the OS keychain. Reckon gives this CLI your real home
+directory so the keychain works, and keeps its config per connection.
+
+For automation, fill in `~/.reckon/orgs/acme/secrets/gsc.env` instead with one
+of:
+
+```bash
+GSC_CREDENTIALS=/path/to/service-account.json
+GSC_ACCESS_TOKEN=replace_me
+```
+
+`GSC_SITE` sets a default property. `GSC_CLIENT_ID` and `GSC_CLIENT_SECRET`
+select your own OAuth client.
+
+`reckon verify gsc` runs `gsc auth status --verify -o json`, which lists
+properties with the credential.
+
+## Read-only contract
+
+Reckon runs `gsc` with `GSC_READ_ONLY=true` and `GSC_NO_INPUT=true`, so the CLI
+refuses sitemap submissions, property changes and every other remote write. It
+also refuses `--access-token`, `--credentials`, `--profile`, `--config`,
+`--read-only` and `--no-input`, and the `auth login`, `auth logout`,
+`auth use`, `config`, `sites use`, `update` and `export` commands. The agent
+picks a property per command with `--site`.
+
+## Key commands
+
+```bash
+reckon run gsc -- sites list -o json
+reckon run gsc -- performance --site sc-domain:example.com --last 28d --compare previous -o json
+reckon run gsc -- trend --site sc-domain:example.com --last 3m --by week -o json
+reckon run gsc -- top queries --site sc-domain:example.com --last 28d --limit 25 -o json
+reckon run gsc -- top pages --site sc-domain:example.com --last 28d --limit 25 -o json
+reckon run gsc -- insights striking-distance --site sc-domain:example.com --last 28d --min-impressions 100 -o json
+reckon run gsc -- insights low-ctr --site sc-domain:example.com --last 28d -o json
+reckon run gsc -- inspect https://www.example.com/pricing --site sc-domain:example.com -o json
+reckon run gsc -- sitemaps list --site sc-domain:example.com -o json
+```
+
+Dates are inclusive Pacific-time days, and the last two or three days are
+preliminary (`reckon run gsc -- freshness --site <site> -o json` shows which).
+Google withholds anonymized queries, so query rows do not add up to the site
+totals.
+
+## Links
+
+- [gsc-cli documentation](https://projects.piyushgambhir.com/gsc-cli/)
+- [gsc-cli source](https://github.com/piyush-gambhir/gsc-cli)
+- [Search Console API](https://developers.google.com/webmaster-tools)

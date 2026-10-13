@@ -1,5 +1,10 @@
 # reckon editions
 
+> **Archived 2026-10-14.** Reckon is now one workspace for several businesses; see
+> [docs/PRODUCT-PLAN.md](docs/PRODUCT-PLAN.md). The hosted edition below is no longer a
+> design constraint. The separation of method (`skills/`) from business facts
+> (each org's `knowledge/`) still holds.
+
 reckon is split into two editions that share one brain and differ in **who runs the investigation**.
 
 | | **Workspace edition** | **Hosted edition** |

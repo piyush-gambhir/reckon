@@ -1,120 +1,180 @@
 ---
-title: Connections & credentials
-description: Per-environment credential isolation, CLI profiles, and the read-only safety contract.
+title: Orgs & connections
+description: Create orgs and environments, connect each tool to one environment or share it with labels, and keep credentials away from the agent.
 ---
 
-reckon uses **per-environment, folder-specific credentials**. `.envrc` resolves
-`RECKON_ENV`, pins `XDG_CONFIG_HOME` to `.config/<env>/` inside the clone, and
-loads credentials in order — `.env.common`, then `.env.<env>`, then
-`.env.<env>.local`, later winning. On native Windows, dot-source
-`scripts/activate.ps1 -Env <env>` for the same result.
+## Orgs and environments
 
-Because each environment gets its own config directory, production, staging, and
-UAT never share credential state.
-
-## Choosing an environment
+An org is one business. Create one per business:
 
 ```bash
-./scripts/reckon use staging     # persists in .reckon-env, survives new shells
-./scripts/reckon status          # confirm what is active and how it resolved
+reckon org add acme --name "Acme Inc" --envs prod,uat,dev
+reckon org list
+reckon org show acme
 ```
 
-Precedence is `RECKON_ENV` (exported) → `.reckon-env` (file). A missing or
-unrecognised value **fails closed**: no credentials are loaded. Reckon never
-silently selects production.
+`--envs` defaults to `prod,uat,dev`. Environments named `prod` or `production`
+are marked production; use `--production` to mark others. Org, environment and
+connection names use lowercase letters, digits and hyphens. The first org you
+add becomes the default context.
 
-## Preferred: environment credentials
+## The context
 
-Setup seeds `.env.production` from `.env.example`. Populate it with real
-credentials — create `.env.staging` and `.env.uat` the same way as you need them:
+The context is the org and environment a command works in. Set the default for
+your shell and for the next agent launch:
 
 ```bash
-$EDITOR .env.production
-direnv allow            # optional, see below
+reckon use acme/prod     # org and environment
+reckon use uat           # another environment of the same org
+reckon status            # context, connections and their state
 ```
+
+Inside an agent started with `reckon open`, the org and environment are
+pinned: `--org` or `--env` naming anything else is refused, so the agent cannot
+step into another business or environment. In your own shell, commands use
+`--org` and `--env` when given, then the default from `reckon use` (saved in
+`~/.reckon/context`). `reckon open` takes an `<org>/<env>` argument, and without
+one it uses the saved default. An unknown or missing org or environment is an
+error. Reckon never falls back to another environment, and a command run in one
+org's folder refuses another org.
+
+## Connections
+
+A connection is one configured account of one tool. It takes one of three
+shapes:
+
+| Shape | Flag | Example |
+| --- | --- | --- |
+| Tied to one environment | `--for-env <env>` | Jenkins prod and uat are separate servers |
+| Shared, with a label per environment | `--label <env>=<label>` | One CubeAPM server holds every environment |
+| Shared, no labels | neither | Search Console has no environments |
+
+A labelled connection serves only the environments it has a label for: in an
+environment without one, it is unavailable until you add a label.
+
+```bash
+reckon connect jenkins-prod --org acme --provider jenkins --for-env prod
+reckon connect jenkins-uat  --org acme --provider jenkins --for-env uat
+reckon connect cubeapm      --org acme --provider cubeapm --label prod=PROD --label uat=UAT
+reckon connect gsc          --org acme --provider gsc
+reckon connect --list       # every provider and its required settings
+```
+
+The agent names either a connection or a provider:
+
+- `reckon run jenkins-uat -- ...` uses that connection. A connection tied to
+  another environment is refused.
+- `reckon run jenkins -- ...` picks the one Jenkins connection that applies to
+  the active environment. If none or several apply, it fails and asks for a
+  name.
+
+Run `reckon connect` again on an existing name to change it, for example to add
+a label: `reckon connect cubeapm --org acme --label dev=DEV`. A connection keeps
+its provider; use a new name for another tool. The org's connections are stored
+in `~/.reckon/orgs/acme/org.json`, with no secrets:
+
+```json
+"connections": {
+  "jenkins-prod": {"provider": "jenkins", "env": "prod"},
+  "jenkins-uat":  {"provider": "jenkins", "env": "uat"},
+  "cubeapm":      {"provider": "cubeapm", "env_labels": {"prod": "PROD", "uat": "UAT"}},
+  "gsc":          {"provider": "gsc"}
+}
+```
+
+## Credentials
+
+`reckon connect` creates a credentials file for the connection,
+`~/.reckon/orgs/<org>/secrets/<connection>.env`, with mode 0600. It lists the
+provider's settings:
+
+```bash
+# Settings for the jenkins-prod connection. One KEY=value per line; no shell syntax.
+# Only JENKINS_* keys are accepted. This file is never shown to the agent.
+# Or leave the keys empty and run: reckon login jenkins-prod
+JENKINS_URL=
+JENKINS_USER=
+JENKINS_TOKEN=
+# JENKINS_INSECURE=
+```
+
+Fill it in with your editor. Never paste credentials into the agent's chat.
+
+- Each line is a literal `KEY=value`. Nothing is expanded or executed, so
+  `$(...)` and `$VAR` stay as text. Matching quotes around a value are removed.
+- Only the provider's keys are accepted (`JENKINS_*` for Jenkins). The settings
+  for each tool are on its [integration page](/docs/integrations).
+- The file must not be readable by other users. Reckon refuses it otherwise;
+  fix it with `chmod 600`.
+- Values like `replace_me`, `example.com` or `<...>` count as not configured.
+
+Credentials exported in your shell are never used, and neither are global CLI
+logins such as `~/.config/...` or `~/.aws`. A missing credential fails; it never
+falls back to something global.
+
+## Interactive login
+
+For CLIs with their own login, run it yourself in a terminal instead of filling
+in the file:
+
+```bash
+reckon login jenkins-prod
+```
+
+It runs the CLI's login (`jenkins login`, `gsc auth login`,
+`gh auth login --insecure-storage`, `aws configure`, ...) with that
+connection's private config folder, `~/.reckon/orgs/<org>/config/<connection>/`.
+A saved login counts as configured. `reckon login` needs a terminal, and
+Claude Code's settings in the org folder deny it to the agent.
+
+Search Console and Bing keep their tokens in the OS keychain. Reckon gives those
+two CLIs your real home directory so the keychain works, and still keeps their
+config per connection. Kubernetes, the databases, Redis and Kafka have no
+`reckon login`; use the credentials file (and, for Kubernetes, a kubeconfig).
+
+## Check connections
+
+```bash
+reckon status            # local only: CLI installed, credentials present
+reckon verify            # one live read per connection for this environment
+reckon verify jenkins-prod
+reckon doctor            # setup problems across every org
+```
+
+`status` shows each connection as `ready`, `no_cli` or `no_credentials`, with
+its label in this environment. `verify` is the only one that contacts your
+tools. It runs one cheap read per connection (each integration page lists it),
+prints `ok`, `skipped` with the reason, or the error, and exits non-zero if any
+check failed. Clarity's check uses one of its 10 daily export requests.
+
+## What a command gets
+
+`reckon run <connection-or-tool> -- <arguments>` runs the CLI with:
+
+- **A fresh environment.** A short list of operating-system, locale, proxy and
+  certificate variables, plus this one connection's settings.
+- **Private state.** Its own config folder (`config/<connection>/`), and its own
+  home, cache, state and temp folders under `runtime/<connection>/`.
+- **Safety switches.** The CLI's read-only and no-prompt modes, no colour, no
+  pager.
+- **Argument checks.** Flags that would change the target, credentials or
+  safety mode are refused, and so are commands that log in, change local
+  config or update the CLI. CLIs without a read-only mode accept only listed
+  read commands.
+  Each integration page lists the exact rules.
+- **Bounds.** A 60 second deadline by default (`--timeout`, at most 120) and an
+  8 MiB output cap (`--max-bytes`). Known secret values are redacted from the
+  output.
+
+| Mode | Providers |
+| --- | --- |
+| own: the CLI enforces read-only | `grafana`, `jenkins`, `cubeapm`, `elasticsearch`, `jira`, `nginxpm`, `gsc`, `bing`, `clarity` |
+| allowlist: only listed read commands | `github`, `aws`, `kubernetes` |
+| approval: asks you before each run | `postgres`, `mysql`, `mongodb`, `clickhouse`, `redis`, `kafka`, `kafka-rpk` |
 
 <Callout type="warn">
-  Values left at their `.env.example` defaults (`replace_me`, `*.example.com`)
-  are treated as **unconfigured**. `./scripts/reckon preflight` will report the
-  integration as unconfigured rather than claim local readiness.
+  Everything runs as your OS user, so these rules stop mistakes, not a hostile
+  process. Give each connection the least-privileged account that works.
+  Database users must be true read-only roles: that is the only barrier that
+  denies writes on every path.
 </Callout>
-
-## direnv is optional
-
-direnv auto-loads `.envrc` when you `cd` in. `scripts/agent.sh` also activates it
-before launching a runtime. For direct CLI use, `./scripts/reckon doctor` detects
-an inactive shell. Activate a shell without direnv with:
-
-```bash
-eval "$(./scripts/reckon env)"
-```
-
-Kafka and database clients read credentials directly from this environment.
-The workspace also derives the `RPK_*` settings from the configured `KAFKA_*`
-values and points AWS at repo-local config files.
-
-## Fallback: saved CLI profiles
-
-Interactive profiles remain available for tools that support them:
-
-```bash
-grafana login
-jenkins login
-cubeapm login
-aws configure
-gh auth login
-```
-
-Their state stays under the clone:
-
-- `.config/<env>/grafana-cli/config.yaml`
-- `.config/<env>/jenkins-cli/config.yaml`
-- `.config/<env>/cubeapm-cli/config.yaml`
-- `.config/<env>/aws/{config,credentials}`
-- `.config/<env>/gh/{config.yml,hosts.yml}`
-
-<Callout type="info">
-  A saved profile counts as configured even when the matching environment
-  variables are absent — which is how `gh auth login` alone is enough for GitHub.
-</Callout>
-
-## The read-only contract
-
-Isolation prevents credential mix-ups; it does not make a privileged credential
-safe. The actual write barrier is a read-only database role or Kafka principal.
-The workspace layers client defaults and agent rules on top:
-
-- PostgreSQL receives `default_transaction_read_only=on` through `PGOPTIONS`.
-- MySQL receives a read-only session init command through
-  `$XDG_CONFIG_HOME/mysql/my.cnf`; always pass that file to `mysql`.
-- ClickHouse requires a server-side `readonly=1` user profile and `--readonly=1`
-  on every client invocation; it activates when `CLICKHOUSE_HOST` is set.
-- MongoDB uses secondary read preference, which controls routing but does not provide authorization.
-- `kcat`, `rpk`, `kubectl`, and `redis-cli` are read-only by documented usage,
-  so only the approved read-shaped commands are allowed.
-- Every `psql`, `mysql`, `mongosh`, and `clickhouse` query should still prompt for approval.
-
-<Callout type="warn">
-  For database work, re-read the Database safety contract in `CLAUDE.md`.
-  `EXPLAIN` non-trivial reads first, put a `LIMIT` on every `SELECT`, and invoke
-  MySQL as `mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf"`.
-</Callout>
-
-## Verify connections
-
-Use one safe read per tool before an investigation. These checks also expose a
-wrong profile or missing environment variable early:
-
-```bash
-grafana user current -o json
-jenkins status -o json
-cubeapm metrics label-values service -o json
-aws sts get-caller-identity --output json
-gh auth status
-rpk cluster info
-kubectl get ns
-redis-cli -u "$REDIS_URL" PING
-```
-
-Database and Kafka verification commands are documented in `README.md`; review
-their safety notes before running them against production.

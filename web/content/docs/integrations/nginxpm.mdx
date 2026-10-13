@@ -1,0 +1,63 @@
+---
+title: Nginx Proxy Manager
+description: Read Nginx Proxy Manager proxy hosts, redirections, streams, certificates and the audit log in read-only mode.
+---
+
+## What it covers
+
+Nginx Proxy Manager holds routing and TLS: which host forwards to which
+upstream, redirections, TCP and UDP streams, certificates and their expiry, and
+an audit log of changes. Use it when a symptom could be a routing change or an
+expired certificate.
+
+## Connect
+
+```bash
+reckon connect nginxpm-prod --org acme --provider nginxpm --for-env prod
+```
+
+Fill in `~/.reckon/orgs/acme/secrets/nginxpm-prod.env`:
+
+```bash
+NGINXPM_URL=https://npm.example.com
+NGINXPM_EMAIL=readonly@example.com
+NGINXPM_PASSWORD=replace_me
+```
+
+`NGINXPM_INSECURE` is optional. Instead of the file, you can run
+`reckon login nginxpm-prod` in your own terminal: it runs `nginxpm login` and
+keeps the profile in that connection's private config.
+
+`reckon verify nginxpm-prod` runs `nginxpm user current -o json`.
+
+## Read-only contract
+
+Reckon runs `nginxpm` with `NGINXPM_READ_ONLY=true` and
+`NGINXPM_NO_INPUT=true`, so the CLI refuses creates, updates, deletes, enables,
+disables and renewals. It also refuses `--url`, `--email`, `--password`,
+`--insecure`, the short forms `-p` and `-k`, `--profile`, `--read-only` and
+`--no-input`, and the `login`, `config` and `update` commands. Nginx Proxy
+Manager users can be limited to view-only permissions; use one for this
+connection.
+
+## Key commands
+
+```bash
+reckon run nginxpm -- proxy list -o json
+reckon run nginxpm -- proxy get <id> -o json
+reckon run nginxpm -- redirect list -o json
+reckon run nginxpm -- stream list -o json
+reckon run nginxpm -- cert list -o json
+reckon run nginxpm -- cert get <id> -o json
+reckon run nginxpm -- audit list -o json
+```
+
+Investigations can collect a proxy host or certificate as typed evidence: map
+`proxy_id` or `certificate_id` under the `nginxpm` source in `services.json`
+(see [Saved work](/docs/investigations)).
+
+## Links
+
+- [nginxpm-cli documentation](https://projects.piyushgambhir.com/nginxpm-cli/)
+- [nginxpm-cli source](https://github.com/piyush-gambhir/nginxpm-cli)
+- [Nginx Proxy Manager](https://nginxproxymanager.com/)

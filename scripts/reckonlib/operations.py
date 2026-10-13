@@ -150,6 +150,8 @@ def build(operation, params, bounds, root):
 
 def plan(session):
     """Recipes use curated queries, never invented metric names or labels."""
+    if not session.get("service_context") or not session.get("window"):
+        return [], []
     sources = session["service_context"].get("sources", {})
     bounds = session["window"]
     delta = instant(bounds["to"]) - instant(bounds["from"])

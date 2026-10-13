@@ -19,7 +19,7 @@ export function absoluteUrl(path: string): string {
 
 /** Expands a short page summary into this site's full description voice. */
 export function describePage(summary: string): string {
-  return `${summary.trim()} Any shell-capable agent can use it.`;
+  return `${summary.trim()} Works with Claude Code and Codex.`;
 }
 
 export interface PageMetadataOptions {

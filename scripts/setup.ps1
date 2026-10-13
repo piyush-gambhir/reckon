@@ -6,7 +6,7 @@
 .DESCRIPTION
     Installs every CLI that has a working native Windows port via winget,
     plus the custom Go-based CLIs. Tools without good native Windows support
-    (direnv, kcat, rpk) are skipped with a clear message — for the full
+    (kcat, rpk) are skipped with a clear message. For the full
     experience use WSL2 + scripts/setup.sh.
 
     Idempotent: re-running only installs what's missing.
@@ -71,11 +71,10 @@ function Test-Preflight {
     Write-Ok ("winget {0}" -f (winget --version))
 
     Write-Warn 'Native Windows support is partial. Tools NOT installed natively:'
-    Write-Warn '  - direnv  (no maintained Windows port)'
     Write-Warn '  - kcat    (no Windows binary)'
     Write-Warn '  - rpk     (no Windows binary)'
     Write-Warn 'For the full experience, use WSL2 + scripts/setup.sh.'
-    Write-Warn 'After install, select an environment and dot-source scripts/activate.ps1.'
+    Write-Warn 'After install, create an org: python3 .\scripts\reckon.py org add <org>'
 }
 
 # ---------------------------------------------------------------------------
@@ -159,139 +158,35 @@ function Install-GoCli {
     }
 }
 
-function Protect-EnvFile {
-    param([Parameter(Mandatory)] [string] $Path)
-    if (-not (Test-Path $Path)) { return }
-    $acl = Get-Acl $Path
-    $acl.SetAccessRuleProtection($true, $false)
-    $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-        $identity, 'FullControl', 'Allow'
-    )
-    $acl.SetAccessRule($rule)
-    Set-Acl -Path $Path -AclObject $acl
-}
-
 # ---------------------------------------------------------------------------
-# Workspace setup
+# Reckon home
 # ---------------------------------------------------------------------------
 
 function Setup-Workspace {
-    Write-Header 'Workspace setup'
-
-    @(
-        '.config\production', '.config\staging', '.config\uat',
-        'infra-knowledge\_shared', 'infra-knowledge\production',
-        'infra-knowledge\staging', 'infra-knowledge\uat',
-        'incidents'
-    ) | ForEach-Object {
-        New-Item -ItemType Directory -Path $_ -Force | Out-Null
-    }
-    Write-Ok 'per-environment config, infra-knowledge, and incidents directories ready'
-
-    if (Test-Path .env.production) {
-        Write-Ok '.env.production already exists — leaving alone'
-    } elseif (Test-Path .env) {
-        Copy-Item .env .env.production
-        Write-Ok 'migrated legacy .env to .env.production'
-        Write-Warn 'the original .env was left in place; remove it after checking .env.production'
-    } elseif (Test-Path .env.example) {
-        Copy-Item .env.example .env.production
-        Write-Ok '.env.production created from .env.example'
-        Write-Warn 'EDIT .env.production with real production credentials before using any CLI'
-    } else {
-        Write-Err '.env.example missing — are you running this from the repo root?'
-        $Script:Failed++
-    }
-
-    Get-ChildItem -Path . -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match '^\.env\.(common|production|staging|uat)(\.local)?$' } |
-        ForEach-Object { Protect-EnvFile $_.FullName }
-
-    $seeded = 0
-    $sharedTemplates = 'skills\reckon\templates\infra-knowledge\_shared'
-    $environmentTemplates = 'skills\reckon\templates\infra-knowledge\env'
-    if ((Test-Path $sharedTemplates) -and (Test-Path $environmentTemplates)) {
-        foreach ($template in (Get-ChildItem -Path $sharedTemplates -Filter '*.md')) {
-            $target = Join-Path 'infra-knowledge\_shared' $template.Name
-            if (-not (Test-Path $target)) {
-                Copy-Item $template.FullName $target
-                $seeded++
-            }
-        }
-        foreach ($environment in @('production', 'staging', 'uat')) {
-            foreach ($template in (Get-ChildItem -Path $environmentTemplates -Filter '*.md')) {
-                $target = Join-Path "infra-knowledge\$environment" $template.Name
-                if (-not (Test-Path $target)) {
-                    Copy-Item $template.FullName $target
-                    $seeded++
-                }
-            }
-        }
-        if ($seeded -gt 0) {
-            Write-Ok "infra-knowledge: seeded $seeded file(s) from templates"
-            Write-Warn 'edit infra-knowledge\<environment>\*.md with real inventory and quirks'
-        } else {
-            Write-Ok 'infra-knowledge: all template files already seeded'
-        }
-    } else {
-        Write-Err 'infra-knowledge templates are missing'
-        $Script:Failed++
-    }
-
-    New-Item -ItemType Directory -Path '.agents\skills', '.claude\skills' -Force | Out-Null
-    $trackedSkill = Join-Path (Get-Location) 'skills\reckon'
-    $agentsSkill = Join-Path (Get-Location) '.agents\skills\reckon'
-    $claudeSkill = Join-Path (Get-Location) '.claude\skills\reckon'
-    try {
-        if (-not (Test-Path $agentsSkill)) {
-            New-Item -ItemType Junction -Path $agentsSkill -Target $trackedSkill | Out-Null
-        }
-        if (-not (Test-Path $claudeSkill)) {
-            New-Item -ItemType Junction -Path $claudeSkill -Target $agentsSkill | Out-Null
-        }
-        if (Test-Path (Join-Path $claudeSkill 'SKILL.md')) {
-            Write-Ok 'reckon skill linked (.claude -> .agents -> skills\reckon)'
-        } else {
-            Write-Err 'reckon skill link did not resolve'
-            $Script:Failed++
-        }
-    } catch {
-        Write-Warn "could not create skill junctions: $($_.Exception.Message)"
-        Write-Warn 'agents can still read skills\reckon\SKILL.md through AGENTS.md'
-    }
-
-    if (Test-Path .reckon-env) {
-        $selected = (Get-Content .reckon-env -Raw).Trim()
-        if ($selected -in @('production', 'staging', 'uat')) {
-            Write-Ok "active environment already selected ($selected)"
-        } else {
-            Write-Err '.reckon-env is invalid — run: .\scripts\reckon.ps1 use <environment>'
-            $Script:Failed++
-        }
-    } else {
-        Write-Warn 'no active environment selected — run: .\scripts\reckon.ps1 use production'
-    }
+    Write-Header 'Reckon home'
+    $home_ = if ($env:RECKON_HOME) { $env:RECKON_HOME } else { Join-Path $HOME '.reckon' }
+    # Business data lives here, never in this checkout. reckon org add and
+    # reckon connect create orgs, connections and their credential files.
+    New-Item -ItemType Directory -Path $home_ -Force | Out-Null
+    Write-Ok "Reckon home: $home_"
+    Write-Warn 'Native Windows is experimental: reckon open needs symlink rights (Developer Mode).'
 }
 
 function Show-NextSteps {
     Write-Header 'Next steps'
     @'
-  1. Select an environment explicitly (reckon never defaults to production):
-       .\scripts\reckon.ps1 use production
-  2. Edit its credential file:
-       notepad .env.production
-  3. Load it into your current PowerShell session:
-       . .\scripts\activate.ps1
-     (Add this to your $PROFILE if you want it to auto-load.)
-  4. Inspect and verify the workspace:
-       .\scripts\reckon.ps1 doctor
-       .\scripts\reckon.ps1 status
-       .\scripts\reckon.ps1 verify
-  5. For Kafka tools (kcat, rpk) and direnv-style auto-loading, use WSL2:
+  1. Create an org for each business:
+       python3 .\scripts\reckon.py org add acme --envs 'prod,uat,dev'
+  2. Connect its tools (credentials go in the file it prints, never in chat):
+       python3 .\scripts\reckon.py connect jenkins-prod --org acme --provider jenkins --for-env prod
+  3. Check them, then start the agent pinned to one environment:
+       python3 .\scripts\reckon.py use acme/prod
+       python3 .\scripts\reckon.py verify
+       python3 .\scripts\reckon.py open
+  4. For Kafka tools (kcat, rpk), use WSL2:
        wsl --install
        # then inside WSL: bash scripts/setup.sh
-  6. Read CLAUDE.md "Database safety contract" before any DB query.
+  5. Read CLAUDE.md "Database safety contract" before any DB query.
 
 '@ | Write-Host
 }
@@ -325,7 +220,6 @@ function Main {
     Install-Winget -Id 'jqlang.jq'         -Bin 'jq'
     Install-Winget -Id 'Amazon.AWSCLI'     -Bin 'aws'
     Install-Winget -Id 'GitHub.cli'        -Bin 'gh'
-    Mark-Skipped 'direnv' 'no maintained Windows port — use activate.ps1'
 
     Write-Header 'Kafka'
     Mark-Skipped 'kcat' 'no Windows binary — use WSL2'
@@ -344,7 +238,7 @@ function Main {
     Write-Header 'Bootstrap (go)'
     Install-Winget -Id 'GoLang.Go' -Bin 'go'
 
-    Write-Header 'Custom CLIs (grafana / jenkins / cubeapm / es)'
+    Write-Header 'Custom CLIs (pinned in cli-releases.csv)'
     Import-Csv (Join-Path $PSScriptRoot 'cli-releases.csv') | ForEach-Object {
         Install-GoCli -Module $_.module -Bin $_.binary -Version $_.version -Release $_.release -VersionPackage $_.version_package
     }

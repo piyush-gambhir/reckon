@@ -38,6 +38,6 @@ Every entry should have: **the symptom**, **the cause**, **the workaround**.
 
 *(add as you find them)*
 
-## Folder-scoped credentials (this workspace)
+## Credentials (per connection)
 
-`reckon` is configured to use this directory's `.config/` via direnv (`export XDG_CONFIG_HOME="$(pwd)/.config"`). Every CLI reads/writes its config there, keeping credentials isolated from your global setup. If a CLI isn't seeing a session, confirm `direnv allow` ran and that `echo $XDG_CONFIG_HOME` points inside this workspace.
+Reckon keeps each connection's credentials and CLI config outside this folder, under `$RECKON_HOME/orgs/<org>/secrets/` and `config/<connection>/`, and loads them only into the command `reckon run` starts. If a CLI is not seeing a login, run `reckon status` and `reckon verify <connection>`; the operator fixes credentials with `reckon connect` or `reckon login`.

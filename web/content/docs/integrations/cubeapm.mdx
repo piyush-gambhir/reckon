@@ -1,17 +1,24 @@
 ---
 title: CubeAPM
-description: Query CubeAPM traces, PromQL metrics, LogsQL logs, and service dependencies during an RCA.
+description: Query CubeAPM traces, PromQL metrics, LogsQL logs and service dependencies, with one shared server labelled per environment.
 ---
 
-## What it covers in an RCA
+## What it covers
 
-CubeAPM is the primary application-telemetry integration: use it to inventory
-services, find error traces, inspect a trace waterfall, correlate logs, measure
-error and latency signals, and map dependency propagation.
+CubeAPM is the main application-telemetry source: inventory services, find
+error traces, inspect a trace waterfall, correlate logs, measure error and
+latency signals, and map how a failure moves between services.
 
-## Credentials
+## Connect
 
-The preferred environment wiring is:
+One CubeAPM server usually holds every environment. Make one shared connection
+and give it the label each environment uses inside CubeAPM:
+
+```bash
+reckon connect cubeapm --org acme --provider cubeapm --label prod=PROD --label uat=UAT
+```
+
+Fill in `~/.reckon/orgs/acme/secrets/cubeapm.env`:
 
 ```bash
 CUBEAPM_SERVER=cube.example.com
@@ -19,37 +26,66 @@ CUBEAPM_EMAIL=user@example.com
 CUBEAPM_PASSWORD=replace_me
 ```
 
-`CUBEAPM_HOST=https://cube.example.com` is an optional full-URL alias; `.envrc`
-maps it to `CUBEAPM_SERVER` when that variable is not already set. Deployments
-that differ from the defaults may also set `CUBEAPM_QUERY_PORT`,
-`CUBEAPM_INGEST_PORT`, and `CUBEAPM_ADMIN_PORT`.
+`CUBEAPM_QUERY_PORT`, `CUBEAPM_INGEST_PORT` and `CUBEAPM_ADMIN_PORT` are
+optional for deployments that differ from the defaults. Instead of the file,
+you can run `reckon login cubeapm` in your own terminal: it runs
+`cubeapm login` and keeps the profile in that connection's private config.
 
-The CLI honors the repo-local `XDG_CONFIG_HOME`. Running `cubeapm login` stores
-the fallback profile at `.config/<env>/cubeapm-cli/config.yaml`.
+Add a label later by running `reckon connect` again on the same name, for
+example `reckon connect cubeapm --org acme --label dev=DEV`. If each
+environment has its own CubeAPM server, use `--for-env` connections instead.
+
+`reckon verify cubeapm` runs `cubeapm metrics query 1 -o json`.
+
+## Environment labels
+
+A shared server holds every environment, so every read must select the active
+environment's label (`RECKON.md` in the org folder lists them). Reckon enforces
+this:
+
+- **Traces:** `traces search` and `traces services` get `--env <label>` added
+  when you leave it out. Any other value is refused.
+- **Metrics and logs:** `metrics query`, `metrics query-range`, `logs query`,
+  `logs hits` and `logs stats` must select the label with a positive selector:
+  `{env="<label>"}` in PromQL, `env:<label>` or `--stream '{env="<label>"}'` in
+  LogsQL. `or` and `unless` are refused unless the label is in `--stream`,
+  which applies to the whole query.
+- **Anything else:** a selector naming another environment's label, or
+  excluding the active one (`env!=`), is refused, including
+  `--tags environment=...`. Put the full command first (`metrics query ...`).
+
+These checks stop mistakes, not a determined query: keep queries simple.
+
+Label keys depend on your instrumentation: some metric families use
+`cube.environment` instead of `env`. Check with `metrics label-values` and
+`logs field-names` / `logs field-values`. `traces get`, `traces operations` and
+`traces dependencies` take no environment; attribute their results to the
+environment the trace came from.
 
 ## Read-only contract
 
-This workspace uses CubeAPM for telemetry reads. Keep the
-integration to the query commands below, start broad, narrow by service and time
-range, and use `-o json` when an agent will parse the output.
+Reckon runs `cubeapm` with `CUBEAPM_READ_ONLY=true` and
+`CUBEAPM_NO_INPUT=true`. It refuses `--server`, `--email`, `--password`, the
+port flags, `--profile`, `--read-only`, `--no-input` and `--verbose`, and the
+`login`, `config`, `update`, `ingest` and `logs delete` commands.
 
 ## Key commands
 
-Use metric label values, not `traces services`, as the canonical service
-inventory:
-
 ```bash
-cubeapm metrics label-values service -o json
-cubeapm traces search --service <svc> --status error --last 1h -o json
-cubeapm traces get <trace-id> -o json
-cubeapm logs query 'error' --service <svc> --last 1h -o json
-cubeapm logs hits --query 'level:error' --last 6h --step 15m -o json
-cubeapm metrics query 'rate(http_requests_total{status=~"5.."}[5m])' -o json
-cubeapm metrics query 'histogram_quantile(0.99, sum by (le) (rate(http_duration_seconds_bucket[5m])))' -o json
-cubeapm traces dependencies --last 1h -o json
+reckon run cubeapm -- traces services --env PROD --last 1h -o json
+reckon run cubeapm -- traces search --service checkout --env PROD --status error --last 1h -o json
+reckon run cubeapm -- traces get <trace-id> --last 2h -o json
+reckon run cubeapm -- logs query 'error' --service checkout --stream '{env="PROD"}' --last 1h -o json
+reckon run cubeapm -- logs hits --query '_stream:{env="PROD"} AND level:error' --last 6h --step 15m -o json
+reckon run cubeapm -- metrics query-range 'sum(rate(http_requests_total{env="PROD",status=~"5.."}[5m]))' --last 1h --step 60s -o json
+reckon run cubeapm -- traces dependencies --last 1h -o json
 ```
+
+`logs query -o json` prints a stream of JSON objects, not one JSON value.
+Quote PromQL and LogsQL so the shell keeps braces and regex operators intact.
 
 ## Links
 
 - [CubeAPM documentation](https://docs.cubeapm.com/)
+- [cubeapm-cli documentation](https://projects.piyushgambhir.com/cubeapm-cli/)
 - [cubeapm-cli source](https://github.com/piyush-gambhir/cubeapm-cli)

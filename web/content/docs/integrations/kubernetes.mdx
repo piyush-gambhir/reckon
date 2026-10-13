@@ -1,55 +1,67 @@
 ---
 title: Kubernetes
-description: Inspect Kubernetes pod state, events, rollout history, and resource pressure with kubectl.
+description: Read pod state, events, rollout history and resource pressure with kubectl through an allowlist of read commands.
 ---
 
-## What it covers in an RCA
+## What it covers
 
-Use Kubernetes when a symptom suggests pod churn, deployment blackout, OOM
-kills, or replica-count anomalies. The read surface exposes restarts, container
-last state, cluster events, rollout history, deployment status, and pod resource
-pressure.
+Use Kubernetes when a symptom suggests pod churn, a rollout gap, OOM kills or
+replica-count anomalies. The read surface shows restarts, container last state,
+cluster events, rollout history, deployment status and resource pressure.
 
-## Credentials
+## Connect
 
-`.envrc` pins kubectl to a workspace-local configuration:
-
-```bash
-KUBECONFIG="$XDG_CONFIG_HOME/kube/config"
-```
-
-For EKS, seed that file with the configured AWS credentials:
+Clusters are usually separate per environment, so tie each connection to one:
 
 ```bash
-aws eks update-kubeconfig --name <cluster> --region "$AWS_REGION"
+reckon connect k8s-prod --org acme --provider kubernetes --for-env prod
 ```
 
-`.env.example` also provides optional `EKS_CLUSTER_NAME=prod-cluster` as a
-convenience for that setup command.
+Kubernetes has no secrets file settings of its own and no `reckon login`.
+Reckon points `KUBECONFIG` at the connection's own file,
+`~/.reckon/orgs/acme/config/k8s-prod/kube/config`. Put a kubeconfig there whose
+current context is the cluster you want, for example for EKS:
+
+```bash
+mkdir -p ~/.reckon/orgs/acme/config/k8s-prod/kube
+aws eks update-kubeconfig --name <cluster> --region <region> \
+  --kubeconfig ~/.reckon/orgs/acme/config/k8s-prod/kube/config
+```
+
+An EKS kubeconfig calls `aws eks get-token`. Put the AWS settings it needs
+(`AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) in
+`~/.reckon/orgs/acme/secrets/k8s-prod.env`; this connection accepts `KUBE*` and
+`AWS_*` keys.
+
+`reckon verify k8s-prod` runs `kubectl get ns -o name --request-timeout=15s`.
 
 ## Read-only contract
 
-kubectl is read-only by usage in this workspace. Use `get`, `describe`, `logs`,
-`events`, `top`, and `rollout history` only.
+kubectl has no read-only mode, so Reckon allows only `get`, `describe`, `logs`,
+`top`, `events`, `rollout history`, `rollout status`, `version`,
+`api-resources`, `explain`, `auth can-i`, `config current-context` and
+`config get-contexts`. It refuses `get` or `describe` of the `secrets` resource
+(`secret`, `secrets`, `secret/name`, in any list); the
+target and identity flags `--kubeconfig`, `--context`, `--cluster`, `--user`,
+`--token`, `--server`, `-s`, `--as`, `--as-group`, `--username`, `--password`,
+`--insecure-skip-tls-verify` and `--raw`; and the file flags `-f`,
+`--filename`, `-k`, `--kustomize`, `-R` and `--recursive`. A read-only RBAC
+role is the real barrier.
 
-<Callout type="warn">
-  Never use `apply`, `delete`, `scale`, `edit`, `exec`, or `port-forward`. This
-  workspace observes; humans mitigate.
-</Callout>
+Put the command before its flags: `get pods -n <ns>`, not `-n <ns> get pods`.
 
 ## Key commands
 
 ```bash
-kubectl version --client -o json && kubectl get ns
-kubectl get pods -n <ns> -o wide
-kubectl describe pod <pod> -n <ns>
-kubectl get events -n <ns> --sort-by=.lastTimestamp | tail -30
-kubectl rollout history deploy/<d> -n <ns>
-kubectl get deploy <d> -n <ns> -o json | jq '.status'
-kubectl top pods -n <ns>
+reckon run kubernetes -- get pods -n <ns> -o wide
+reckon run kubernetes -- describe pod <pod> -n <ns>
+reckon run kubernetes -- get events -n <ns> --sort-by=.lastTimestamp
+reckon run kubernetes -- rollout history deploy/<deployment> -n <ns>
+reckon run kubernetes -- get deploy <deployment> -n <ns> -o json
+reckon run kubernetes -- top pods -n <ns>
 ```
 
-`kubectl top` requires metrics-server.
+`top` requires metrics-server.
 
 ## Links
 

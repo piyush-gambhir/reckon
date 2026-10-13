@@ -1,52 +1,60 @@
 ---
 title: AWS
-description: Use the AWS CLI to corroborate application telemetry with CloudWatch and infrastructure signals.
+description: Use the AWS CLI for CloudWatch metrics and logs, load balancers, queues and ECS through an allowlist of read commands.
 ---
 
-## What it covers in an RCA
+## What it covers
 
-AWS fills infrastructure gaps when CubeAPM data is missing, delayed, or weakly
-attributed. It can confirm load-balancer 5xx responses, SQS backlog, ECS service
-events, and CloudWatch log errors in the incident window.
+AWS fills infrastructure gaps when application telemetry is missing, delayed
+or weakly attributed. It can confirm load balancer 5xx responses, SQS backlog,
+ECS service events and CloudWatch log errors in a time window. For the age of
+the oldest queued message, read the `AWS/SQS` CloudWatch metric
+`ApproximateAgeOfOldestMessage`.
 
-## Credentials
+## Connect
 
-Use a read-only IAM user or SSO-assumed role. The environment supports:
+AWS accounts are usually separate per environment, so tie each connection to
+one:
 
 ```bash
+reckon connect aws-prod --org acme --provider aws --for-env prod
+```
+
+Fill in `~/.reckon/orgs/acme/secrets/aws-prod.env` with a read-only IAM
+identity:
+
+```bash
+AWS_REGION=ap-south-1
 AWS_ACCESS_KEY_ID=replace_me
 AWS_SECRET_ACCESS_KEY=replace_me
-AWS_REGION=ap-south-1
-AWS_SESSION_TOKEN=replace_me
-AWS_PROFILE=rca-readonly
 ```
 
-`AWS_SESSION_TOKEN` is only needed for SSO or STS credentials, and `AWS_PROFILE`
-is only needed for a named profile. Because AWS CLI does not honor
-`XDG_CONFIG_HOME`, `.envrc` explicitly sets:
+`AWS_DEFAULT_REGION` works instead of `AWS_REGION`. Add `AWS_SESSION_TOKEN` for
+temporary credentials, or set `AWS_PROFILE` to a profile defined in the
+connection's own AWS config. Instead of the file, you can run
+`reckon login aws-prod` in your own terminal: it runs `aws configure` against
+`~/.reckon/orgs/acme/config/aws-prod/aws/{config,credentials}`, never your
+`~/.aws`.
 
-```bash
-AWS_CONFIG_FILE="$XDG_CONFIG_HOME/aws/config"
-AWS_SHARED_CREDENTIALS_FILE="$XDG_CONFIG_HOME/aws/credentials"
-```
-
-Running `aws configure` in the workspace therefore writes
-`.config/<env>/aws/{config,credentials}`.
+`reckon verify aws-prod` runs `aws sts get-caller-identity --output json`.
 
 ## Read-only contract
 
-The configured IAM identity should be read-only. reckon uses AWS for
-production evidence gathering, with the commands below limited to identity,
-metric, queue-attribute, service-description, and log reads.
+The AWS CLI has no read-only mode, so Reckon allows only read-shaped commands:
+any service's `describe-*`, `list-*`, `get-*`, `search-*`, `lookup-*` and
+`batch-get-*`, plus `logs filter-log-events`, `logs start-query` and `s3 ls`.
+It refuses `secretsmanager`, `kms`, `ssm get-parameter*` and any `get-*`
+command that names a secret, password, token, credential or key. It also
+refuses `--profile`, `--endpoint-url` and `--no-verify-ssl`. The IAM policy
+remains the real write barrier.
 
 ## Key commands
 
 ```bash
-aws sts get-caller-identity --output json
-aws cloudwatch get-metric-statistics --namespace AWS/ApplicationELB --metric-name HTTPCode_Target_5XX_Count --start-time <ISO> --end-time <ISO> --period 60 --statistics Sum --output json
-aws sqs get-queue-attributes --queue-url <url> --attribute-names ApproximateNumberOfMessages,ApproximateAgeOfOldestMessage --output json
-aws ecs describe-services --cluster <c> --services <s> --output json | jq '.services[].events[:20]'
-aws logs filter-log-events --log-group-name <lg> --start-time <epoch-ms> --end-time <epoch-ms> --filter-pattern '"ERROR"' --output json
+reckon run aws -- cloudwatch get-metric-statistics --namespace AWS/ApplicationELB --metric-name HTTPCode_Target_5XX_Count --dimensions Name=LoadBalancer,Value=<lb> --start-time <ISO> --end-time <ISO> --period 60 --statistics Sum --output json
+reckon run aws -- sqs get-queue-attributes --queue-url <url> --attribute-names ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible --output json
+reckon run aws -- ecs describe-services --cluster <cluster> --services <service> --output json
+reckon run aws -- logs filter-log-events --log-group-name <group> --start-time <epoch-ms> --end-time <epoch-ms> --filter-pattern '"ERROR"' --output json
 ```
 
 ## Links

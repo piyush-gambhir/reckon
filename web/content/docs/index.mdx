@@ -1,102 +1,99 @@
 ---
 title: Introduction
-description: An agent workspace for investigating, monitoring, and analysing your infrastructure across production, staging, and UAT.
+description: One workspace for running several businesses with a coding agent, through the tools each business already uses.
 ---
 
-**reckon** is an agent workspace for talking to your infrastructure —
-investigating incidents, sweeping for problems, and understanding behaviour over
-time. It wires together fourteen read-only observability, CI/CD, queue,
-Kubernetes, and database CLIs inside one isolated, per-environment credential
-setup.
+**reckon** is one workspace for running several businesses with a coding agent.
 
-It is not a single CLI or installable binary. Clone the workspace, run its
-idempotent setup script, select an environment, add its credentials, and launch Claude Code,
-Codex CLI, OpenCode, or another runtime that follows `AGENTS.md`. The agent can
-then correlate signals across systems in one session instead of investigating
-each tool in isolation.
+Each business is an **org**. An org has its own environments (`prod`, `uat`,
+`dev` by default), tool connections, company knowledge and saved work. You open
+one org in one environment, and Claude Code or Codex works on that business
+through the tools you already use: development, product, growth and operations.
+
+Reckon is the `reckon` command plus one folder per org. Your data lives under
+`~/.reckon`, never in the Reckon checkout.
+
+## The model
+
+| Concept | Meaning |
+| --- | --- |
+| Org | One business. Has a name, environments, connections, knowledge and saved work. |
+| Environment | Per org, for example `prod`, `uat`, `dev`. Environments named `prod` or `production` are marked production by default. |
+| Connection | One configured account of one tool: a Jenkins server, a CubeAPM tenant, a Search Console login. |
+| Context | The org and environment an agent works in. Pinned when the agent starts. |
+| Workspace | The folder the agent runs in for an org. Holds knowledge and saved work. |
+
+A connection is tied to one environment, or shared by all of them:
+
+```bash
+reckon org add acme --envs prod,uat,dev
+reckon connect jenkins-prod --org acme --provider jenkins --for-env prod     # one server per environment
+reckon connect jenkins-uat  --org acme --provider jenkins --for-env uat
+reckon connect cubeapm      --org acme --provider cubeapm --label prod=PROD --label uat=UAT   # one server, all environments
+reckon connect gsc          --org acme --provider gsc                         # no environments at all
+reckon use acme/prod
+reckon verify            # one live read per connection
+reckon open              # starts Claude Code (or Codex) in acme's folder, pinned to prod
+```
+
+Inside the agent, every tool goes through Reckon:
+
+```bash
+reckon run jenkins -- build list deploy-api -o json      # the prod Jenkins, read-only
+reckon run gsc -- top queries --site sc-domain:acme.com --last 28d -o json
+```
+
+## Safety
+
+- **The agent never holds credentials.** `reckon run` loads one connection's
+  settings into one command. `reckon open` strips tool credentials from the
+  agent's environment.
+- **Reads are read-only.** Reckon forces each CLI's read-only and no-prompt
+  modes, allows only read commands for CLIs that have no such mode, and refuses
+  flags that would change the target or switch safety off. Databases, caches
+  and queues ask you before every run.
+- **The context is pinned.** An agent starts on one org and environment. A
+  connection from another environment is refused, and so is another
+  environment's label on a shared server like CubeAPM.
+- **Each org has its own folder** (`~/.reckon/orgs/<org>/workspace`), so Claude
+  Code and Codex keep each business's memory and conversations apart.
 
 <Callout type="warn">
-  **reckon never writes.** Every wired tool is read-only by role or by usage: no
-  writes to a database, no `kubectl apply`, no triggered builds, no producing to
-  Kafka. reckon observes; humans mitigate.
+  These rules stop mistakes, not a hostile process running as your user.
+  Database roles must still be read-only on the server. Reckon does not perform
+  writes yet: when a change is needed, the agent describes it and you make it.
+  Prepared writes that you approve are the next milestone.
 </Callout>
 
-## Three modes
+## Areas and tools
 
-Not every question is an incident. reckon routes work by *what is known*:
+| Area | Connection providers |
+| --- | --- |
+| Development | `jenkins`, `github`, `kubernetes`, `aws` |
+| Operations | `cubeapm`, `grafana`, `elasticsearch`, `nginxpm`, plus `postgres`, `mysql`, `mongodb`, `clickhouse`, `redis`, `kafka`, `kafka-rpk` (each run asks you first) |
+| Product | `jira`, `clarity` |
+| Growth | `gsc` (Google Search Console), `bing` (Bing Webmaster Tools) |
 
-- **investigate** — a specific bad thing in a specific window: an alert fired, a
-  metric dropped, errors spiked, a deploy is suspected. Produces an RCA under
-  `incidents/<YYYY-MM-DD>-<slug>/`.
-- **monitor** — nothing known to be broken; sweeping. Health checks, pre- and
-  post-deploy verification, drift hunting. Produces a health report, and escalates
-  into `investigate` when it finds something real.
-- **analyze** — no fault at all: capacity headroom, cost drivers, slow-query and
-  endpoint profiling, growth. Produces a ranked analysis.
+## Saved work
 
-## Environments
-
-One clone targets **production, staging, and UAT**, selected by `RECKON_ENV`.
-Each environment gets its own credentials (`.env.<env>`) and its own CLI config
-directory (`.config/<env>/`), so no two ever share credential state. An
-unrecognised value fails closed — no credentials load at all, rather than
-silently falling back to a real environment.
-
-```bash
-./scripts/reckon use staging     # persists across shells
-./scripts/reckon status          # what is active, and how it resolved
-```
-
-The read-only posture is identical everywhere; the split governs *which*
-infrastructure you touch, never how safe the access is.
-
-## The control surface
-
-`scripts/reckon` makes the workspace's own state legible, so neither you nor the
-agent has to guess what is connected:
-
-```bash
-./scripts/reckon status      # active environment + integration matrix
-./scripts/reckon doctor      # diagnose setup problems
-./scripts/reckon preflight   # compact digest an agent reads before its first query
-./scripts/reckon verify      # live connection checks (the only one that hits your infra)
-```
-
-## The toolbelt
-
-- **Observability:** Grafana for alerts, dashboards, datasources, and
-  annotations; CubeAPM for distributed traces, PromQL metrics, and LogsQL logs;
-  AWS for CloudWatch and infrastructure signals; and optional `es` for
-  Elasticsearch/ELK log stores.
-- **CI/CD and change context:** Jenkins for jobs, builds, pipelines, and logs;
-  GitHub CLI for pull requests, Actions runs, releases, and issues.
-- **Queues and infrastructure:** `kcat` and `rpk` for Kafka metadata, messages,
-  and consumer lag; `kubectl` for Kubernetes state and events; `redis-cli` for
-  cache diagnostics.
-- **Databases:** `mongosh`, `psql`, `mysql`, and `clickhouse client` for narrowly
-  scoped, approval-gated reads after observability has identified a suspect.
-
-## How an investigation works
-
-The workspace guides an agent through a broad-to-narrow cascade: assess alerts
-and failures, inspect traces and logs, check metrics, correlate deployments,
-map dependencies, then consult queues, infrastructure, caches, or databases
-only where the evidence points. Findings and raw evidence are persisted under
-`incidents/<YYYY-MM-DD>-<slug>/`.
-
-Every RCA carries a `root_cause_category` from a controlled vocabulary, a
-calibrated confidence score, and an explicit split between claims backed by tool
-evidence and claims still unproven — so the incident corpus becomes searchable
-across incidents instead of a pile of prose.
+Work that matters gets a **session**. Sessions keep every read with its
+command, connection, time and hashes, plus the findings and hypotheses drawn
+from them. Incident investigations add mapped services, typed collection and
+promotion to an RCA. For operations, the bundled `reckon` skill routes incident
+work into three modes: **investigate** a specific fault, **monitor** for
+problems, or **analyze** behaviour over time. Try one offline with
+`reckon demo`.
 
 <Cards>
-  <Card title="Setup" href="/docs/installation" description="Clone the workspace and install the toolbelt on macOS, Linux, or Windows with WSL2." />
-  <Card title="Connections & credentials" href="/docs/connections" description="Keep each environment's credentials and CLI profiles isolated inside the clone." />
-  <Card title="Quick start" href="/docs/quickstart" description="Launch an agent and run a disciplined cross-tool investigation." />
-  <Card title="Tool belt" href="/docs/toolbelt" description="See every wired CLI and the evidence each one covers." />
+  <Card title="Setup" href="/docs/installation" description="Install Reckon and the CLIs, or migrate an older checkout." />
+  <Card title="Orgs & connections" href="/docs/connections" description="Environments, connections, credentials files, login and verify." />
+  <Card title="Quick start" href="/docs/quickstart" description="Create an org, connect a tool and open an agent." />
+  <Card title="Agents" href="/docs/agents" description="What reckon open does, the org folder and its permissions." />
+  <Card title="Integrations" href="/docs/integrations" description="Every supported tool, grouped by area." />
+  <Card title="Saved work" href="/docs/investigations" description="Sessions, evidence, investigations and RCAs." />
 </Cards>
 
 <Callout type="info">
-  **Independent project.** Not affiliated with the vendors of the wired tools;
-  all trademarks belong to their owners.
+  **Independent project.** Not affiliated with the vendors of the connected
+  tools; all trademarks belong to their owners.
 </Callout>

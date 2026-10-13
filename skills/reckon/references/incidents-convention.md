@@ -2,7 +2,7 @@
 
 One folder per real incident. Each folder is the durable, on-disk record of an investigation: the alert that fired, the RCA document, the supporting evidence, and a short retrospective on what *this specific incident* taught the team.
 
-This folder mirrors the `infra-knowledge/` split: the **convention** is shared (this README, plus any `*.example/` reference folders) but the actual incident folders are **local-only**. They contain real service names, IPs, account IDs, trace IDs, and timelines that should not be published.
+This folder mirrors the `knowledge/` split: the **convention** is shared (this README, plus any `*.example/` reference folders) but the actual incident folders are **local-only**. They contain real service names, IPs, account IDs, trace IDs, and timelines that should not be published.
 
 ## What's tracked vs ignored
 
@@ -40,7 +40,7 @@ incidents/<YYYY-MM-DD>-<slug>/
 └── notes/                    # optional. Free-form scratch notes from the investigation; rarely needed.
 ```
 
-`RCA.md` is the single source of truth. `evidence/` exists so a future reader can verify a specific claim without re-running queries against logs that may have rotated. `learnings.md` is the per-incident audit trail — it cites *where* each learning was routed (skill / `infra-knowledge/` / project memory) so a future on-call can trace a rule back to the incident that motivated it.
+`RCA.md` is the single source of truth. `evidence/` exists so a future reader can verify a specific claim without re-running queries against logs that may have rotated. `learnings.md` is the per-incident audit trail — it cites *where* each learning was routed (skill / `knowledge/` / project memory) so a future on-call can trace a rule back to the incident that motivated it.
 
 ## Why per-incident folders
 

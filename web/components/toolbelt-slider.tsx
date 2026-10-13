@@ -12,76 +12,106 @@ import { gsap } from '@/lib/motion/gsap';
 
 const tools = [
   {
-    title: 'Grafana',
-    sample: 'grafana alert rule list -o json',
-    command: 'grafana',
-    covers: 'Dashboards, datasources, alerts, and annotations.',
-  },
-  {
     title: 'Jenkins',
-    sample: 'jenkins job list --recursive --status FAILURE',
+    sample: 'reckon run jenkins -- build list deploy-api --limit 20',
     command: 'jenkins',
-    covers: 'Jobs, builds, pipelines, logs, and nodes.',
+    covers: 'Jobs, builds, pipelines and logs. One connection per server, so prod and UAT stay apart.',
   },
   {
     title: 'CubeAPM',
-    sample: 'cubeapm traces search --service checkout',
+    sample: 'reckon run cubeapm -- traces search --service checkout --status error',
     command: 'cubeapm',
-    covers: 'Distributed traces, PromQL metrics, and LogsQL logs.',
+    covers: 'Traces, PromQL metrics and LogsQL logs. A shared server stays on the active environment\'s label.',
+  },
+  {
+    title: 'Grafana',
+    sample: 'reckon run grafana -- alert rule list -o json',
+    command: 'grafana',
+    covers: 'Dashboards, datasources, alert rules and annotations.',
+  },
+  {
+    title: 'GitHub',
+    sample: 'reckon run github -- pr list --repo acme/api --state merged',
+    command: 'gh',
+    covers: 'Pull requests, Actions runs, releases and issues.',
+  },
+  {
+    title: 'Jira',
+    sample: 'reckon run jira -- issue search --jql \'project = APP\' --limit 50',
+    command: 'jira',
+    covers: 'Issues, sprints, boards and history for product work.',
+  },
+  {
+    title: 'Search Console',
+    sample: 'reckon run gsc -- top queries --site sc-domain:acme.com --last 28d',
+    command: 'gsc',
+    covers: 'Search performance, opportunities, sitemaps and URL inspection.',
+  },
+  {
+    title: 'Bing Webmaster',
+    sample: 'reckon run bing -- stats summary --days 28 --compare previous',
+    command: 'bwt',
+    covers: 'Bing traffic, queries, crawl issues and sitemaps.',
+  },
+  {
+    title: 'Clarity',
+    sample: 'reckon run clarity -- recordings list --days 2 --rage-clicks',
+    command: 'clarity',
+    covers: 'Session recordings and behaviour metrics from Microsoft Clarity.',
   },
   {
     title: 'AWS',
-    sample: 'aws logs tail /ecs/checkout --since 1h',
+    sample: 'reckon run aws -- logs filter-log-events --log-group-name /ecs/checkout',
     command: 'aws',
-    covers: 'CloudWatch metrics and logs, ALB/ELB, ECS, SQS, RDS, and S3.',
-  },
-  {
-    title: 'gh',
-    sample: 'gh run list --branch main --limit 20',
-    command: 'gh',
-    covers: 'Pull requests, GitHub Actions runs, releases, and issues.',
-  },
-  {
-    title: 'Kafka',
-    sample: 'rpk group describe checkout-consumers',
-    command: 'kcat + rpk',
-    covers: 'Metadata, group-less topic reads, consumer-group lag, and cluster information.',
+    covers: 'CloudWatch, ALB, ECS, SQS and RDS reads. Only listed read commands run.',
   },
   {
     title: 'Kubernetes',
-    sample: 'kubectl get events --sort-by=.lastTimestamp',
+    sample: 'reckon run kubernetes -- get events --sort-by=.lastTimestamp',
     command: 'kubectl',
-    covers: 'Pod and deployment state, events, and rollout history.',
+    covers: 'Pod and deployment state, events and rollout history. Secrets are refused.',
+  },
+  {
+    title: 'Nginx Proxy Manager',
+    sample: 'reckon run nginxpm -- proxy list -o json',
+    command: 'nginxpm',
+    covers: 'Proxy hosts, certificates, redirects and access lists.',
+  },
+  {
+    title: 'Elasticsearch',
+    sample: 'reckon run elasticsearch -- cluster health -o json',
+    command: 'es',
+    covers: 'Cluster health, index state, Query DSL and SQL search.',
+  },
+  {
+    title: 'Kafka',
+    sample: 'reckon run kafka-rpk -- group describe checkout-consumers',
+    command: 'kcat + rpk',
+    covers: 'Metadata, group-less topic reads and consumer-group lag. Each run asks you first.',
   },
   {
     title: 'Redis',
-    sample: 'redis-cli SLOWLOG GET 10',
+    sample: 'reckon run redis -- SLOWLOG GET 10',
     command: 'redis-cli',
-    covers: 'INFO, SLOWLOG, LATENCY, DBSIZE, and SCAN diagnostics.',
+    covers: 'INFO, SLOWLOG, LATENCY, DBSIZE and SCAN diagnostics. Each run asks you first.',
+  },
+  {
+    title: 'PostgreSQL',
+    sample: 'reckon run postgres -- -c "SELECT * FROM pg_stat_activity LIMIT 20"',
+    command: 'psql',
+    covers: 'Diagnostics through a read-only role; Reckon starts every session read-only.',
   },
   {
     title: 'MongoDB',
-    sample: 'mongosh --eval "db.serverStatus().connections"',
+    sample: 'reckon run mongodb -- --eval "db.serverStatus().connections"',
     command: 'mongosh',
     covers: 'MongoDB diagnostics through a read-only database role.',
   },
   {
-    title: 'PostgreSQL',
-    sample: 'psql -c "SELECT * FROM pg_stat_activity;"',
-    command: 'psql',
-    covers: 'PostgreSQL diagnostics through a read-only database role.',
-  },
-  {
     title: 'MySQL',
-    sample: 'mysql -e "SHOW FULL PROCESSLIST;"',
+    sample: 'reckon run mysql -- -e "SHOW FULL PROCESSLIST"',
     command: 'mysql',
-    covers: 'MySQL diagnostics through a read-only role and option file.',
-  },
-  {
-    title: 'Elasticsearch',
-    sample: 'es cluster health -o json',
-    command: 'es',
-    covers: 'Optional ELK cluster health, index state, Query DSL, and SQL search.',
+    covers: 'MySQL diagnostics through a read-only role; sessions start read-only.',
   },
 ] as const;
 
@@ -226,11 +256,11 @@ export function ToolbeltSlider() {
       <div className="osmo-container toolbelt-slider__heading">
         <div>
           <h2 id="toolbelt-heading" className="toolbelt-slider__title">
-            One toolbelt, fourteen CLIs
+            One toolbelt, every connection
           </h2>
         </div>
         <p className="reckon-scribble toolbelt-slider__scribble">
-          fourteen CLIs, one session
+          one command, the right account
         </p>
       </div>
 

@@ -1,52 +1,62 @@
 ---
 title: PostgreSQL
-description: Inspect PostgreSQL queries, locks, plans, and replication through a read-only role with psql.
+description: Inspect PostgreSQL queries, locks, plans and replication through a read-only role, with every run approved by you.
 ---
 
-## What it covers in an RCA
+## What it covers
 
-Use PostgreSQL only after observability evidence points to a table or query.
-`psql` can confirm session safety, inspect active queries and waits, identify
-ungranted locks, examine a slow plan, and measure replication lag.
+Use PostgreSQL only after other evidence points to a table or query. `psql` can
+confirm session safety, show active queries and waits, find ungranted locks,
+examine a slow plan and measure replication lag.
 
-## Credentials
+## Connect
 
-libpq reads the standard PostgreSQL environment values:
+```bash
+reckon connect pg-prod --org acme --provider postgres --for-env prod
+```
+
+Fill in `~/.reckon/orgs/acme/secrets/pg-prod.env` with a read-only role:
 
 ```bash
 PGHOST=db.example.com
 PGPORT=5432
-PGUSER=rca_readonly
+PGUSER=readonly
 PGPASSWORD=replace_me
-PGDATABASE=app_production
+PGDATABASE=app
 PGSSLMODE=require
 ```
 
-Unless `.env.<env>` overrides it, `.envrc` also exports:
+`PGHOST` and `PGUSER` are required. There is no `reckon login` for databases.
 
-```bash
-PGOPTIONS='-c statement_timeout=30s -c default_transaction_read_only=on'
-```
+`reckon verify pg-prod` runs `psql -c "SELECT 1"`.
 
 ## Read-only contract
 
-`PGUSER` must be a true read-only database role; it is the only barrier that
-denies writes across every access path. `PGOPTIONS` makes read-only the session
-default and adds a 30-second statement timeout, but a session can opt back into
-read-write, so refuse `SET ... READ WRITE`,
-`SET default_transaction_read_only=off`, and `BEGIN READ WRITE`.
+PostgreSQL is an **approval** connection: the agent must ask you before each
+run, and Claude Code's settings in the org folder mark every
+`reckon run pg-prod` or `reckon run postgres` as ask. Read each query before you
+allow it.
 
-Every `psql` call must prompt for permission. Use `EXPLAIN` or `EXPLAIN ANALYZE`
-before any non-trivial `SELECT`, and set `LIMIT` on every `SELECT`, defaulting to
-`LIMIT 100`. `EXPLAIN ANALYZE` executes the query, so confirm read-only intent
-before using it.
+- **The role is the real barrier.** `PGUSER` must be a true read-only role;
+  it is the only layer that denies writes on every path.
+- **Reckon applies session read-only.** Each run gets
+  `PGOPTIONS='-c statement_timeout=30s -c default_transaction_read_only=on'`.
+  This stops accidents, not a determined write: a session can opt back into
+  read-write, so never allow `SET ... READ WRITE`,
+  `SET default_transaction_read_only=off` or `BEGIN READ WRITE`.
+- Reckon refuses `-h`, `--host`, `-U`, `--username`, `-p` and `--port`, and
+  any connection string (`postgres://...` or `host=...`) in place of a
+  database name.
+- `EXPLAIN` before any non-trivial query and put `LIMIT` on every `SELECT`
+  (default 100). `EXPLAIN ANALYZE` executes the query.
 
 ## Key commands
 
 ```bash
-psql -c "SHOW default_transaction_read_only;"
-psql -c "SELECT pid, state, wait_event_type, wait_event, now()-query_start AS dur, query FROM pg_stat_activity WHERE state != 'idle' ORDER BY dur DESC LIMIT 20;"
-psql -c "EXPLAIN (ANALYZE, BUFFERS) <query>;"
+reckon run postgres -- -c "SHOW default_transaction_read_only;"
+reckon run postgres -- -c "SELECT pid, state, wait_event_type, wait_event, now()-query_start AS dur, query FROM pg_stat_activity WHERE state != 'idle' ORDER BY dur DESC LIMIT 20;"
+reckon run postgres -- -c "SELECT relation::regclass, mode, granted, pid FROM pg_locks WHERE NOT granted LIMIT 100;"
+reckon run postgres -- -c "EXPLAIN <query>;"
 ```
 
 The first command must report `on`.

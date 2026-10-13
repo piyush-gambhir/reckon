@@ -1,76 +1,105 @@
 ---
 title: Integrations
-description: The observability, CI/CD, messaging, infrastructure, cache, database, and optional log-store clients wired into reckon.
+description: Every tool Reckon can connect, grouped by area, with its connection provider, CLI and read-only mode.
 ---
 
-reckon gives a coding agent one isolated, per-environment workspace for
-correlating evidence across existing CLIs. It does not wrap these tools in a new
-binary; the agent calls each client directly as the investigation narrows.
+Reckon runs existing CLIs. It does not wrap them in a new binary. Each tool is a
+connection **provider**: you add a connection with
+`reckon connect <name> --provider <provider>`, and the agent reaches it with
+`reckon run <connection-or-provider> -- <the CLI's own arguments>`.
+`reckon connect --list` prints the same list with each provider's required
+settings.
+
+Each provider has one of three modes:
+
+| Mode | Meaning |
+| --- | --- |
+| **own** | The CLI enforces read-only itself. Reckon switches that mode on and refuses flags that would change the target, credentials or safety. |
+| **allowlist** | The CLI has no read-only mode. Reckon allows only listed read commands. |
+| **approval** | The agent must ask you before each run. Claude Code's settings in the org folder mark these runs as ask. |
+
+## Development
+
+| Provider | CLI | Mode | What it covers |
+| --- | --- | --- | --- |
+| `jenkins` | `jenkins` | own | Jobs, builds, stages, test reports, console logs |
+| `github` | `gh` | allowlist | Pull requests, Actions runs, releases, issues |
+| `kubernetes` | `kubectl` | allowlist | Pods, deployments, events, rollout history |
+| `aws` | `aws` | allowlist | CloudWatch metrics and logs, load balancers, SQS, ECS |
+
+## Operations
+
+| Provider | CLI | Mode | What it covers |
+| --- | --- | --- | --- |
+| `cubeapm` | `cubeapm` | own | Traces, PromQL metrics, LogsQL logs, dependencies |
+| `grafana` | `grafana` | own | Alerts, silences, annotations, dashboards, datasources |
+| `elasticsearch` | `es` | own | Cluster health, indices, Query DSL and SQL search |
+| `nginxpm` | `nginxpm` | own | Proxy hosts, redirections, streams, certificates, audit log |
+| `postgres` | `psql` | approval | Active queries, locks, plans, replication |
+| `mysql` | `mysql` | approval | Sessions, plans, InnoDB state, replication |
+| `mongodb` | `mongosh` | approval | Running operations, replica set state, bounded samples |
+| `clickhouse` | `clickhouse client` | approval | Tables, query log, metrics, events |
+| `redis` | `redis-cli` | approval | Memory, latency, slow log, keyspace size |
+| `kafka` | `kcat` | approval | Cluster metadata, group-less topic reads |
+| `kafka-rpk` | `rpk` | approval | Consumer-group lag, cluster and topic state |
+
+## Product
+
+| Provider | CLI | Mode | What it covers |
+| --- | --- | --- | --- |
+| `jira` | `jira` | own | Issues, history, boards, sprints |
+| `clarity` | `clarity` | own | Dashboard exports, session recordings, analytics questions |
+
+## Growth
+
+| Provider | CLI | Mode | What it covers |
+| --- | --- | --- | --- |
+| `gsc` | `gsc` | own | Google Search performance, trends, opportunities, URL inspection |
+| `bing` | `bwt` | own | Bing traffic, queries, pages, crawl health |
 
 <Callout type="warn">
-  The workspace is read-only by usage. Some upstream clients can mutate
-  production, so credential permissions, client safeguards, approved command
-  shapes, and approval prompts are part of the contract.
+  Read-only is a combination of the CLI's own mode, Reckon's argument checks,
+  approval prompts and the account's permissions on the server. Give every
+  connection the least-privileged account that can read what you need.
+  Database users must be true read-only roles.
 </Callout>
-
-## Observability & CI/CD
-
-| CLI | Evidence it covers |
-|---|---|
-| `grafana` | Dashboards, datasources, alerts, annotations |
-| `cubeapm` | Distributed traces, PromQL metrics, LogsQL logs |
-| `jenkins` | Jobs, builds, pipelines, logs, nodes |
-| `aws` | CloudWatch metrics and logs, ALB/ELB, ECS, SQS, RDS, S3 |
-| `gh` | Pull requests, GitHub Actions runs, releases, issues |
-
-## Message queues
-
-| CLI | Evidence it covers |
-|---|---|
-| `kcat` | Kafka metadata and group-less topic reads |
-| `rpk` | Kafka consumer-group lag and cluster information |
-
-## Kubernetes & cache
-
-| CLI | Evidence it covers |
-|---|---|
-| `kubectl` | Pod and deployment state, events, rollout history |
-| `redis-cli` | Redis `INFO`, `SLOWLOG`, `LATENCY`, `DBSIZE`, and `SCAN` diagnostics |
-
-## Databases
-
-| CLI | Evidence it covers |
-|---|---|
-| `mongosh` | MongoDB diagnostics through a read-only database role |
-| `psql` | PostgreSQL diagnostics through a read-only database role |
-| `mysql` | MySQL diagnostics through a read-only database role and workspace option file |
-| `clickhouse client` | ClickHouse tables, slow queries, metrics, events, and bounded exploratory reads through a read-only role and `--readonly=1` |
-
-## Optional log stores
-
-| CLI | Evidence it covers |
-|---|---|
-| `es` | Elasticsearch/ELK cluster health, index state, Query DSL, and SQL search |
 
 ## Integration guides
 
+### Development
+
 <Cards>
-  <Card title="Grafana" href="/docs/integrations/grafana" description="Alerts, dashboards, datasources, and deployment annotations." />
-  <Card title="CubeAPM" href="/docs/integrations/cubeapm" description="Distributed traces, PromQL metrics, and LogsQL logs." />
-  <Card title="Jenkins" href="/docs/integrations/jenkins" description="Build, pipeline, job, log, and node evidence." />
-  <Card title="AWS" href="/docs/integrations/aws" description="CloudWatch and AWS infrastructure corroboration." />
-  <Card title="GitHub" href="/docs/integrations/github" description="Pull requests, Actions runs, releases, and issues." />
-  <Card title="Kafka" href="/docs/integrations/kafka" description="Kafka metadata, group-less message reads, and consumer lag." />
-  <Card title="Kubernetes" href="/docs/integrations/kubernetes" description="Pod state, events, rollout history, and resource pressure." />
-  <Card title="Redis" href="/docs/integrations/redis" description="Cache health, memory, latency, and slow-command diagnostics." />
-  <Card title="MongoDB" href="/docs/integrations/mongodb" description="Narrow collection and server diagnostics with mongosh." />
-  <Card title="PostgreSQL" href="/docs/integrations/postgresql" description="Queries, locks, plans, and replication diagnostics with psql." />
-  <Card title="MySQL" href="/docs/integrations/mysql" description="Sessions, plans, engine state, and replication diagnostics." />
-  <Card title="ClickHouse" href="/docs/integrations/clickhouse" description="Query-log, metric, event, and table reads through a read-only database connection." />
-  <Card title="Elasticsearch" href="/docs/integrations/elasticsearch" description="Optional ELK cluster, index, Query DSL, and SQL reads." />
+  <Card title="Jenkins" href="/docs/integrations/jenkins" description="Builds, stages, test reports and logs, one server per environment." />
+  <Card title="GitHub" href="/docs/integrations/github" description="Pull requests, Actions runs, releases and issues." />
+  <Card title="Kubernetes" href="/docs/integrations/kubernetes" description="Pod state, events, rollout history and resource pressure." />
+  <Card title="AWS" href="/docs/integrations/aws" description="CloudWatch and AWS infrastructure reads." />
 </Cards>
 
-<Callout type="info">
-  `direnv` supplies the folder-local environment and `jq` supports structured
-  output processing; neither is an incident-data integration.
-</Callout>
+### Operations
+
+<Cards>
+  <Card title="CubeAPM" href="/docs/integrations/cubeapm" description="Traces, metrics and logs on one server shared by every environment." />
+  <Card title="Grafana" href="/docs/integrations/grafana" description="Alerts, silences, annotations, dashboards and datasources." />
+  <Card title="Elasticsearch" href="/docs/integrations/elasticsearch" description="ELK cluster, index, Query DSL and SQL reads." />
+  <Card title="Nginx Proxy Manager" href="/docs/integrations/nginxpm" description="Routing, certificates and the audit log." />
+  <Card title="PostgreSQL" href="/docs/integrations/postgresql" description="Queries, locks and plans through a read-only role." />
+  <Card title="MySQL" href="/docs/integrations/mysql" description="Sessions, plans and engine state through a read-only user." />
+  <Card title="MongoDB" href="/docs/integrations/mongodb" description="Narrow collection and server diagnostics with mongosh." />
+  <Card title="ClickHouse" href="/docs/integrations/clickhouse" description="Query log, metrics and events through a readonly profile." />
+  <Card title="Redis" href="/docs/integrations/redis" description="Cache health, memory, latency and slow commands." />
+  <Card title="Kafka" href="/docs/integrations/kafka" description="Metadata, group-less reads and consumer lag." />
+</Cards>
+
+### Product
+
+<Cards>
+  <Card title="Jira" href="/docs/integrations/jira" description="Issues, history, boards and sprints." />
+  <Card title="Microsoft Clarity" href="/docs/integrations/clarity" description="Real user behaviour: exports, recordings and analytics." />
+</Cards>
+
+### Growth
+
+<Cards>
+  <Card title="Google Search Console" href="/docs/integrations/gsc" description="Search performance, trends, opportunities and indexing." />
+  <Card title="Bing Webmaster Tools" href="/docs/integrations/bing" description="Bing traffic, queries, pages and crawl health." />
+</Cards>

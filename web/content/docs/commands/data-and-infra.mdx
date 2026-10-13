@@ -1,109 +1,120 @@
 ---
 title: Data & infrastructure
-description: Inspect Kafka, Kubernetes, Redis, MongoDB, PostgreSQL, and MySQL without mutating production.
+description: Read Kubernetes, routing, Kafka, Redis, PostgreSQL, MySQL, MongoDB and ClickHouse state through reckon run without changing anything.
 ---
 
-Use these tools after alerts and telemetry have narrowed the incident to a
-queue, cluster workload, cache, collection, table, or query. Their upstream CLIs
-can mutate production, so the documented command shape is part of the safety
-contract.
+Use these tools after alerts and telemetry have narrowed the problem to a
+workload, a route, a queue, a cache or a query. Most of their CLIs can change
+production. Reckon allows only read commands for `kubectl`, `redis-cli` and
+`rpk`, runs `nginxpm` in its read-only mode, and asks you before every database,
+Redis and Kafka run.
 
-## Kafka: kcat and rpk
-
-Inspect cluster metadata, tail a topic without joining a consumer group, and
-check consumer lag:
+## Kubernetes
 
 ```bash
-kcat -L -b "$KAFKA_BOOTSTRAP_SERVERS" -X security.protocol=$KAFKA_SECURITY_PROTOCOL -X sasl.mechanism=$KAFKA_SASL_MECHANISM -X sasl.username=$KAFKA_SASL_USERNAME -X sasl.password=$KAFKA_SASL_PASSWORD -t <topic> -J | jq
-kcat -C -b "$KAFKA_BOOTSTRAP_SERVERS" -X security.protocol=$KAFKA_SECURITY_PROTOCOL -X sasl.mechanism=$KAFKA_SASL_MECHANISM -X sasl.username=$KAFKA_SASL_USERNAME -X sasl.password=$KAFKA_SASL_PASSWORD -t <topic> -o -10 -e -q
-rpk group describe <consumer-group> --brokers "$KAFKA_BOOTSTRAP_SERVERS"
-rpk group list --brokers "$KAFKA_BOOTSTRAP_SERVERS"
-rpk topic describe <topic> --brokers "$KAFKA_BOOTSTRAP_SERVERS"
+reckon run kubernetes -- get pods -n <ns> -o wide
+reckon run kubernetes -- describe pod <pod> -n <ns>
+reckon run kubernetes -- get events -n <ns> --sort-by=.lastTimestamp
+reckon run kubernetes -- rollout history deploy/<deployment> -n <ns>
+reckon run kubernetes -- get deploy <deployment> -n <ns> -o json
+reckon run kubernetes -- top pods -n <ns>
+```
+
+These show restarts, OOM kills, rollout history, replica state, events and
+resource pressure. Current state cannot tell you historical pod state; correlate
+event timestamps with the window. `top` requires metrics-server.
+
+## Nginx Proxy Manager
+
+```bash
+reckon run nginxpm -- proxy list -o json
+reckon run nginxpm -- proxy get <id> -o json
+reckon run nginxpm -- cert list -o json
+reckon run nginxpm -- audit list -o json
+```
+
+Check whether a host's upstream, a certificate's expiry or a recent change in
+the audit log lines up with the symptom.
+
+## Kafka
+
+```bash
+reckon run kafka -- -L -J -t <topic>
+reckon run kafka -- -C -t <topic> -o -10 -e -q
+reckon run kafka-rpk -- group describe <consumer-group>
+reckon run kafka-rpk -- group list
+reckon run kafka-rpk -- topic describe <topic>
 ```
 
 <Callout type="warn">
-  Never use `kcat -G` or `rpk topic consume -g`. Joining a production consumer
-  group can rebalance real consumers and commit offsets. Never produce, create,
-  delete, alter, seek, or delete a group. The Kafka principal itself should have
-  only Describe and Read permissions.
+  Never join a production consumer group: it rebalances the real consumers and
+  commits offsets. Reckon refuses `kcat -G` and `rpk -g`, and producing with
+  `kcat -P`. The broker principal should have only Describe and Read.
 </Callout>
 
-## Kubernetes: kubectl
+## Redis
 
 ```bash
-kubectl get pods -n <namespace> -o wide
-kubectl describe pod <pod> -n <namespace>
-kubectl get events -n <namespace> --sort-by=.lastTimestamp | tail -30
-kubectl rollout history deploy/<deployment> -n <namespace>
-kubectl get deploy <deployment> -n <namespace> -o json | jq '.status'
-kubectl top pods -n <namespace>
+reckon run redis -- INFO memory
+reckon run redis -- INFO stats
+reckon run redis -- SLOWLOG GET 20
+reckon run redis -- LATENCY LATEST
+reckon run redis -- DBSIZE
 ```
 
-These reads expose pod restarts, OOM kills, rollout history, replica state,
-cluster events, and resource pressure. `kubectl top` requires metrics-server.
-
-<Callout type="warn">
-  Never use `apply`, `delete`, `scale`, `edit`, `exec`, or `port-forward` in this
-  workspace.
-</Callout>
-
-## Redis: redis-cli
-
-```bash
-redis-cli -u "$REDIS_URL" INFO memory
-redis-cli -u "$REDIS_URL" INFO stats
-redis-cli -u "$REDIS_URL" SLOWLOG GET 20
-redis-cli -u "$REDIS_URL" LATENCY LATEST
-redis-cli -u "$REDIS_URL" DBSIZE
-```
-
-Use `SCAN` for bounded key inspection; never use `KEYS *` on production. Never
-run `FLUSHALL`, `FLUSHDB`, `SET`, `DEL`, `EXPIRE`, or `CONFIG SET`.
+Use `SCAN` with a `COUNT` for key inspection, never `KEYS *`. Reckon allows only
+read commands such as these.
 
 ## Databases
 
-Database reads are a last-mile diagnostic step. Before every query, confirm the
-credential is a true read-only role, keep the approval prompt, `EXPLAIN` a
-non-trivial read, and apply `LIMIT` to every `SELECT`.
-
-### MongoDB
-
-```bash
-mongosh "$MONGODB_URI" --eval 'db.runCommand({ping:1})'
-mongosh "$MONGODB_URI" --eval 'db.currentOp({active:true, secs_running:{$gt:1}})'
-mongosh "$MONGODB_URI" --eval 'db.serverStatus().connections'
-mongosh "$MONGODB_URI" --eval 'db.<collection>.find({<filter>}).limit(10).toArray()'
-```
-
-MongoDB secondary read preference controls routing, not authorization. The
-read-only database role is the write barrier.
+Database reads are a last step. Before each query, the connection's user must
+be a true read-only role, you approve the run, non-trivial reads get `EXPLAIN`
+first, and every `SELECT` has a `LIMIT` (default 100).
 
 ### PostgreSQL
 
 ```bash
-psql -c "SHOW default_transaction_read_only;"
-psql -c "SELECT pid, state, wait_event_type, wait_event, now()-query_start AS dur, query FROM pg_stat_activity WHERE state != 'idle' ORDER BY dur DESC LIMIT 20;"
-psql -c "SELECT relation::regclass, mode, granted, pid FROM pg_locks WHERE NOT granted LIMIT 100;"
+reckon run postgres -- -c "SHOW default_transaction_read_only;"
+reckon run postgres -- -c "SELECT pid, state, wait_event_type, wait_event, now()-query_start AS dur, query FROM pg_stat_activity WHERE state != 'idle' ORDER BY dur DESC LIMIT 20;"
+reckon run postgres -- -c "SELECT relation::regclass, mode, granted, pid FROM pg_locks WHERE NOT granted LIMIT 100;"
 ```
 
-`SHOW default_transaction_read_only` must report `on`. `EXPLAIN ANALYZE`
-actually executes the query, so confirm read-only intent before using it.
+The first must report `on`: Reckon sets `default_transaction_read_only=on` and
+a 30 second statement timeout. `EXPLAIN ANALYZE` executes the query.
 
 ### MySQL
 
-Always include the workspace option file:
-
 ```bash
-mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SELECT @@transaction_read_only;"
-mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SELECT id, user, host, db, command, time, state, LEFT(info, 200) AS query FROM information_schema.processlist WHERE command != 'Sleep' ORDER BY time DESC LIMIT 20;"
-mysql --defaults-extra-file="$XDG_CONFIG_HOME/mysql/my.cnf" -e "SHOW ENGINE INNODB STATUS\G"
+reckon run mysql -- -e "SELECT @@transaction_read_only;"
+reckon run mysql -- -e "SELECT id, user, host, db, command, time, state, LEFT(info, 200) AS query FROM information_schema.processlist WHERE command != 'Sleep' ORDER BY time DESC LIMIT 20;"
+reckon run mysql -- -e "SHOW ENGINE INNODB STATUS\G"
 ```
 
-The transaction check must report `1`. The MySQL client has no read-only
-environment variable; the option file applies the session init command and
-connection settings.
+The first must report `1`. Reckon passes an option file that starts each
+session `READ ONLY`.
+
+### MongoDB
+
+```bash
+reckon run mongodb -- --quiet --eval 'db.currentOp({active:true, secs_running:{$gt:1}})'
+reckon run mongodb -- --quiet --eval 'db.serverStatus().connections'
+reckon run mongodb -- --quiet --eval 'db.<collection>.find({<filter>}).limit(10).toArray()'
+```
+
+`readPreference=secondary` is routing, not authorization. The read-only role is
+the write barrier.
+
+### ClickHouse
+
+```bash
+reckon run clickhouse -- --query "SHOW TABLES"
+reckon run clickhouse -- --query "SELECT event_time, query_duration_ms, read_rows, query FROM system.query_log WHERE type = 'QueryFinish' ORDER BY query_duration_ms DESC LIMIT 20"
+```
+
+Reckon always adds `--readonly=1`. The user's server-side `readonly=1` profile
+is the real barrier.
 
 <Callout type="info">
-  The agent approval prompt is intentionally part of database safety. Read each
-  proposed query before allowing it, even when the session reports read-only.
+  Read every proposed database query before you approve it, even though the
+  session is read-only. Session settings stop accidents, not a determined write.
 </Callout>

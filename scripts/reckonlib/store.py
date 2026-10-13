@@ -11,6 +11,7 @@ import tempfile
 import uuid
 
 SCHEMA = 1
+ENV_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 
 
 def now():
@@ -146,13 +147,13 @@ def session_path(root, session_id):
     if not (path / "session.json").is_file():
         raise ValueError("unknown session: " + session_id)
     data = read_json(path / "session.json")
-    if not isinstance(data, dict) or data.get("schema_version") != SCHEMA or data.get("id") != session_id or data.get("environment") not in ("production", "staging", "uat"):
+    if not isinstance(data, dict) or data.get("schema_version") != SCHEMA or data.get("id") != session_id or not ENV_NAME.fullmatch(str(data.get("environment"))):
         raise ValueError("unsupported or inconsistent session metadata")
     return path, data
 
 
 def services(root, env):
-    path = local_path(root, "infra-knowledge", env, "services.json")
+    path = local_path(root, "knowledge", env, "services.json")
     if not path.exists():
         return []
     data = read_json(path)
@@ -189,18 +190,19 @@ def resolve_service(root, env, name):
     if len(matches) > 1:
         raise ValueError("ambiguous service alias: " + name)
     if not matches:
-        raise ValueError("service is unmapped; add it to infra-knowledge/" + env + "/services.json (see examples/services.json)")
+        raise ValueError("service is unmapped; add it to knowledge/" + env + "/services.json (see examples/services.json)")
     return matches[0]
 
 
-def create(root, env, service, question, bounds, playbook, mode):
+def create(root, org, env, question, mode, service=None, bounds=None, playbook=None, area=None):
+    """An investigation (service, window, playbook) or a task in any area."""
     private_dir(local_path(root, "sessions"))
     sid = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:10]
     path = root / "sessions" / sid
     private_dir(path / "evidence")
-    data = {"schema_version": SCHEMA, "id": sid, "environment": env, "mode": mode,
-            "service": service["id"], "service_context": service, "question": question,
-            "window": bounds, "playbook": playbook, "created_at": now(), "status": "open", "notes": []}
+    data = {"schema_version": SCHEMA, "id": sid, "org": org, "environment": env, "mode": mode,
+            "service": service["id"] if service else None, "service_context": service, "question": question,
+            "window": bounds, "playbook": playbook, "area": area, "created_at": now(), "status": "open", "notes": []}
     write_json(path / "session.json", data)
     return path, data
 
@@ -219,8 +221,9 @@ def evidence(path):
         record = read_json(p)
         if not isinstance(record, dict) or record.get("schema_version") != SCHEMA:
             raise ValueError("unsupported evidence metadata")
-        if record.get("id") != p.parent.name or record.get("session") != session["id"] or record.get("environment") != session["environment"]:
-            raise ValueError("evidence identity/environment mismatch")
+        if (record.get("id") != p.parent.name or record.get("session") != session["id"] or record.get("environment") != session["environment"]
+                or record.get("org", session.get("org")) != session.get("org")):
+            raise ValueError("evidence identity/org/environment mismatch")
         artifacts = record.get("artifacts")
         if not isinstance(artifacts, dict) or set(artifacts) - {"stdout", "stderr"}:
             raise ValueError("invalid evidence artifacts")

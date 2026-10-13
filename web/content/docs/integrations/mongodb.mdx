@@ -1,45 +1,54 @@
 ---
 title: MongoDB
-description: Run narrowly scoped MongoDB diagnostics through a read-only role with mongosh.
+description: Run narrow MongoDB diagnostics with mongosh through a read-only role, with every run approved by you.
 ---
 
-## What it covers in an RCA
+## What it covers
 
-Use MongoDB only after earlier evidence identifies a collection or database
-query as the suspect. `mongosh` can verify liveness, show currently running
-operations, inspect replica-set state and server connection counters, and return
-a bounded collection sample.
+Use MongoDB only after other evidence points to a collection or query.
+`mongosh` can check liveness, show running operations, inspect replica set state
+and connection counters, and return a bounded collection sample.
 
-## Credentials
-
-MongoDB reads its Atlas-style URI directly from `.env.<env>`:
+## Connect
 
 ```bash
-MONGODB_URI=replace_me
+reckon connect mongo-prod --org acme --provider mongodb --for-env prod
 ```
 
-The value must be single-quoted because the URI contains `&`, which the shell
-would otherwise treat as an operator.
+Fill in `~/.reckon/orgs/acme/secrets/mongo-prod.env`:
+
+```bash
+MONGODB_URI=mongodb+srv://readonly:replace_me@cluster0.example.net/app?readPreference=secondary
+```
+
+The file is read literally, so the URI needs no shell quoting. Reckon passes it
+to `mongosh` as the connection string. There is no `reckon login` for
+databases.
+
+`reckon verify mongo-prod` runs `mongosh --quiet --eval 'db.runCommand({ping:1})'`.
 
 ## Read-only contract
 
-The user in `MONGODB_URI` must be a true read-only database role; that is the
-real write barrier. `readPreference=secondary` is read routing, not
-authorization, and does not reject writes. Every `mongosh` call must remain
-approval-gated so the proposed query can be reviewed.
+MongoDB is an **approval** connection: the agent must ask you before each run,
+and Claude Code's settings in the org folder mark every
+`reckon run mongo-prod` or `reckon run mongodb` as ask. Read each command before
+you allow it.
 
-For the shared database contract, use `EXPLAIN` / `EXPLAIN ANALYZE` before any
-non-trivial `SELECT` and put `LIMIT` on every `SELECT`; MongoDB collection
-samples are likewise bounded with `.limit(...)`.
+- **The role is the real barrier.** The user in `MONGODB_URI` must have a
+  read-only role.
+- `readPreference=secondary` routes reads away from the primary. It is routing,
+  not authorization, and does not reject writes.
+- Reckon refuses `--host`, `--port`, `-u`, `--username`, `-p`, `--password`,
+  `--authenticationDatabase`, `--apiKey` and `--nodb`.
+- Bound every sample with `.limit(...)`.
 
 ## Key commands
 
 ```bash
-mongosh "$MONGODB_URI" --eval 'db.runCommand({ping:1})'
-mongosh "$MONGODB_URI" --eval 'db.currentOp({active:true, secs_running:{$gt:1}})'
-mongosh "$MONGODB_URI" --eval 'rs.status()'
-mongosh "$MONGODB_URI" --eval 'db.serverStatus().connections'
-mongosh "$MONGODB_URI" --eval 'db.<coll>.find({<filter>}).limit(10).toArray()'
+reckon run mongodb -- --quiet --eval 'db.currentOp({active:true, secs_running:{$gt:1}})'
+reckon run mongodb -- --quiet --eval 'rs.status()'
+reckon run mongodb -- --quiet --eval 'db.serverStatus().connections'
+reckon run mongodb -- --quiet --eval 'db.<collection>.find({<filter>}).limit(10).toArray()'
 ```
 
 ## Links

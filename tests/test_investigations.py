@@ -1,8 +1,7 @@
-"""Offline acceptance tests. No production profiles or network are used."""
+"""Offline acceptance tests for sessions, evidence and the saved workflow. No real tools or network are used."""
 import json
 import os
 from pathlib import Path
-import shutil
 import signal
 import subprocess
 import sys
@@ -10,145 +9,43 @@ import tempfile
 import time
 import unittest
 
-SOURCE = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(SOURCE / "scripts"))
-from reckonlib import environment as envs
+from helpers import BOUNDS, CUBEAPM, OrgCase, SOURCE
 from reckonlib import investigation as work
+from reckonlib import orgs
 from reckonlib.demo import demo
-from reckonlib.operations import build, plan
+from reckonlib.operations import build
 from reckonlib.process import run
 from reckonlib.store import create, evidence, lock, read_json, resolve_service, services, session_path, window, write, write_json
 
-BOUNDS = {"from": "2026-09-08T14:00:00Z", "to": "2026-09-08T14:30:00Z"}
 
+class Fixture(OrgCase):
+    """Org "acme" (staging, uat) with one shared CubeAPM connection and a mapped checkout service."""
 
-class RepositoryBoundaryTests(unittest.TestCase):
-    def test_tenant_state_is_never_tracked(self):
-        tracked = subprocess.check_output(["git", "ls-files", "-z"], cwd=SOURCE).decode().split("\0")
-        private_roots = {".config", ".reckon-env", ".reckon-demo", "infra-knowledge", "incidents", "sessions", "bin"}
-        for name in filter(None, tracked):
-            path = Path(name)
-            self.assertNotIn(path.parts[0], private_roots, name)
-            self.assertFalse(path.name == ".env" or path.name.startswith(".env.") and path.name != ".env.example", name)
-
-
-class Fixture(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix="reckon-test-")
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
-        (self.root / "scripts").mkdir()
-        shutil.copyfile(SOURCE / ".envrc", self.root / ".envrc")
-        shutil.copyfile(SOURCE / "scripts/integrations.tsv", self.root / "scripts/integrations.tsv")
-        (self.root / "bin").mkdir()
-        write(self.root / ".reckon-env", "staging")
+        super().setUp()
+        self.org(connections={"cubeapm": {"provider": "cubeapm"}}, secrets={"cubeapm": CUBEAPM})
+        self.root = orgs.workspace(self.home, "acme")
         self.mapping = {"schema_version": 1, "services": [{"id": "checkout", "aliases": ["checkout-api"],
             "provenance": {"source": "test fixture", "observed_at": "2026-09-08T00:00:00Z"},
             "sources": {"cubeapm": {"service": "checkout", "metrics": {"latency_ms": "latency{service=$service}"}}}}]}
         self.save_mapping()
-        self.credentials()
+        self.context = self.ctx("acme", "staging")
 
     def save_mapping(self):
-        write_json(self.root / "infra-knowledge/staging/services.json", self.mapping)
+        write_json(self.root / "knowledge/staging/services.json", self.mapping)
 
-    def credentials(self, extra=""):
-        write(self.root / ".env.staging", "PATH='" + str(self.root / "bin") + ":/usr/bin:/bin'\n" +
-              "CUBEAPM_HOST=fixture.invalid\nCUBEAPM_EMAIL=test@fixture.invalid\nCUBEAPM_PASSWORD=secret-for-test\n" + extra)
-
-    def fake(self, source, binary="cubeapm"):
-        write(self.root / "bin" / binary, "#!" + sys.executable + "\n" + source)
-        (self.root / "bin" / binary).chmod(0o700)
-
-    def session(self):
-        return create(self.root, "staging", resolve_service(self.root, "staging", "checkout"), "Why is checkout slow?", BOUNDS, "latency", "debug")
+    def session(self, env="staging"):
+        return create(self.root, "acme", env, "Why is checkout slow?", "debug", resolve_service(self.root, env, "checkout"), BOUNDS, "latency")
 
     def collect(self, sid, **kwargs):
-        return work.collect(self.root, sid, "staging", **kwargs)
+        return work.collect(self.home, self.context, self.root, sid, registry=self.registry, **kwargs)
 
-    def cli(self, *args):
-        return subprocess.run([sys.executable, "-B", str(SOURCE / "scripts/reckon.py"), "--root", str(self.root), *args],
-                              capture_output=True, text=True, env={k: v for k, v in os.environ.items() if not k.startswith("RECKON_")})
+    def reload(self):
+        """Re-read org.json after a test edits it."""
+        self.context = self.ctx("acme", "staging")
 
-
-class EnvironmentTests(Fixture):
-    def test_same_shell_switch_clears_credentials_and_aliases(self):
-        write(self.root / ".env.production", "GRAFANA_TOKEN=production-secret\nCUBEAPM_HOST=production.invalid\nEXTRA_CREDENTIAL=old\n")
-        script = '. "$RECKON_ROOT/.envrc" >/dev/null; export RECKON_ENV=staging; . "$RECKON_ROOT/.envrc" >/dev/null; printf "%s|%s|%s" "${GRAFANA_TOKEN-unset}" "$CUBEAPM_SERVER" "${EXTRA_CREDENTIAL-unset}"'
-        for shell in ("bash", "zsh"):
-            if not shutil.which(shell):
-                continue
-            with self.subTest(shell=shell):
-                result = subprocess.run([shell, "-c", script], capture_output=True, text=True,
-                                        env={"PATH": os.environ["PATH"], "RECKON_ROOT": str(self.root), "RECKON_ENV": "production"})
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(result.stdout, "unset|fixture.invalid|unset")
-
-    def test_invalid_switch_removes_previous_credentials(self):
-        result = subprocess.run(["bash", "-c", '. "$RECKON_ROOT/.envrc" >/dev/null; RECKON_ENV=invalid; . "$RECKON_ROOT/.envrc" >/dev/null 2>&1; printf "%s" "${CUBEAPM_PASSWORD-unset}"'],
-                                capture_output=True, text=True, env={"PATH": os.environ["PATH"], "RECKON_ROOT": str(self.root), "RECKON_ENV": "staging"})
-        self.assertEqual(result.stdout, "unset")
-
-    def test_fresh_process_and_provider_scoping(self):
-        os.environ["GRAFANA_TOKEN"] = "outside-token"
-        self.addCleanup(os.environ.pop, "GRAFANA_TOKEN", None)
-        values = envs.load(self.root, "staging")
-        self.assertNotIn("GRAFANA_TOKEN", values)
-        self.assertNotIn("CUBEAPM_PASSWORD", envs.scope(values, "github"))
-        self.assertEqual(values["CUBEAPM_SERVER"], "fixture.invalid")
-        self.assertNotIn("KUBECONFIG", envs.scope(values, "github"))
-        self.assertIn("KUBECONFIG", envs.scope(values, "kubernetes"))
-
-    def test_read_only_cannot_be_disabled_in_environment_files(self):
-        self.credentials("ES_READ_ONLY=false\n")
-        self.assertEqual(envs.load(self.root, "staging")["ES_READ_ONLY"], "true")
-
-    def test_runtime_home_cache_and_temp_are_provider_and_environment_scoped(self):
-        outside = self.root / "operator-home"
-        outside.mkdir()
-        (outside / "global-credentials").write_text("outside-profile")
-        values = envs.load(self.root, "staging")
-        values["HOME"] = str(outside)
-        staging = envs.scope(values, "cubeapm")
-        production = envs.scope({**values, "RECKON_ENV": "production"}, "cubeapm")
-        github = envs.scope(values, "github")
-        self.assertNotEqual(staging["HOME"], production["HOME"])
-        self.assertNotEqual(staging["HOME"], github["HOME"])
-        probe = "import os; from pathlib import Path; assert not (Path.home()/'global-credentials').exists(); (Path(os.environ['TMPDIR'])/'marker').write_text('private')"
-        result = run([sys.executable, "-c", probe], env=staging)
-        self.assertEqual(result["status"], "ok", result["stderr"])
-        for key in ("HOME", "USERPROFILE", "XDG_CACHE_HOME", "XDG_STATE_HOME", "APPDATA", "LOCALAPPDATA", "TMPDIR", "TMP", "TEMP"):
-            directory = Path(staging[key])
-            directory.relative_to(self.root / ".config/staging/runtime/cubeapm")
-            if os.name != "nt":
-                self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
-        self.assertEqual(values["HOME"], str(outside))
-        self.assertEqual(list(outside.iterdir()), [outside / "global-credentials"])
-
-    def test_profile_directory_symlink_is_rejected_before_activation(self):
-        outside = self.root / "outside-config"
-        outside.mkdir()
-        (self.root / ".config").symlink_to(outside, target_is_directory=True)
-        with self.assertRaisesRegex(ValueError, "symlink"):
-            envs.load(self.root, "staging")
-        self.assertEqual(list(outside.iterdir()), [])
-
-    def test_missing_environment_is_explicit(self):
-        (self.root / ".reckon-env").unlink()
-        result = self.cli("services", "list", "--json")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("select an environment", result.stderr)
-
-    def test_ambiguous_service_is_rejected(self):
-        self.mapping["services"].append({**self.mapping["services"][0], "id": "checkout-v2"})
-        self.save_mapping()
-        with self.assertRaisesRegex(ValueError, "ambiguous"):
-            resolve_service(self.root, "staging", "checkout-api")
-
-    def test_mysql_placeholder_option_file_is_not_readiness(self):
-        write(self.root / ".env.staging", "MYSQL_HOST=mysql.example.com\nMYSQL_USER=readonly\n")
-        self.fake("pass", "mysql")
-        values = envs.load(self.root, "staging")
-        self.assertFalse(envs.readiness(self.root, values)["mysql"]["configured"])
+    def cli_staging(self, *args, **extra):
+        return self.cli(*args, "--org", "acme", "--env", "staging", **extra)
 
 
 class ProcessTests(unittest.TestCase):
@@ -201,17 +98,21 @@ class ProcessTests(unittest.TestCase):
 
 class WorkflowTests(Fixture):
     def test_offline_demo_exercises_real_collection_and_resume(self):
-        (self.root / "examples/demo").mkdir(parents=True)
-        shutil.copyfile(SOURCE / "examples/services.json", self.root / "examples/services.json")
-        shutil.copyfile(SOURCE / "examples/demo/tool.py", self.root / "examples/demo/tool.py")
-        output = demo(self.root)
-        self.assertEqual(output["evidence_records"], 7)
-        context = work.resume(Path(output["workspace"]), output["session"])
-        self.assertEqual(len(context["session"]["notes"]), 2)
-        self.assertIn("100 ms", Path(output["report"]).read_text())
-        self.assertIn("850 ms", Path(output["report"]).read_text())
-        self.assertEqual(context["session"]["status"], "open")
+        output = demo(self.home)
+        self.assertTrue(output["synthetic"])
         self.assertFalse(output["network_used"])
+        self.assertEqual(output["evidence_records"], 7)
+        demo_home = Path(output["home"])
+        # The demo runs in a throwaway home: the operator's orgs are untouched.
+        self.assertEqual(orgs.orgs(self.home), ["acme"])
+        self.assertEqual(orgs.orgs(demo_home), ["demo"])
+        context = work.resume(orgs.workspace(demo_home, "demo"), output["session"])
+        self.assertEqual(len(context["session"]["notes"]), 2)
+        self.assertEqual((context["session"]["org"], context["session"]["environment"]), ("demo", "staging"))
+        text = Path(output["report"]).read_text()
+        self.assertIn("100 ms", text)
+        self.assertIn("850 ms", text)
+        self.assertEqual(context["session"]["status"], "open")
 
     def test_collect_resume_notes_report_and_history(self):
         self.fake('import json; print(json.dumps({"status":"success","data":{"resultType":"matrix","result":[{"metric":{},"values":[[0,"100"],[1,"200"]]}]}}))')
@@ -221,7 +122,7 @@ class WorkflowTests(Fixture):
         self.assertTrue(all(r["status"] == "ok" for r in records))
         self.assertEqual(records[0]["series"][0]["mean"], 150)
         self.assertNotEqual(records[0]["window"], records[1]["window"])
-        self.assertEqual(records[0]["environment"], "staging")
+        self.assertEqual((records[0]["org"], records[0]["environment"], records[0]["connection"]), ("acme", "staging", "cubeapm"))
         first = records[0]["id"]
         work.note(self.root, data["id"], "finding", "Baseline samples average 150", [first])
         work.note(self.root, data["id"], "hypothesis", "Deployment is a candidate, not established cause", [], "Check deployed SHA")
@@ -230,11 +131,13 @@ class WorkflowTests(Fixture):
         text = work.report(self.root, data["id"]).read_text()
         self.assertIn("evidence/" + first + "/stdout.txt", text)
         self.assertIn("Check deployed SHA", text)
+        self.assertTrue(text.startswith("# Investigation:"))
+        self.assertIn("**Org:** acme", text)
         self.assertEqual(work.history(self.root, "staging", "checkout")[0]["id"], data["id"])
-        self.assertEqual(work.history(self.root, "production"), [])
-        if os.name != "nt":
-            self.assertEqual(path.stat().st_mode & 0o777, 0o700)
-            self.assertEqual((path / "session.json").stat().st_mode & 0o777, 0o600)
+        self.assertEqual(work.history(self.root, "uat"), [])
+        self.assertEqual(work.history(self.root, "staging", query="no-such-text"), [])
+        self.assertEqual(path.stat().st_mode & 0o777, 0o700)
+        self.assertEqual((path / "session.json").stat().st_mode & 0o777, 0o600)
 
     def test_success_is_reused_and_refresh_is_explicit(self):
         self.fake('print("[]")')
@@ -246,20 +149,60 @@ class WorkflowTests(Fixture):
         self.assertEqual(len(evidence(path)), 4)
 
     def test_missing_credentials_are_durable_gaps(self):
-        write(self.root / ".env.staging", "PATH=/usr/bin:/bin\n")
+        self.secret("acme", "cubeapm", "")
+        self.fake('print("[]")')
         path, data = self.session()
         records = self.collect(data["id"])
         self.assertTrue(all(r["status"] == "unavailable" for r in records))
+        self.assertTrue(all(r["summary"] == "no_credentials" for r in records))
         self.assertEqual(len(work.resume(self.root, data["id"])["evidence"]), 2)
         with self.assertRaises(ValueError):
             work.note(self.root, data["id"], "finding", "Everything is healthy", [records[0]["id"]])
 
-    def test_environment_mismatch_before_execution(self):
+    def test_missing_cli_is_a_durable_gap(self):
+        path, data = self.session()
+        records = self.collect(data["id"])
+        self.assertTrue(all(r["status"] == "unavailable" and r["summary"] == "no_cli" for r in records))
+
+    def test_provider_without_a_connection_is_unavailable(self):
         self.fake("raise RuntimeError('must not execute')")
+        data = orgs.load(self.home, "acme", self.registry)
+        data["connections"] = {}
+        orgs.save(self.home, data, self.registry)
+        self.reload()
+        path, session = self.session()
+        records = self.collect(session["id"])
+        self.assertTrue(all(r["status"] == "unavailable" for r in records))
+        self.assertTrue(all("reckon connect" in r["summary"] for r in records))
+        self.assertTrue(all(r["connection"] is None for r in records))
+
+    def test_connection_bound_to_another_environment_is_unavailable(self):
+        self.fake("raise RuntimeError('must not execute')")
+        data = orgs.load(self.home, "acme", self.registry)
+        data["connections"] = {"cubeapm-uat": {"provider": "cubeapm", "env": "uat"}}
+        orgs.save(self.home, data, self.registry)
+        self.reload()
+        path, session = self.session()
+        self.assertTrue(all(r["status"] == "unavailable" for r in self.collect(session["id"])))
+
+    def test_environment_mismatch_before_execution(self):
+        marker = self.dir / "ran"
+        self.fake("open(" + repr(str(marker)) + ", 'w').write('x')")
         path, data = self.session()
         with self.assertRaisesRegex(ValueError, "session belongs"):
-            work.collect(self.root, data["id"], "production")
+            work.collect(self.home, self.ctx("acme", "uat"), self.root, data["id"], registry=self.registry)
         self.assertEqual(evidence(path), [])
+        self.assertFalse(marker.exists())
+
+    def test_org_mismatch_before_execution(self):
+        marker = self.dir / "ran"
+        self.fake("open(" + repr(str(marker)) + ", 'w').write('x')")
+        self.org("other", ("staging",), {"cubeapm": {"provider": "cubeapm"}}, {"cubeapm": CUBEAPM})
+        path, data = self.session()
+        with self.assertRaisesRegex(ValueError, "session belongs to acme/staging"):
+            work.collect(self.home, self.ctx("other", "staging"), self.root, data["id"], registry=self.registry)
+        self.assertEqual(evidence(path), [])
+        self.assertFalse(marker.exists())
 
     def test_no_cross_session_evidence_references(self):
         self.fake('print("[]")')
@@ -278,6 +221,15 @@ class WorkflowTests(Fixture):
             self.assertNotIn("secret-for-test", output)
             self.assertIn("[REDACTED]", output)
             self.assertNotIn("secret-for-test", json.dumps(record))
+        self.assertNotIn("secret-for-test", (path / "evidence" / records[0]["id"] / "record.json").read_text())
+
+    def test_child_gets_only_its_connection_credentials(self):
+        os.environ.update(GH_TOKEN="shell-gh-token", JENKINS_TOKEN="shell-jenkins")
+        self.fake('import os,json; print(json.dumps({k: os.environ.get(k) for k in ("GH_TOKEN","JENKINS_TOKEN","CUBEAPM_SERVER","RECKON_ORG","RECKON_ENV")}))')
+        path, data = self.session()
+        record = self.collect(data["id"], operation="cubeapm.metrics.range", params={"query": "up"})[0]
+        seen = json.loads((path / record["artifacts"]["stdout"]["path"]).read_text())
+        self.assertEqual(seen, {"GH_TOKEN": None, "JENKINS_TOKEN": None, "CUBEAPM_SERVER": "fixture.invalid", "RECKON_ORG": "acme", "RECKON_ENV": "staging"})
 
     def test_indented_log_stream_is_parsed(self):
         # The pinned cubeapm prints each log entry as an indented JSON object.
@@ -288,14 +240,14 @@ class WorkflowTests(Fixture):
 
     def test_working_directory_is_not_redacted_as_a_secret(self):
         values = {"PWD": "/work/reckon", "OLDPWD": "/work", "MYSQL_PWD": "db-secret"}
-        self.assertEqual(envs.redact("cd /work/reckon using db-secret", values), "cd /work/reckon using [REDACTED]")
+        self.assertEqual(orgs.redact("cd /work/reckon using db-secret", values), "cd /work/reckon using [REDACTED]")
 
     def test_bad_output_and_provider_errors_are_not_success(self):
         for output in ('not-json', '{"status":"error","error":"forbidden"}', '{"data":{"resultType":"matrix","result":[null]}}'):
             self.fake("print(" + repr(output) + ")")
             _, data = self.session()
             records = self.collect(data["id"])
-            self.assertTrue(all(r["status"] == "failed" for r in records))
+            self.assertTrue(all(r["status"] == "failed" for r in records), output)
 
     def test_interrupted_record_is_retained_when_collection_resumes(self):
         self.fake('print("[]")')
@@ -312,15 +264,24 @@ class WorkflowTests(Fixture):
         self.fake('print("[]")')
         path, data = self.session()
         record = self.collect(data["id"])[0]
-        record["environment"] = "production"
+        record["environment"] = "uat"
         write_json(path / "evidence" / record["id"] / "record.json", record)
-        with self.assertRaisesRegex(ValueError, "environment mismatch"):
+        with self.assertRaisesRegex(ValueError, "mismatch"):
+            work.resume(self.root, data["id"])
+
+    def test_copied_evidence_from_other_org_is_rejected(self):
+        self.fake('print("[]")')
+        path, data = self.session()
+        record = self.collect(data["id"])[0]
+        record["org"] = "other"
+        write_json(path / "evidence" / record["id"] / "record.json", record)
+        with self.assertRaisesRegex(ValueError, "mismatch"):
             work.resume(self.root, data["id"])
 
     def test_json_error_returns_cli_partial_status(self):
         self.fake('print("not-json")')
         _, data = self.session()
-        result = self.cli("collect", data["id"], "--env", "staging", "--json")
+        result = self.cli_staging("collect", data["id"], "--json")
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertTrue(all(record["status"] == "failed" for record in json.loads(result.stdout)))
 
@@ -338,15 +299,18 @@ class WorkflowTests(Fixture):
         path, data = self.session()
         self.collect(data["id"])
         target = work.promote(self.root, data["id"], "checkout-latency")
+        self.assertEqual(target.parent, self.root / "incidents")
         self.assertTrue((target / "RCA.md").exists())
+        self.assertIn("**Org:** acme", (target / "RCA.md").read_text())
         self.assertTrue((target / "learnings.md").exists())
         self.assertEqual(len(list((target / "evidence").glob("*/record.json"))), 2)
+        self.assertEqual(len(evidence(target)), 2)
         with self.assertRaises(ValueError):
             work.promote(self.root, data["id"], "checkout-latency")
 
     def test_path_traversal_and_lock_contention_fail(self):
         with self.assertRaises(ValueError):
-            session_path(self.root, "../../.env.production")
+            session_path(self.root, "../../orgs/acme/secrets/cubeapm.env")
         path, _ = self.session()
         with lock(path):
             with self.assertRaises(OSError):
@@ -356,7 +320,7 @@ class WorkflowTests(Fixture):
     def test_evidence_parent_symlink_cannot_write_outside_session(self):
         self.fake('print("[]")')
         path, data = self.session()
-        outside = self.root / "outside"
+        outside = self.dir / "outside"
         outside.mkdir()
         (path / "evidence").rmdir()
         (path / "evidence").symlink_to(outside, target_is_directory=True)
@@ -368,7 +332,7 @@ class WorkflowTests(Fixture):
         for name in ("session.json", ".lock"):
             with self.subTest(name=name):
                 path, data = self.session()
-                outside = self.root / (name + "-outside")
+                outside = self.dir / (name + "-outside")
                 if name == "session.json":
                     (path / name).rename(outside)
                 else:
@@ -398,7 +362,7 @@ class WorkflowTests(Fixture):
         self.fake('print("[]")')
         path, data = self.session()
         record = self.collect(data["id"])[0]
-        record["artifacts"]["stdout"]["path"] = "../../.env.staging"
+        record["artifacts"]["stdout"]["path"] = "../../orgs/acme/secrets/cubeapm.env"
         write_json(path / "evidence" / record["id"] / "record.json", record)
         with self.assertRaisesRegex(ValueError, "artifact path"):
             work.resume(self.root, data["id"])
@@ -412,7 +376,7 @@ class WorkflowTests(Fixture):
                 output = path / record["artifacts"]["stdout"]["path"]
                 output.unlink()
                 if linked:
-                    output.symlink_to(self.root / ".env.staging")
+                    output.symlink_to(orgs.secrets_path(self.home, "acme", "cubeapm"))
                 with self.assertRaisesRegex(ValueError, "integrity|symlink"):
                     work.note(self.root, data["id"], "finding", "Bad citation", [record["id"]])
 
@@ -423,13 +387,13 @@ class WorkflowTests(Fixture):
 
     def test_promotion_rejects_symlinked_extra_files(self):
         path, data = self.session()
-        (path / "extra.txt").symlink_to(self.root / ".env.staging")
+        (path / "extra.txt").symlink_to(orgs.secrets_path(self.home, "acme", "cubeapm"))
         with self.assertRaisesRegex(ValueError, "symlink"):
             work.promote(self.root, data["id"], "linked")
         self.assertFalse(list((self.root / "incidents").glob("*")))
 
     def test_command_injection_stays_a_single_argument(self):
-        marker = self.root / "should-not-exist"
+        marker = self.dir / "should-not-exist"
         self.fake('import json,sys; print(json.dumps(sys.argv))')
         path, data = self.session()
         query = 'up; touch "' + str(marker) + '"'
@@ -440,25 +404,55 @@ class WorkflowTests(Fixture):
     def test_non_cubeapm_metric_source_uses_same_workflow(self):
         self.mapping["services"][0]["sources"] = {"grafana": {"datasource": "prometheus", "metrics": {"latency": "histogram_quantile(0.95, latency_bucket)"}}}
         self.save_mapping()
-        self.credentials("GRAFANA_URL=https://fixture.invalid\nGRAFANA_TOKEN=test-token\n")
+        data = orgs.load(self.home, "acme", self.registry)
+        data["connections"]["grafana"] = {"provider": "grafana"}
+        orgs.save(self.home, data, self.registry)
+        self.secret("acme", "grafana", ["GRAFANA_URL=https://fixture.invalid", "GRAFANA_TOKEN=test-token"])
+        self.reload()
         self.fake('print(\'{"status":"success","data":{"resultType":"matrix","result":[]}}\')', "grafana")
-        _, data = self.session()
-        records = self.collect(data["id"])
+        _, session = self.session()
+        records = self.collect(session["id"])
         self.assertEqual(records[0]["capability"], "metrics.range")
         self.assertEqual(records[0]["completeness"], "empty")
-        self.assertEqual(records[0]["provider"], "grafana")
+        self.assertEqual((records[0]["provider"], records[0]["connection"]), ("grafana", "grafana"))
+
+    def test_per_environment_connections_pick_the_right_credentials(self):
+        data = orgs.load(self.home, "acme", self.registry)
+        data["connections"] = {"cubeapm-staging": {"provider": "cubeapm", "env": "staging"},
+                               "cubeapm-uat": {"provider": "cubeapm", "env": "uat"}}
+        orgs.save(self.home, data, self.registry)
+        self.secret("acme", "cubeapm-staging", CUBEAPM)
+        self.secret("acme", "cubeapm-uat", [l.replace("fixture.invalid", "uat.invalid") for l in CUBEAPM])
+        self.reload()
+        self.fake('import os; print(os.environ["CUBEAPM_SERVER"]); print(\'{"status":"success","data":{"resultType":"matrix","result":[]}}\')')
+        path, session = self.session()
+        record = self.collect(session["id"], operation="cubeapm.metrics.range", params={"query": "up"})[0]
+        self.assertEqual(record["connection"], "cubeapm-staging")
+        self.assertIn("fixture.invalid", (path / record["artifacts"]["stdout"]["path"]).read_text())
 
     def test_cli_start_collect_and_close(self):
         self.fake('print("[]")')
-        result = self.cli("debug", "--env", "staging", "--service", "checkout", "--question", "Why slow?", "--from", BOUNDS["from"], "--to", BOUNDS["to"], "--collect", "--json")
+        result = self.cli_staging("debug", "--service", "checkout", "--question", "Why slow?", "--from", BOUNDS["from"], "--to", BOUNDS["to"], "--collect", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        started = json.loads(result.stdout)
+        self.assertEqual((started["org"], started["environment"]), ("acme", "staging"))
+        sid = started["session"]
+        self.assertNotEqual(self.cli_staging("close", sid, "--outcome", "diagnosed").returncode, 0)
+        self.assertEqual(self.cli_staging("close", sid, "--outcome", "inconclusive").returncode, 0)
+
+    def test_cli_pinned_context_drives_a_session(self):
+        self.fake('print("[]")')
+        result = self.cli("debug", "--service", "checkout", "--question", "Why slow?", "--from", BOUNDS["from"], "--to", BOUNDS["to"],
+                          "--json", RECKON_ORG="acme", RECKON_ENV="staging")
         self.assertEqual(result.returncode, 0, result.stderr)
         sid = json.loads(result.stdout)["session"]
-        self.assertNotEqual(self.cli("close", sid, "--outcome", "diagnosed").returncode, 0)
-        self.assertEqual(self.cli("close", sid, "--outcome", "inconclusive").returncode, 0)
+        wrong = self.cli("collect", sid, "--json", RECKON_ORG="acme", RECKON_ENV="uat")
+        self.assertEqual(wrong.returncode, 1)
+        self.assertIn("session belongs", wrong.stderr)
 
     def test_start_with_failed_collection_returns_partial_status(self):
         self.fake('raise SystemExit(1)')
-        result = self.cli("debug", "--env", "staging", "--service", "checkout", "--question", "Why slow?", "--from", BOUNDS["from"], "--to", BOUNDS["to"], "--collect", "--json")
+        result = self.cli_staging("debug", "--service", "checkout", "--question", "Why slow?", "--from", BOUNDS["from"], "--to", BOUNDS["to"], "--collect", "--json")
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertTrue(json.loads(result.stdout)["collection"]["partial"])
         self.assertTrue(Path(json.loads(result.stdout)["report"]).exists())
@@ -473,11 +467,142 @@ class WorkflowTests(Fixture):
         with self.assertRaises(ValueError):
             window("2026-09-08T14:00:00", BOUNDS["to"])
 
+    def test_ambiguous_service_is_rejected(self):
+        self.mapping["services"].append({**self.mapping["services"][0], "id": "checkout-v2"})
+        self.save_mapping()
+        with self.assertRaisesRegex(ValueError, "ambiguous"):
+            resolve_service(self.root, "staging", "checkout-api")
+
     def test_trace_arguments_preserve_window_and_filter(self):
         command = build("cubeapm.traces.search", {"service": "checkout", "status": "error", "env_label": "STAG", "limit": 10}, BOUNDS, self.root)
         self.assertIn("STAG", command["argv"])
         self.assertIn(BOUNDS["from"], command["argv"])
+        self.assertIn("error", command["argv"])
         self.assertEqual(command["capability"], "traces.search")
+
+    def test_cubeapm_env_label_is_applied_to_trace_searches_automatically(self):
+        data = orgs.load(self.home, "acme", self.registry)
+        data["connections"]["cubeapm"]["env_labels"] = {"staging": "STAG", "uat": "UAT"}
+        orgs.save(self.home, data, self.registry)
+        self.reload()
+        self.fake("import json,sys; print(json.dumps(sys.argv))")
+        path, session = self.session()
+        record = self.collect(session["id"], operation="cubeapm.traces.search", params={"service": "checkout"})[0]
+        self.assertEqual(record["status"], "ok")
+        argv = json.loads((path / record["artifacts"]["stdout"]["path"]).read_text())
+        self.assertEqual(argv[argv.index("--env") + 1], "STAG")
+        # Passing the right label explicitly is fine; the uat label is another environment's.
+        explicit = self.collect(session["id"], operation="cubeapm.traces.search", params={"service": "checkout", "env_label": "STAG"})
+        self.assertEqual(explicit[0]["status"], "reused")
+        marker = len(evidence(path))
+        with self.assertRaisesRegex(ValueError, "another environment"):
+            self.collect(session["id"], operation="cubeapm.traces.search", params={"service": "checkout", "env_label": "UAT"})
+        self.assertEqual(len(evidence(path)), marker)
+
+    def test_environment_label_follows_the_context_environment(self):
+        data = orgs.load(self.home, "acme", self.registry)
+        data["connections"]["cubeapm"]["env_labels"] = {"staging": "STAG", "uat": "UAT"}
+        orgs.save(self.home, data, self.registry)
+        self.fake("import json,sys; print(json.dumps(sys.argv))")
+        context = self.ctx("acme", "uat")
+        path, session = create(self.root, "acme", "uat", "uat q", "debug", self.mapping["services"][0], BOUNDS, "latency")
+        record = work.collect(self.home, context, self.root, session["id"], "cubeapm.traces.search", {"service": "checkout"}, registry=self.registry)[0]
+        argv = json.loads((path / record["artifacts"]["stdout"]["path"]).read_text())
+        self.assertEqual(argv[argv.index("--env") + 1], "UAT")
+        self.assertEqual(record["environment"], "uat")
+
+
+class TaskTests(Fixture):
+    def start(self, *extra):
+        result = self.cli_staging("task", "--question", "Draft the Q4 pricing page copy", *extra, "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def test_task_session_has_no_service_or_window(self):
+        started = self.start("--area", "product")
+        path, data = session_path(self.root, started["session"])
+        self.assertEqual((data["mode"], data["service"], data["window"], data["playbook"], data["area"]), ("task", None, None, None, "product"))
+        self.assertEqual((data["org"], data["environment"], data["status"]), ("acme", "staging", "open"))
+        self.assertEqual(started["org"], "acme")
+        self.assertEqual(evidence(path), [])
+
+    def test_task_report_is_titled_as_a_task(self):
+        started = self.start("--area", "product")
+        text = Path(started["report"]).read_text()
+        self.assertTrue(text.startswith("# Task: Draft the Q4 pricing page copy"))
+        self.assertIn("**Area:** product", text)
+        self.assertNotIn("Window:", text)
+        self.assertNotIn("root cause", text)
+
+    def test_task_may_carry_a_window_but_needs_both_ends(self):
+        started = self.start("--from", BOUNDS["from"], "--to", BOUNDS["to"])
+        self.assertEqual(session_path(self.root, started["session"])[1]["window"], BOUNDS)
+        half = self.cli_staging("task", "--question", "x", "--from", BOUNDS["from"])
+        self.assertEqual(half.returncode, 1)
+        self.assertIn("both --from and --to", half.stderr)
+        bad = self.cli_staging("task", "--question", "x", "--area", "Bad Area")
+        self.assertEqual(bad.returncode, 1)
+
+    def test_collecting_an_operation_without_a_window_fails_clearly(self):
+        marker = self.dir / "ran"
+        self.fake("open(" + repr(str(marker)) + ", 'w').write('x')")
+        sid = self.start()["session"]
+        result = self.cli_staging("collect", sid, "--operation", "cubeapm.metrics.range", "--params", '{"query": "up"}')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("no time window", result.stderr)
+        self.assertFalse(marker.exists())
+        self.assertEqual(evidence(session_path(self.root, sid)[0]), [])
+
+    def test_plain_collect_of_a_task_does_nothing(self):
+        sid = self.start()["session"]
+        result = self.cli_staging("collect", sid, "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), [])
+
+    def test_task_collects_evidence_through_run_and_reports_it(self):
+        self.fake('print("[]")')
+        sid = self.start()["session"]
+        result = self.cli("run", "cubeapm", "--session", sid, "--label", "services", "--org", "acme", "--env", "staging", "--", "metrics", "label-values", "service", "-o", "json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = self.cli_staging("report", sid, "--json")
+        self.assertIn("services", Path(json.loads(report.stdout)["report"]).read_text())
+        record = work.resume(self.root, sid)["evidence"][0]
+        self.assertEqual((record["connection"], record["status"], record["completeness"]), ("cubeapm", "ok", "bounded"))
+
+    def test_close_done_works_and_diagnosed_needs_a_finding(self):
+        sid = self.start()["session"]
+        self.assertEqual(self.cli_staging("close", sid, "--outcome", "diagnosed").returncode, 1)
+        self.assertEqual(self.cli_staging("close", sid, "--outcome", "done").returncode, 0)
+        self.assertEqual(session_path(self.root, sid)[1]["status"], "done")
+
+    def test_task_from_another_environment_is_not_usable_here(self):
+        sid = self.start()["session"]
+        result = self.cli("resume", sid, "--org", "acme", "--env", "uat")
+        self.assertEqual(result.returncode, 0)
+        result = self.cli("collect", sid, "--org", "acme", "--env", "uat")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("session belongs", result.stderr)
+
+    def test_history_lists_tasks_per_environment(self):
+        sid = self.start()["session"]
+        mine = json.loads(self.cli_staging("history", "--json").stdout)
+        self.assertEqual([h["id"] for h in mine], [sid])
+        other = json.loads(self.cli("history", "--org", "acme", "--env", "uat", "--json").stdout)
+        self.assertEqual(other, [])
+        everything = json.loads(self.cli("history", "--org", "acme", "--env", "uat", "--all-envs", "--json").stdout)
+        self.assertEqual([h["id"] for h in everything], [sid])
+
+
+class DemoTests(OrgCase):
+    def test_cli_demo_is_synthetic_and_isolated(self):
+        result = self.cli("demo", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertTrue(output["synthetic"])
+        self.assertFalse(output["network_used"])
+        self.assertEqual(output["evidence_records"], 7)
+        self.assertEqual(orgs.orgs(self.home), [])
+        self.assertTrue(Path(output["report"]).is_file())
 
 
 if __name__ == "__main__":

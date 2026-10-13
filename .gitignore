@@ -1,50 +1,29 @@
-# Folder-scoped credentials and install state — never commit these.
-.config/
-.claude/
-.agents/
+# Business data lives under $RECKON_HOME (default ~/.reckon), never in this
+# checkout: orgs, connections, credentials, knowledge, sessions and incidents.
+# The entries below cover checkouts from before orgs existed, which kept that
+# data here. Move it with `reckon migrate`, then delete it; never commit it,
+# and never add a `!` re-include rule here.
 .env
 .env.*
-!.env.example
-
-# ── Tenant data: ENTIRELY local, never committed ───────────────────────────
-# Everything under these two directories belongs to whoever cloned reckon —
-# their service inventory, quirks, on-call rotations, incident history, raw
-# evidence: real service names, trace IDs, IPs, timelines. Operators populate
-# them via their own coding agent, against their own infra. Nothing here is
-# ours to ship, so both directories are ignored wholesale (no exceptions —
-# a `!` re-include rule here is how tenant data leaks).
-#
-# What makes these directories usable travels with the SKILL instead, tracked:
-#   skills/reckon/templates/infra-knowledge/{_shared,env}/  — seed templates
-#   skills/reckon/references/infra-knowledge-guide.md       — what each file holds
-#   skills/reckon/references/incidents-convention.md        — folder layout
-# `scripts/setup.sh` creates and seeds both directories from those templates,
-# so a fresh clone bootstraps without either being in git.
+.config/
+/.reckon-env
 /infra-knowledge/
 /incidents/
 /sessions/
 /.reckon-demo/
-__pycache__/
-*.pyc
-
-# Locally built binaries. The `reckon` control-surface CLI is a tracked shell
-# script at scripts/reckon, deliberately NOT here, so this stays a pure
-# build-output directory.
-/bin/
-
-# Local state: the active environment pinned by `scripts/reckon use <env>`.
-/.reckon-env
-
-# Legacy: RCA artifacts that used to land at the repo root before the
-# incidents/ convention. Kept ignored for back-compat with older clones.
-# Anchored to root so skill-reference filenames starting with "rca-"
-# (like rca-doc-template.md) stay tracked.
 /RCA-*.md
 /rca-*.md
 
-# Cloudflare Pages local cache
+# Local agent state for anyone running an agent in the checkout itself.
+.claude/
+.agents/
+
+__pycache__/
+*.pyc
+/bin/
+
+# Cloudflare local cache
 .wrangler/
 
-# macOS Finder metadata — never commit. (incidents/.DS_Store encodes the names
-# of gitignored incident folders, so a stray `git add -A` could leak them.)
+# macOS Finder metadata (it can encode the names of ignored folders).
 .DS_Store

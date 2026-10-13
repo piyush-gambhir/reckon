@@ -1,87 +1,126 @@
 ---
-title: Saved investigations
-description: Capture evidence, preserve findings, and resume debugging across sessions.
+title: Saved work
+description: Keep evidence and reasoning in sessions for any task, run incident investigations over mapped services, and promote them to RCAs.
 ---
 
-Reckon provides local support for investigations driven by your coding agent:
-service mappings, bounded collection, evidence records, findings, reports, and
-resume. Python 3.9+ is required; there are no external Python dependencies.
+Reckon keeps work local and structured so it survives the conversation. It does
+not run its own model or decide a root cause: the agent reads the saved
+evidence, tests explanations and records findings with the commands below.
+Every command works in the current org and environment (`reckon preflight`
+shows them).
 
-## Try the offline walkthrough
+## Sessions for any task
 
 ```bash
-./scripts/reckon demo
+reckon task --question "Weekly search review" --area gtm
+reckon run gsc --session <id> --label "top queries 28d" -- top queries --site sc-domain:example.com --last 28d -o json
+reckon note <id> --kind finding --text "..." --evidence <evidence-id>
+reckon note <id> --kind hypothesis --text "..." --next-check "..."
+reckon report <id>          # writes the briefing
+reckon resume <id> --json   # everything saved, for a later conversation
+reckon close <id> --outcome done
+reckon history              # this org's sessions in this environment
+reckon history --all-envs
 ```
 
-The demo uses synthetic CubeAPM, Grafana, and Jenkins executables in an isolated
-workspace. It prints a report path and a command to resume the investigation.
-It does not connect to your infrastructure.
+`--area` takes `dev`, `product`, `gtm`, `sales`, `ops` or your own word, and
+`--from`/`--to` add an optional time window. `reckon run --session` saves the
+output as evidence with its command, connection, org, environment, time and
+hashes. A session refuses evidence from another org or environment.
 
-## Map a service and start
+Note kinds are `finding`, `hypothesis`, `rejected` and `question`. A finding or
+a rejected idea must cite successful evidence from the same session. That checks
+the reference, not the truth of the claim. `close` takes `done`, `diagnosed`
+(needs a finding) or `inconclusive`.
 
-Create `infra-knowledge/<environment>/services.json` using the repository's
-`examples/services.json` as a starting point. Replace the synthetic names and
-queries with your actual inventory. Keep only the sources you use. Each service
-needs an ID, optional aliases, mapping provenance, and source-specific settings.
+## Incident investigations
+
+Investigations add a mapped service, a time window and typed collection. Map
+services in `knowledge/<env>/services.json` in the org folder, starting from
+the checkout's `examples/services.json`. Replace its synthetic values and keep
+only the sources you use.
 
 ```bash
-./scripts/reckon services validate --env staging
-./scripts/reckon capabilities --env staging
+reckon services validate
+reckon services show checkout
+reckon capabilities
 
-./scripts/reckon debug --env staging --service checkout \
+reckon debug --service checkout \
   --question 'Why did checkout latency increase?' \
-  --from 2026-09-08T14:00:00Z --to 2026-09-08T14:30:00Z
+  --from 2026-10-14T13:00:00Z --to 2026-10-14T13:30:00Z
+reckon collect <id>
 ```
 
-Starting a session is local. Add `--collect` to start live collection immediately,
-or collect separately using the returned session ID:
+Starting a session is local; add `--collect` to read immediately.
+`investigate`, `monitor` and `analyze` start the same kind of session and record
+the mode. `--playbook latency|errors|workload|changes` chooses the guidance.
+
+Mapped sources and their fields:
+
+| Source | Fields |
+| --- | --- |
+| `cubeapm` | `service`, `metrics` (label to PromQL), optional `logs_query` |
+| `grafana` | `service`, `datasource`, `metrics`, optional `annotation_tags` |
+| `jenkins` | `job` |
+| `github` | `repo` (`owner/name`), optional `workflow` |
+| `git` | `path` to a local repository, `revision` as an explicit commit SHA |
+| `elasticsearch` | `index`, optional `query` and timestamp `field` |
+| `kubernetes` | `namespace`, optional pod `selector` |
+| `aws` | CloudWatch log `group`, optional filter `query` |
+| `jira` | a bounded JQL `query` |
+| `nginxpm` | `proxy_id` and/or `certificate_id` |
+
+Each source needs a connection for the session's environment. On a shared
+backend such as CubeAPM, put the environment's label in the mapped queries.
+Databases, caches and queues are not part of typed collection: reach them with
+`reckon run`, which asks you first.
+
+Follow a lead with one typed operation, or any read through `reckon run`:
 
 ```bash
-./scripts/reckon collect SESSION_ID --env staging
-./scripts/reckon resume SESSION_ID --json
+reckon collect <id> --operation jenkins.build.get --params '{"job":"deploy/checkout","number":42}'
+reckon run cubeapm --session <id> -- traces search --service checkout --env PROD --status error --last 1h -o json
 ```
 
-The collector uses mapped queries and compares metric readings with the preceding
-equal-length window. Each command has a deadline and output cap. Missing access,
-failed queries, and partial results are saved explicitly. Retrying reuses successful
-evidence; `--refresh` makes new live reads. Session environments cannot be mixed.
+Collection compares metrics with the preceding window of equal length. It runs
+at most 24 operations, each with a 15 second deadline (`--timeout`, at most 120)
+and a 1 MiB output cap (`--max-bytes`, at most 8 MiB), and caps metrics at
+1,000 steps. Missing access, failures and truncation are saved as gaps; exit
+status 2 means collection was partial. A retry reuses successful evidence, and
+`--refresh` reads again.
 
-## Explain and preserve
-
-The coding agent reads the artifacts and tests explanations. Reckon does not run
-its own model or infer a root cause from a successful query.
+## Promote to an RCA
 
 ```bash
-./scripts/reckon note SESSION_ID --kind finding \
-  --text 'Latency increased while request volume remained steady.' \
-  --evidence EVIDENCE_ID_1 EVIDENCE_ID_2
-
-./scripts/reckon note SESSION_ID --kind hypothesis \
-  --text 'The pricing dependency may explain the change.' \
-  --next-check 'Compare pricing spans and the deployed revision.'
-
-./scripts/reckon report SESSION_ID
-./scripts/reckon history --env staging --service checkout
-./scripts/reckon promote SESSION_ID --slug checkout-latency
+reckon promote <id> --slug checkout-latency
 ```
 
-Findings must reference successful evidence from the same session. This checks
-references, not the truth of the explanation. Promotion creates a preliminary
-snapshot in the existing incident convention; finish `RCA.md` with the RCA template.
+Promotion writes a preliminary snapshot to
+`incidents/<date>-<slug>/` in the org folder with the evidence, briefing,
+`RCA.md`, `alert.txt` and `learnings.md`. It never overwrites an existing
+incident. Finish `RCA.md` with the RCA template. `reckon history --all-envs`
+also searches these RCAs, marked with an unverified environment. To share one
+as a PDF, see [Exporting RCAs](/docs/exporting).
 
-## Coverage and limits
+## Try it offline
 
-Typed collection operations cover CubeAPM, Grafana, Jenkins, GitHub, local Git,
-Elasticsearch, Kubernetes, AWS CloudWatch logs, Jira, and Nginx Proxy Manager.
-The rest of the toolbelt remains available through the existing methodology.
-Database commands retain their existing approval requirements and are not
-automatically executed by this collector.
+```bash
+reckon demo
+```
 
-Sessions and evidence remain local and gitignored. Known credentials are redacted
-from collected artifacts, but logs can contain customer data and require review
-before sharing. Current snapshots and recent-build lists carry explicit temporal
-limits. A nearby deployment alone is not evidence that it caused an incident.
+The demo creates a throwaway org under `~/.reckon/demos/` and runs synthetic
+CubeAPM, Grafana and Jenkins executables through real connections. It captures
+evidence, records a finding and an unresolved hypothesis, and prints a report
+path. It never uses your credentials or contacts a tool.
 
-For complete source mappings, operation parameters, storage behavior, and current
-limitations, read `docs/INVESTIGATIONS.md` in the repository. Native Windows support
-for the shared Python core remains experimental pending execution validation.
+## Storage and limits
+
+Sessions live in `~/.reckon/orgs/<org>/workspace/sessions/<id>/`. Known
+credential values and common bearer and URL credentials are redacted from saved
+output, but logs can still hold customer data: review before sharing. Evidence
+files are hashed, and Reckon refuses to reuse, cite or promote an artifact that
+changed. A nearby deploy alone is not evidence that it caused an incident.
+
+The full reference, including operation parameters, is
+[docs/INVESTIGATIONS.md](https://github.com/piyush-gambhir/reckon/blob/main/docs/INVESTIGATIONS.md)
+in the repository.

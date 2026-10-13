@@ -3,7 +3,7 @@
 Questions about **shape over time** rather than faults: capacity headroom, cost drivers, performance profiling, traffic growth, "what should we optimize first".
 
 > **Entered from [`../SKILL.md`](../SKILL.md).** That file carries the active-environment rule,
-> the toolbelt, and how to read `infra-knowledge/`. Say which environment the numbers describe —
+> the toolbelt, and how to read `knowledge/`. Say which environment the numbers describe —
 > capacity and cost conclusions from staging do not transfer to production, and quoting them
 > as if they do is the characteristic failure of this mode.
 
@@ -48,7 +48,7 @@ The same per-call-vs-volume decomposition drives the investigate cascade — the
 - **Cover at least one full weekly cycle** for anything seasonal. Infra load is strongly weekly; a 3-day window will mislead about growth every time.
 - **Aggregate first, drill second.** Establish the total, then decompose it. Starting from an interesting-looking individual query wastes the window.
 - **Anchor to limits, not to zero.** Percent-of-limit is the actionable framing; absolute values are not, unless you also state the ceiling.
-- **Read `infra-knowledge/<env>/known-issues.md` first.** A "discovery" the team documented long ago is not a finding, and known-slow queries change how you read a profile.
+- **Read `knowledge/<env>/known-issues.md` first.** A "discovery" the team documented long ago is not a finding, and known-slow queries change how you read a profile.
 
 ## 5. Pitfalls specific to analysis
 

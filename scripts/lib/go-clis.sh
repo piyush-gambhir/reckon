@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Public release pins live in ../cli-releases.csv, shared with setup.ps1.
-# Nested cli-go/v* module tags match the public root release tags.
+# The version column is a nested cli-go/v* module tag where the repo publishes
+# one, otherwise the release tag's commit (gsc, bwt, clarity).
 
 install_go_cli() {
     local module="$1" bin="$2" version="$3" release="$4" version_package="$5"
@@ -9,7 +10,7 @@ install_go_cli() {
     stage="$(mktemp -d)" || { mark_failed "$bin"; return; }
     info "$bin — installing $release (${module}@${version})..."
     # Every main package is called cli-go. Stage it privately, then install it
-    # under its public name so the four packages cannot overwrite each other.
+    # under its public name so the packages cannot overwrite each other.
     if GOBIN="$stage" go install \
         -ldflags "-X ${module}/${version_package}.Version=${release#v}" \
         "${module}@${version}" \

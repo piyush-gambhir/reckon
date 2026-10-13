@@ -19,29 +19,29 @@ const contextualBodyLinks: Record<
   string,
   { href: string; text: string }
 > = {
-  'Incident investigations': {
-    href: '/docs/quickstart',
-    text: 'disciplined RCA workflow',
-  },
-  'Cross-system correlation': {
-    href: '/docs/commands/observability',
-    text: 'error and latency windows',
-  },
-  'Read-only safety': {
+  'Orgs and environments': {
     href: '/docs/connections',
-    text: 'read-only roles',
+    text: 'one org in one environment',
   },
-  'One operations toolbelt': {
-    href: '/docs/toolbelt',
-    text: 'fourteen wired CLIs',
+  'Every tool through one command': {
+    href: '/docs/commands',
+    text: 'reckon run',
   },
-  'Runtime-agnostic agents': {
-    href: '/docs/agents',
-    text: 'Claude Code, Codex CLI, OpenCode',
+  'Read-only by construction': {
+    href: '/docs/connections',
+    text: 'read-only mode',
   },
   'Credential isolation': {
     href: '/docs/connections',
-    text: 'CLI profiles and environment credentials',
+    text: 'credentials and CLI profile',
+  },
+  'Saved work': {
+    href: '/docs/investigations',
+    text: 'Sessions',
+  },
+  'Incident investigations': {
+    href: '/docs/investigations',
+    text: 'disciplined RCA workflow',
   },
 };
 

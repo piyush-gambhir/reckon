@@ -2,12 +2,14 @@
 
 Per-level checklist. At each level, answer two questions: *where did the time/errors go* and *what fed this level*. Skip to the next level only when you can state an attribution quantitatively.
 
+> Commands in this file show each CLI's own arguments. Run them through Reckon, which adds the connection's credentials and keeps reads read-only: `reckon run cubeapm -- traces search ...`. On a shared CubeAPM server, add the active environment's label to every query (see `WORKSPACE.md`).
+
 ## Level 0: frame
 
 - [ ] Exact service label value (match the metric, not the user's prose)
 - [ ] UTC start / UTC end of the window
 - [ ] Symptom expressed as a number (Apdex 0.21, p99 2.5s, 5xx rate 8%, queue lag 80k)
-- [ ] Check `infra-knowledge/services.md`, `metric-conventions.md`, `server-quirks.md`, `known-issues.md`
+- [ ] Check `knowledge/services.md`, `metric-conventions.md`, `server-quirks.md`, `known-issues.md`
 
 ## Level 1: service-wide signal
 
@@ -41,7 +43,7 @@ Per-level checklist. At each level, answer two questions: *where did the time/er
 **If downstream is an HTTP service:**
 - [ ] Apply Level 1–4 to that service, same window
 - [ ] Compare its *caller* rate (§3.6 in SKILL.md) during the window vs its baseline
-- [ ] Check `infra-knowledge/known-issues.md` for known behaviors of that service
+- [ ] Check `knowledge/known-issues.md` for known behaviors of that service
 
 **If downstream is a DB query:**
 - [ ] Plot `rate(sum)/rate(count)` for the query over 24 h to see the baseline
@@ -59,7 +61,7 @@ Per-level checklist. At each level, answer two questions: *where did the time/er
 - [ ] Scheduled job rate changes? (Compare CADENCE-* service rates across the window.)
 - [ ] Admin console activity? (Look for reprocess / bulk / admin GET/POST on the relevant screens in the minute preceding the spike.)
 - [ ] One-off bulk calls? (Search `root_name=~".*bulk.*"` or `.*reprocess.*` for a single call at incident start.)
-- [ ] Deploys? (`grafana annotation list` for `deploy` tag + `jenkins build list` for the service's deploy job. Skip if the alert isn't a Grafana rule — see SKILL.md §6 #8 and `infra-knowledge/server-quirks.md` for workspace-specific notification-template patterns.)
+- [ ] Deploys? (`grafana annotation list` for `deploy` tag + `jenkins build list` for the service's deploy job. Skip if the alert isn't a Grafana rule — see SKILL.md §6 #8 and `knowledge/server-quirks.md` for workspace-specific notification-template patterns.)
 - [ ] Upstream-outage-induced retry storm? (Check upstream service's Apdex; if it dropped just before yours, retries are the story.)
 
 ### Caller discovery for `/internal/` / service-to-service endpoints

@@ -3,11 +3,11 @@
   "pages": [
     "index",
     "installation",
-    "connections",
     "quickstart",
+    "connections",
+    "agents",
     "investigations",
     "toolbelt",
-    "agents",
     "exporting",
     "---Reference---",
     "integrations",

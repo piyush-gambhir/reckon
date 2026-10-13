@@ -24,20 +24,18 @@ jobs:
 
       - name: Validate shell scripts
         run: |
-          bash -n .envrc scripts/reckon
+          bash -n scripts/reckon
           find scripts tests -type f -name '*.sh' -print0 | xargs -0 -n 1 bash -n
 
       - name: Lint shell scripts
         run: |
           sudo apt-get update
           sudo apt-get install --yes shellcheck
-          shellcheck --severity=error --shell=bash .envrc
           shellcheck --severity=error scripts/reckon
           find scripts tests -type f -name '*.sh' -print0 | xargs -0 shellcheck --severity=error
 
       - name: Test reckon control surface
         run: |
-          bash tests/test-reckon.sh
           bash tests/test-cli-install.sh
           python3 -B -m unittest discover -s tests -p 'test_*.py' -v
 
@@ -53,31 +51,19 @@ jobs:
       - name: Smoke-test PowerShell control surface
         shell: pwsh
         run: |
-          .\scripts\reckon.ps1 help
-          try {
-            .\scripts\reckon.ps1 status
-            throw 'status unexpectedly succeeded without an environment'
-          } catch {
-            if ($_.Exception.Message -eq 'status unexpectedly succeeded without an environment') {
-              throw
-            }
-          }
-          .\scripts\reckon.ps1 use staging
+          $env:RECKON_HOME = Join-Path ([System.IO.Path]::GetTempPath()) ('reckon-ci-' + [guid]::NewGuid())
+          .\scripts\reckon.ps1 --help
+          if ($LASTEXITCODE -ne 0) { throw 'help failed' }
+          .\scripts\reckon.ps1 status
+          if ($LASTEXITCODE -eq 0) { throw 'status unexpectedly succeeded without an org' }
+          .\scripts\reckon.ps1 org add acme --envs 'prod,uat'
+          if ($LASTEXITCODE -ne 0) { throw 'org add failed' }
+          .\scripts\reckon.ps1 connect jenkins-uat --org acme --provider jenkins --for-env uat
+          if ($LASTEXITCODE -ne 0) { throw 'connect failed' }
+          .\scripts\reckon.ps1 use acme/uat
           .\scripts\reckon.ps1 preflight
-          if ($env:RECKON_ENV) { throw 'reckon.ps1 left RECKON_ENV set in the calling shell' }
-          $env:reckon_env = 'lowercase'
-          .\scripts\reckon.ps1 preflight
-          if ($env:RECKON_ENV) { throw 'reckon.ps1 left RECKON_ENV set beside a lowercase reckon_env' }
-          Remove-Item Env:reckon_env
-          . .\scripts\activate.ps1
-          $env:RECKON_ENV = 'uat'
-          . .\scripts\activate.ps1
-          if ($env:RECKON_ENV -cne 'uat') { throw 'activation discarded a RECKON_ENV set in the shell' }
-          . .\scripts\activate.ps1
-          if ($env:RECKON_ENV -cne 'uat') { throw 're-activation dropped the RECKON_ENV set in the shell' }
-          . .\scripts\activate.ps1 -Env staging
-          . .\scripts\activate.ps1
-          if ($env:RECKON_ENV -cne 'staging') { throw 're-activation undid an explicit -Env selection' }
+          if ($LASTEXITCODE -ne 0) { throw 'preflight failed' }
+          if ($env:RECKON_ORG) { throw 'reckon.ps1 left RECKON_ORG set in the calling shell' }
 
       - name: Set up pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0

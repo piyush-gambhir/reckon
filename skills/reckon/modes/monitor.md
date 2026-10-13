@@ -3,7 +3,7 @@
 Sweeping for problems when nothing is known to be broken — a health check across an environment, a pre/post-deploy verification, a morning "does anything look wrong", drift and anomaly hunting.
 
 > **Entered from [`../SKILL.md`](../SKILL.md).** That file carries the active-environment rule,
-> the toolbelt, and how to read `infra-knowledge/`. State which environment you are sweeping
+> the toolbelt, and how to read `knowledge/`. State which environment you are sweeping
 > before the first query — a sweep silently run against the wrong environment produces a
 > confidently wrong "all clear".
 
@@ -13,7 +13,7 @@ Sweeping for problems when nothing is known to be broken — a health check acro
 
 A sweep without a declared scope silently becomes "whatever I happened to check." State all four up front:
 
-- **Environment** — from `RECKON_ENV`.
+- **Environment** — from `reckon preflight`.
 - **Breadth** — whole environment · one service and its dependencies · one subsystem (queues, datastores, cluster).
 - **Window** — the period being judged. Default `--last 1h` for "right now"; `--last 24h` when asked "has anything been wrong today".
 - **Trigger** — routine check · post-deploy verification · a hunch · a user report with no numbers yet.
@@ -51,7 +51,7 @@ For each finding, record four things — this is what separates a useful sweep f
 | Field | Why |
 |---|---|
 | **Value + baseline** | The deviation, not the reading |
-| **Is it new?** | New deviation vs. a long-standing condition. Check `infra-knowledge/<env>/known-issues.md` before flagging anything as new — a "finding" the team documented months ago is noise. |
+| **Is it new?** | New deviation vs. a long-standing condition. Check `knowledge/<env>/known-issues.md` before flagging anything as new — a "finding" the team documented months ago is noise. |
 | **Direction** | Improving, stable, or worsening. Worsening outranks larger-but-stable. |
 | **Blast radius** | One service, or a shared dependency with tenants behind it |
 
@@ -90,4 +90,4 @@ A sweep produces a short report, not an incident folder. Keep it to one screen u
 
 Health reports are ephemeral by default — don't create an incident folder for a clean sweep. If a finding escalates into an investigation, the RCA folder becomes the durable record and the sweep is quoted in it as the originating signal.
 
-If a sweep surfaces something the knowledge base should have told you (an unknown service, a new consumer group, an undocumented quirk), route it into `infra-knowledge/` per the self-review step in [`investigate.md`](investigate.md) §9 — that is how sweeps compound instead of repeating.
+If a sweep surfaces something the knowledge base should have told you (an unknown service, a new consumer group, an undocumented quirk), route it into `knowledge/` per the self-review step in [`investigate.md`](investigate.md) §9 — that is how sweeps compound instead of repeating.

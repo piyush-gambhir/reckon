@@ -1,0 +1,72 @@
+---
+title: Bing Webmaster Tools
+description: Read Bing Webmaster Tools traffic, queries, pages and crawl health with the bwt CLI in read-only mode.
+---
+
+## What it covers
+
+Bing Webmaster Tools shows Bing search traffic, top queries and pages, crawl
+statistics and crawl problems, sitemaps, and what Bing knows about a URL.
+
+## Connect
+
+Bing has no environments, and one API key covers every site in the account, so
+make one shared connection. The provider is `bing`; the CLI is `bwt`.
+
+```bash
+reckon connect bing --org acme --provider bing
+```
+
+Run the login yourself in a terminal:
+
+```bash
+reckon login bing
+```
+
+It runs `bwt auth login`, which takes your API key at a hidden prompt and
+stores it in the OS keychain. Reckon gives this CLI your real home directory so
+the keychain works, and keeps its config per connection. The key is in Bing
+Webmaster Tools under **Settings**, **API Access**, **API Key**.
+
+Or fill in `~/.reckon/orgs/acme/secrets/bing.env`:
+
+```bash
+BWT_API_KEY=replace_me
+```
+
+`BWT_ACCESS_TOKEN` works instead of `BWT_API_KEY`. `BWT_SITE` sets a default
+site.
+
+`reckon verify bing` runs `bwt auth status --verify -o json`.
+
+## Read-only contract
+
+Reckon runs `bwt` with `BWT_READ_ONLY=true` and `BWT_NO_INPUT=true`, so the CLI
+refuses URL and sitemap submissions, IndexNow submissions, setting changes and
+every other remote write. It also refuses `--access-token`, `--api-key`,
+`--profile`, `--config`, `--read-only` and `--no-input`, and the `auth login`,
+`auth logout`, `auth use`, `config`, `sites use`, `indexnow key` and `update`
+commands. The agent picks a site per command with `--site`.
+
+## Key commands
+
+```bash
+reckon run bing -- sites list -o json
+reckon run bing -- stats summary --days 28 --compare previous -o json
+reckon run bing -- stats queries --sort clicks --limit 100 -o json
+reckon run bing -- stats pages --sort clicks --limit 100 -o json
+reckon run bing -- crawl stats -o json
+reckon run bing -- crawl issues -o json
+reckon run bing -- url info https://www.example.com/pricing -o json
+reckon run bing -- sitemaps list -o json
+```
+
+Bing returns its own top rows with no server-side date range or paging, and
+`bwt` filters dates locally, so its numbers are not complete history. An empty
+crawl issues list does not prove the site has none.
+
+## Links
+
+- [bing-webmaster-cli documentation](https://projects.piyushgambhir.com/bing-webmaster-cli/)
+- [bing-webmaster-cli source](https://github.com/piyush-gambhir/bing-webmaster-cli)
+- [Bing Webmaster Tools](https://www.bing.com/webmasters/)

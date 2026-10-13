@@ -1,0 +1,68 @@
+---
+title: Jira
+description: Read Jira issues, history, boards and sprints with the jira CLI in read-only mode, on Cloud or Server/Data Center.
+---
+
+## What it covers
+
+Jira answers product and delivery questions: what changed in a project, what
+is in the active sprint, when an issue moved and who moved it, and which tickets
+line up with a release or an incident.
+
+## Connect
+
+A Jira site usually serves every environment, so one shared connection is
+enough:
+
+```bash
+reckon connect jira --org acme --provider jira
+```
+
+Fill in `~/.reckon/orgs/acme/secrets/jira.env`. Jira Cloud with an API token:
+
+```bash
+JIRA_SITE=https://acme.atlassian.net
+JIRA_EMAIL=user@example.com
+JIRA_TOKEN=replace_me
+```
+
+Other auth types set `JIRA_AUTH_TYPE`: `pat` for a Server or Data Center
+personal access token in `JIRA_TOKEN`, `basic` with `JIRA_USER` and
+`JIRA_PASSWORD`, and `scoped_token` or `oauth2` on Cloud. Instead of the file,
+you can run `reckon login jira` in your own terminal: it runs `jira auth login`
+and keeps the profile in that connection's private config. For OAuth this is
+simpler than setting `JIRA_OAUTH_*` keys by hand.
+
+`reckon verify jira` runs `jira whoami -o json`.
+
+## Read-only contract
+
+Reckon runs `jira` with `JIRA_READ_ONLY=true` and `JIRA_NO_INPUT=true`, so the
+CLI refuses creates, edits, transitions, comments and every other write. It also
+refuses `--site`, `--email`, `--token`, `--user`, `--insecure` and their short
+forms (`-s`, `-e`, `-t`, `-u`, `-k`), `--api-version`, `--profile`,
+`--read-only` and `--no-input`, and the `auth` and `update` commands.
+
+Writes such as creating an issue are not supported yet. The agent describes the
+change and you make it.
+
+## Key commands
+
+```bash
+reckon run jira -- issue search --jql 'project = ABC AND updated >= "2026-10-01"' --limit 100 --fields summary,status,updated,labels -o json
+reckon run jira -- issue get ABC-123 --expand changelog -o json
+reckon run jira -- board list --project ABC -o json
+reckon run jira -- sprint list --board <board-id> --state active -o json
+reckon run jira -- sprint issues <sprint-id> -o json
+reckon run jira -- project list -o json
+```
+
+JQL must contain a real restriction, such as a project or a date. Investigations
+can collect a bounded JQL search as typed evidence: map a `query` under the
+`jira` source in `services.json` (see [Saved work](/docs/investigations)).
+
+## Links
+
+- [jira-cli documentation](https://projects.piyushgambhir.com/jira-cli/)
+- [jira-cli source](https://github.com/piyush-gambhir/jira-cli)
+- [Jira Cloud REST API](https://developer.atlassian.com/cloud/jira/platform/rest/v3/)

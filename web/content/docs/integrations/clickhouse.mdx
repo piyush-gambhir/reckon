@@ -1,46 +1,56 @@
 ---
 title: ClickHouse
-description: Inspect ClickHouse analytics and event data through a read-only user and client session.
+description: Read ClickHouse tables, query logs, metrics and events through a read-only user, with every run approved by you.
 ---
 
-## What it covers in an RCA
+## What it covers
 
-ClickHouse is a database connection for listing tables, inspecting slow queries
-in `system.query_log`, and reading `system.metrics` or `system.events` during
-an incident.
+ClickHouse is a database connection for listing tables, finding slow queries in
+`system.query_log`, and reading `system.metrics` or `system.events` during an
+incident.
 
-## Credentials
-
-The connection activates when `CLICKHOUSE_HOST` is set in `.env.<env>`:
+## Connect
 
 ```bash
-CLICKHOUSE_HOST='<host>'
-CLICKHOUSE_PORT=9440
-CLICKHOUSE_USER='<read-only-user>'
-CLICKHOUSE_PASSWORD='<password>'
-CLICKHOUSE_DATABASE='<optional-database>'
-CLICKHOUSE_SECURE=1
+reckon connect ch-prod --org acme --provider clickhouse --for-env prod
 ```
 
-`CLICKHOUSE_PORT` defaults to `9440` for the TLS native protocol.
-`CLICKHOUSE_DATABASE` is optional, and `CLICKHOUSE_SECURE` defaults to `1`.
+Fill in `~/.reckon/orgs/acme/secrets/ch-prod.env` with a read-only user:
+
+```bash
+CLICKHOUSE_HOST=clickhouse.example.com
+CLICKHOUSE_USER=readonly
+CLICKHOUSE_PASSWORD=replace_me
+```
+
+`CLICKHOUSE_PORT` defaults to `9440` (TLS native protocol),
+`CLICKHOUSE_SECURE` defaults to `1` (set `0` to drop `--secure`), and
+`CLICKHOUSE_DATABASE` is optional. There is no `reckon login` for databases.
+
+`reckon verify ch-prod` runs `clickhouse client --query "SELECT 1"`.
 
 ## Read-only contract
 
-Invoke the standard `clickhouse client` binary with `--readonly=1` as a
-client-side guard. The real write barrier is a read-only ClickHouse user/profile
-with server-side `readonly=1`, mirroring the database safety contract used for
-the other databases in this workspace. Always use `LIMIT` on exploratory
-queries.
+ClickHouse is an **approval** connection: the agent must ask you before each
+run, and Claude Code's settings in the org folder mark every
+`reckon run ch-prod` or `reckon run clickhouse` as ask. Read each query before
+you allow it.
+
+- **The server-side profile is the real barrier.** The user must have a
+  `readonly=1` profile on the server.
+- **Reckon applies session read-only.** It runs `clickhouse client` with the
+  connection's host, port and user and always adds `--readonly=1`.
+- Reckon refuses `--host`, `-h`, `--port`, `--user`, `-u`, `--password`,
+  `--readonly`, `--config-file` and `-C`.
+- Put `LIMIT` on every exploratory query.
 
 ## Key commands
 
 ```bash
-clickhouse client --readonly=1 --query "SELECT 1"
-clickhouse client --readonly=1 --query "SHOW TABLES"
-clickhouse client --readonly=1 --query "SELECT event_time, query_duration_ms, read_rows, query FROM system.query_log WHERE type = 'QueryFinish' ORDER BY query_duration_ms DESC LIMIT 20"
-clickhouse client --readonly=1 --query "SELECT metric, value, description FROM system.metrics ORDER BY metric LIMIT 100"
-clickhouse client --readonly=1 --query "SELECT event, value, description FROM system.events ORDER BY event LIMIT 100"
+reckon run clickhouse -- --query "SHOW TABLES"
+reckon run clickhouse -- --query "SELECT event_time, query_duration_ms, read_rows, query FROM system.query_log WHERE type = 'QueryFinish' ORDER BY query_duration_ms DESC LIMIT 20"
+reckon run clickhouse -- --query "SELECT metric, value, description FROM system.metrics ORDER BY metric LIMIT 100"
+reckon run clickhouse -- --query "SELECT event, value, description FROM system.events ORDER BY event LIMIT 100"
 ```
 
 ## Links

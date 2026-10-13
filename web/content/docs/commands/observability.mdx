@@ -1,87 +1,81 @@
 ---
 title: Observability
-description: Investigate alerts, telemetry, cloud infrastructure, and log-store evidence.
+description: Read alerts, traces, metrics, logs, cloud signals and Elasticsearch evidence through reckon run.
 ---
 
 Start with Grafana and CubeAPM. Add AWS when application telemetry is thin or
-cannot explain the infrastructure symptom; use optional `es` when the service's
-logs are stored in Elasticsearch instead of CubeAPM.
+cannot explain an infrastructure symptom, and Elasticsearch when a service's
+logs live there instead of CubeAPM.
 
 ## Grafana: alerts and change markers
 
 ```bash
-grafana alert rule list -o json
-grafana alert silence list -o json
-grafana annotation list --tags deploy -o json
-grafana datasource list -o json
+reckon run grafana -- alert rule list -o json
+reckon run grafana -- alert silence list -o json
+reckon run grafana -- annotation list --tags deploy --from <time> --to <time> -o json
+reckon run grafana -- datasource list -o json
 ```
 
-Alert rules establish the active symptom. Silences explain missing
-notifications, deploy annotations provide correlation points, and datasource
-health shows whether an apparent data gap is itself an observability problem.
+Alert rules show what is monitored and at which thresholds; they are
+configuration, not firing state. Silences explain missing notifications, deploy
+annotations give correlation points, and the datasource list shows where each
+panel's data comes from when a gap may be an observability problem.
 
-## CubeAPM: services, traces, logs, and metrics
+## CubeAPM: services, traces, logs and metrics
 
-Use metric label values as the canonical service inventory:
+CubeAPM usually holds every environment in one server, so every read carries
+the active environment's label (`PROD` below; `RECKON.md` lists yours). Reckon
+adds `--env` to `traces search` and `traces services` when it is missing,
+refuses metrics and logs queries that do not name the label, and refuses any
+command that mentions another environment's label.
 
 ```bash
-cubeapm metrics label-values service -o json
+reckon run cubeapm -- traces services --env PROD --last 1h -o json
+reckon run cubeapm -- traces search --service <svc> --env PROD --status error --last 1h -o json
+reckon run cubeapm -- traces get <trace-id> --last 2h -o json
+reckon run cubeapm -- logs query 'error' --service <svc> --stream '{env="PROD"}' --last 1h -o json
+reckon run cubeapm -- logs hits --query '_stream:{env="PROD"} AND level:error' --last 6h --step 15m -o json
 ```
 
-Then narrow to the affected service and time window:
+Cross-check the symptom with PromQL, with the label in every selector, and map
+how the failure moves between services:
 
 ```bash
-cubeapm traces search --service <svc> --status error --last 1h -o json
-cubeapm traces get <trace-id> -o json
-cubeapm logs query 'error' --service <svc> --last 1h -o json
-cubeapm logs hits --query 'level:error' --last 6h --step 15m -o json
-```
-
-Cross-check the symptom with PromQL and map propagation between services:
-
-```bash
-cubeapm metrics query 'rate(http_requests_total{status=~"5.."}[5m])' -o json
-cubeapm metrics query 'histogram_quantile(0.99, sum by (le) (rate(http_duration_seconds_bucket[5m])))' -o json
-cubeapm metrics query 'up' -o json
-cubeapm traces dependencies --last 1h -o json
+reckon run cubeapm -- metrics query-range 'sum(rate(http_requests_total{env="PROD",status=~"5.."}[5m]))' --last 1h --step 60s -o json
+reckon run cubeapm -- metrics label-values service --match '{env="PROD"}' -o json
+reckon run cubeapm -- logs field-names --last 1h -o json
+reckon run cubeapm -- traces dependencies --last 1h -o json
 ```
 
 <Callout type="info">
-  Quote PromQL and LogsQL expressions so the shell preserves braces,
-  parentheses, regex operators, and range selectors. Use `-o json` when the
-  agent will parse the result.
+  Metric names and label keys depend on your instrumentation: some families use
+  `cube.environment` instead of `env`. Check with `metrics label-values` and
+  `logs field-names` before you trust an empty result, and record what you
+  learn in `knowledge/`.
 </Callout>
 
 ## AWS: infrastructure corroboration
 
-Use AWS when CubeAPM data is missing, delayed, or weakly attributed:
-
 ```bash
-aws cloudwatch get-metric-statistics --namespace AWS/ApplicationELB --metric-name HTTPCode_Target_5XX_Count --start-time <ISO> --end-time <ISO> --period 60 --statistics Sum --output json
-aws sqs get-queue-attributes --queue-url <url> --attribute-names ApproximateNumberOfMessages,ApproximateAgeOfOldestMessage --output json
-aws ecs describe-services --cluster <cluster> --services <service> --output json | jq '.services[].events[:20]'
-aws logs filter-log-events --log-group-name <group> --start-time <epoch-ms> --end-time <epoch-ms> --filter-pattern '"ERROR"' --output json
+reckon run aws -- cloudwatch get-metric-statistics --namespace AWS/ApplicationELB --metric-name HTTPCode_Target_5XX_Count --dimensions Name=LoadBalancer,Value=<lb> --start-time <ISO> --end-time <ISO> --period 60 --statistics Sum --output json
+reckon run aws -- sqs get-queue-attributes --queue-url <url> --attribute-names ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible --output json
+reckon run aws -- ecs describe-services --cluster <cluster> --services <service> --output json
+reckon run aws -- logs filter-log-events --log-group-name <group> --start-time <epoch-ms> --end-time <epoch-ms> --filter-pattern '"ERROR"' --output json
 ```
 
-These reads can confirm load balancer 5xx responses, queue depth and message
-age, ECS service events, or CloudWatch errors during the same incident window.
+These reads confirm load balancer 5xx responses, queue depth, ECS service
+events, or CloudWatch errors in the same window. Message age is the `AWS/SQS`
+CloudWatch metric `ApproximateAgeOfOldestMessage`. Reckon allows only
+read-shaped AWS commands.
 
-## Elasticsearch: optional log store
-
-When `ES_URL` is configured, `.envrc` exports `ES_READ_ONLY=true` and the
-optional `es` CLI refuses mutating commands client-side.
+## Elasticsearch: log stores
 
 ```bash
-es cluster health -o json
-es index list -o json | jq -r '.[].index' | grep -i <svc>
-es search query <index> -f - --size 20 --sort '@timestamp:desc' -o json
-es search sql --query 'SELECT "@timestamp", message FROM "<index>" WHERE message LIKE '\''%error%'\'' ORDER BY "@timestamp" DESC LIMIT 20' -o json
+reckon run elasticsearch -- cluster health -o json
+reckon run elasticsearch -- index list --pattern '*<svc>*' -o json
+reckon run elasticsearch --stdin -- search query <index> -f - --size 20 --sort '@timestamp:desc' -o json < query.json
+reckon run elasticsearch -- search sql --query 'SELECT "@timestamp", message FROM "<index>" ORDER BY "@timestamp" DESC LIMIT 20' -o json
 ```
 
-Pass a Query DSL body to `es search query` through stdin with `-f -`. Keep
-searches bounded by an incident time range and a result size.
-
-<Callout type="warn">
-  The optional Elasticsearch guard is client-side defence-in-depth. Keep the
-  connected credential read-only and use this workspace only for investigation.
-</Callout>
+Pass the Query DSL body on standard input with `--stdin` and `-f -`, and bound
+it with a `@timestamp` range. `--from` is a document offset, not a time.

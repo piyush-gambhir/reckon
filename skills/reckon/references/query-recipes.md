@@ -2,6 +2,8 @@
 
 Indexed by *what you're trying to find out*. Copy, substitute placeholders, run. All PromQL assumes CubeAPM's `cube_apm_*` metric family; LogsQL assumes VictoriaLogs-compatible syntax.
 
+> Commands in this file show each CLI's own arguments. Run them through Reckon, which adds the connection's credentials and keeps reads read-only: `reckon run cubeapm -- traces search ...`. On a shared CubeAPM server, add the active environment's label to every query (see `WORKSPACE.md`).
+
 Placeholders: `<SVC>` = service label value, `<ROOT>` = exact `root_name`, `<ROOT_REGEX>` = regex, `<FROM>`/`<TO>` = RFC3339 UTC timestamps.
 
 ## Apdex / SLO
@@ -90,7 +92,7 @@ cubeapm traces search --service <SVC> --env PROD --span-kind server \
   --status error --from <FROM> --to <TO> -o json
 ```
 
-**Note:** some CubeAPM deployments require `--index cube:latency` or `cube:error`. If the CLI fails to unmarshal the response, see `server-quirks.md` in `infra-knowledge/`; fall back to curl with the saved session cookie.
+**Note:** some CubeAPM deployments require `--index cube:latency` or `cube:error`. If the CLI fails to unmarshal the response, see `server-quirks.md` in `knowledge/`; fall back to curl with the saved session cookie.
 
 ## Logs
 

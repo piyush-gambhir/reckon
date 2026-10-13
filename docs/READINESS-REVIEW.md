@@ -1,5 +1,9 @@
 # Workspace readiness and isolation review
 
+> **Historical.** This reviews the single-business layout that preceded orgs
+> (2026-10-14). Paths such as `.env.<env>`, `.config/<env>/` and `infra-knowledge/`
+> now live per org under `~/.reckon`; see [PRODUCT-PLAN.md](PRODUCT-PLAN.md).
+
 Reviewed 2026-09-08: local source, configuration boundaries, collection, storage and
 remaining product work. No infrastructure queries, database access, publishing,
 deployments or external messages were performed.

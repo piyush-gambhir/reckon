@@ -35,7 +35,7 @@ while IFS=, read -r binary module version release version_package; do
     [ ! -e "$(cat "$FIXTURE/stage")" ]
     [ "$GOBIN" = preserve-caller-gobin ]
 done < "$ROOT/scripts/cli-releases.csv"
-[ "$INSTALLED" -eq 4 ]
+[ "$INSTALLED" -eq "$(($(wc -l < "$ROOT/scripts/cli-releases.csv") - 1))" ]
 install_go_cli example/cli-go grafana ignored ignored internal/build
 [ "$ALREADY" -eq 1 ]
 FAIL_DOWNLOAD=1
@@ -44,4 +44,4 @@ install_go_cli example/cli-go missing version release internal/build
 [ ! -e "$GOBIN_DIR/missing" ]
 [ ! -e "$(cat "$FIXTURE/stage")" ]
 [ "$GOBIN" = preserve-caller-gobin ]
-printf 'CLI installer tests passed: four named binaries, idempotency, failure cleanup, GOBIN preservation\n'
+printf 'CLI installer tests passed: every named binary, idempotency, failure cleanup, GOBIN preservation\n'

@@ -1,52 +1,65 @@
 ---
 title: Elasticsearch
-description: Query an optional Elasticsearch or ELK log store with the read-only es CLI.
+description: Query an Elasticsearch or ELK log store with the es CLI in read-only mode.
 ---
 
-## What it covers in an RCA
+## What it covers
 
 Use Elasticsearch when a service sends logs to ES instead of CubeAPM. The
-optional integration can check cluster health, locate a service's index, count
-errors in a time window, and search with Query DSL or SQL.
+connection can check cluster health, find a service's index, count errors in a
+time window, and search with Query DSL or SQL.
 
-## Credentials
+## Connect
 
-The integration is wired only when `ES_URL` is set. Basic authentication uses:
+```bash
+reckon connect es-prod --org acme --provider elasticsearch --for-env prod
+```
+
+Fill in `~/.reckon/orgs/acme/secrets/es-prod.env`. Basic authentication:
 
 ```bash
 ES_URL=https://elasticsearch.example.com:9200
-ES_USERNAME=rca-readonly
+ES_USERNAME=readonly
 ES_PASSWORD=replace_me
 ```
 
-API-key authentication can be used instead:
+Or an API key (`ES_API_KEY_ID` and `ES_API_KEY`) or a bearer token
+(`ES_TOKEN`). `ES_CA_CERT` and `ES_INSECURE` are optional. Instead of the file,
+you can run `reckon login es-prod` in your own terminal: it runs `es login` and
+keeps the profile in that connection's private config.
 
-```bash
-ES_API_KEY_ID=replace_me
-ES_API_KEY=replace_me
-```
-
-`.envrc` exports `ES_READ_ONLY=true` by default.
+`reckon verify es-prod` runs `es cluster health -o json`.
 
 ## Read-only contract
 
-With `ES_READ_ONLY=true`, `es` refuses mutating commands before sending a
-request. That is client-side defence-in-depth; the connected Elasticsearch role
-or API key should also be read-only. Keep searches bounded by the incident time
-range and result size.
+Reckon runs `es` with `ES_READ_ONLY=true` and `ES_NO_INPUT=true`, so the CLI
+refuses mutating commands before sending a request. It also refuses `--url`,
+`--username`, `--password`, `--api-key`, `--api-key-id`, `--token`,
+`--ca-cert`, `--insecure`, the short forms `-u`, `-p` and `-k`, `--profile`,
+`--read-only` and `--no-input`, and the `login`, `config` and `update`
+commands. Keep the Elasticsearch role or API key read-only as well.
 
 ## Key commands
 
 ```bash
-es cluster health -o json
-es index list -o json | jq -r '.[].index' | grep -i <svc>
-echo '{"query":{"bool":{"must":[{"match":{"level":"error"}},{"range":{"@timestamp":{"gte":"<ISO>","lte":"<ISO>"}}}]}}}' \
-  | es search count <index> -f - -o json
-es search query <index> -f - --size 20 --sort '@timestamp:desc' -o json
-es search sql --query 'SELECT "@timestamp", message FROM "<index>" WHERE message LIKE '\''%error%'\'' ORDER BY "@timestamp" DESC LIMIT 20' -o json
+reckon run elasticsearch -- cluster health -o json
+reckon run elasticsearch -- index list --pattern '*checkout*' -o json
+reckon run elasticsearch --stdin -- search query <index> -f - --size 20 --sort '@timestamp:desc' -o json < query.json
+reckon run elasticsearch --stdin -- search count <index> -f - -o json < query.json
+reckon run elasticsearch -- search sql --query 'SELECT "@timestamp", message FROM "<index>" ORDER BY "@timestamp" DESC LIMIT 20' -o json
 ```
+
+`--stdin` passes the Query DSL body through to `-f -`. Bound every query body
+with a `@timestamp` range, for example:
+
+```json
+{"query":{"bool":{"filter":[{"match":{"level":"error"}},{"range":{"@timestamp":{"gte":"<ISO>","lte":"<ISO>"}}}]}}}
+```
+
+`--from` on `search query` is a document offset, not a time.
 
 ## Links
 
 - [Elasticsearch documentation](https://www.elastic.co/docs/reference/elasticsearch)
+- [es-cli documentation](https://projects.piyushgambhir.com/es-cli/)
 - [es-cli source](https://github.com/piyush-gambhir/es-cli)

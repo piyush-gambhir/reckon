@@ -35,9 +35,9 @@ export default function PrivacyPage() {
       <section>
         <h2>2. Credentials and local storage</h2>
         <p>
-          Credentials and tool profiles are stored on your device. The setup
-          isolates supported configuration beneath the cloned workspace and
-          loads environment values from local files such as <code>.env</code>.
+          Credentials and tool profiles are stored on your device, in one
+          file and configuration folder per connection under{' '}
+          <code>~/.reckon</code>, outside the cloned workspace.
           You are responsible for protecting those files, using read-only
           credentials, and keeping them out of version control.
         </p>

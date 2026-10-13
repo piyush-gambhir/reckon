@@ -1,40 +1,83 @@
 ---
 title: Overview
-description: Read-only investigation workflows grouped by operational domain.
+description: How every tool runs through reckon run, the reckon commands, and read-only workflows grouped by area.
 ---
 
-reckon does not add a wrapper command. The agent calls each wired CLI
-directly, using the workspace's isolated credentials and the command contract in
-`CLAUDE.md`.
+Every tool runs through Reckon:
 
-## Groups
+```bash
+reckon run <connection-or-tool> -- <the CLI's own arguments>
+reckon run jenkins -- build list deploy-api --limit 20 -o json
+reckon run jenkins-uat -- whoami -o json
+```
+
+- Naming the tool (`jenkins`) picks the one connection for the active
+  environment. Naming a connection from another environment is refused.
+- Put the command before its flags: `get pods -n x`, not `-n x get pods`.
+- Ask for JSON (`-o json`, `--json`, `--output json`) whenever the output will
+  be parsed.
+- `--stdin` passes standard input through, for example a Query DSL body for
+  `es ... -f -`.
+- `--session <id>` (with an optional `--label`) saves the output as evidence in
+  a session.
+
+Reckon flags go before `--`; everything after it belongs to the tool. The
+workflow pages below show the CLI arguments that matter for each area.
 
 <Cards>
-  <Card title="Observability" href="/docs/commands/observability" description="Grafana alerts, CubeAPM telemetry, AWS infrastructure signals, and optional Elasticsearch logs." />
+  <Card title="Observability" href="/docs/commands/observability" description="Grafana alerts, CubeAPM telemetry, AWS signals and Elasticsearch logs." />
   <Card title="CI/CD" href="/docs/commands/ci-cd" description="Jenkins build evidence and GitHub change context." />
-  <Card title="Data & infrastructure" href="/docs/commands/data-and-infra" description="Kafka, Kubernetes, Redis, MongoDB, PostgreSQL, and MySQL diagnostics." />
+  <Card title="Data & infrastructure" href="/docs/commands/data-and-infra" description="Kubernetes, routing, Kafka, Redis and databases." />
+  <Card title="Product & growth" href="/docs/commands/product-and-growth" description="Jira, Clarity, Search Console and Bing." />
 </Cards>
 
-## Investigation order
+## The reckon command
 
-1. Read `infra-knowledge/` for the service inventory, label conventions,
-   deployment-specific quirks, and known issues.
-2. Assess Grafana alerts, Jenkins failures, and the CubeAPM service inventory.
-3. Narrow the incident with traces, logs, metrics, deployment history, and
-   dependency evidence.
-4. Use AWS, GitHub, Kafka, Kubernetes, Redis, Elasticsearch, or a database only
-   where the earlier signals point.
-5. Correlate timestamps and write evidence under
-   `incidents/<YYYY-MM-DD>-<slug>/`.
+Commands you run yourself:
+
+| Command | What it does |
+| --- | --- |
+| `reckon org add\|list\|show` | Create, list or show orgs |
+| `reckon connect <name> --provider <p>` | Add a connection (`--for-env`, `--label`); `--list` shows every provider |
+| `reckon login <connection>` | Run the CLI's own login for one connection, in a terminal |
+| `reckon use <org>/<env>` | Set the default context for the next launch |
+| `reckon open [<org>/<env>]` | Start Claude Code or Codex in the org's folder, pinned to that environment |
+| `reckon migrate --org <org>` | Copy an older checkout's layout into an org (`--rename`, `--share`, `--dry-run`) |
+| `reckon doctor` | Diagnose setup problems |
+| `reckon demo` | Synthetic investigation in a throwaway org, no network |
+
+Commands the agent runs (you can too):
+
+| Command | What it does |
+| --- | --- |
+| `reckon preflight` | Context, ready connections, knowledge, open sessions, warnings; no network |
+| `reckon status` | Context and every connection with its state |
+| `reckon verify [<connection>...]` | One live read per connection |
+| `reckon run <connection-or-tool> -- <args>` | Run a CLI read-only with one connection's credentials |
+| `reckon task --question <q>` | Start a session for any piece of work |
+| `reckon debug\|investigate\|monitor\|analyze` | Start an investigation for a mapped service and window |
+| `reckon services list\|show\|validate`, `reckon capabilities` | Inspect service mappings and typed operations |
+| `reckon collect <id>` | Collect a session's mapped evidence, or one `--operation` |
+| `reckon note`, `report`, `resume`, `close` | Record findings, write the briefing, reload a session, record its outcome |
+| `reckon history` | Search this org's sessions (`--all-envs` for every environment) |
+| `reckon promote <id> --slug <name>` | Snapshot a session into `incidents/` as a preliminary RCA |
+
+Most commands accept `--org`, `--env` and `--json`. Run `reckon <command> --help`
+for every flag.
+
+## Incident order
+
+For operations work, the agent narrows from broad to specific:
+
+1. Run `reckon preflight` and read `knowledge/_shared/` and `knowledge/<env>/`
+   for service names, label conventions, quirks and known issues.
+2. Assess Grafana alerts, failed Jenkins jobs and the CubeAPM service list.
+3. Narrow with traces, logs, metrics, deployment history and dependencies.
+4. Use AWS, GitHub, Kubernetes, Elasticsearch, Nginx Proxy Manager, Kafka,
+   Redis or a database only where the earlier signals point.
+5. Correlate timestamps, save evidence in a session, and promote it to an RCA.
 
 <Callout type="info">
-  This is a curated investigation surface, not exhaustive upstream CLI
-  documentation. Use each installed tool's `--help` when you need syntax beyond
-  the grounded workflows shown here.
-</Callout>
-
-<Callout type="warn">
-  Humans mitigate; this workspace observes. Do not expand a diagnosis into
-  builds, writes, deploys, scaling, queue production, consumer-group joins, or
-  database mutations.
+  These pages are a curated read-only surface, not full CLI references. Each
+  [integration page](/docs/integrations) links the CLI's own documentation.
 </Callout>

@@ -203,21 +203,6 @@ mark_skipped()   { warn "$1 — skipped (manual install required)"; SKIPPED=$((S
 # Per-tool installers — each knows about every supported platform.
 # -----------------------------------------------------------------------------
 
-install_direnv() {
-    have direnv && { mark_already direnv; return; }
-    info "direnv — installing..."
-    case "$PLATFORM" in
-        macos) brew_install direnv && mark_installed direnv || mark_failed direnv ;;
-        linux)
-            if [ -n "$PKG" ] && pkg_install direnv direnv; then
-                mark_installed direnv
-            else
-                mark_skipped direnv
-            fi
-            ;;
-    esac
-}
-
 install_python() {
     if have python3 && python3 -c 'import sys; sys.exit(sys.version_info < (3, 9))'; then
         mark_already 'Python 3.9+'
@@ -583,139 +568,41 @@ ensure_go() {
 }
 
 # -----------------------------------------------------------------------------
-# Workspace setup (env file, infra-knowledge templates, direnv allow)
+# Reckon home and the reckon command
 # -----------------------------------------------------------------------------
 
 setup_workspace() {
-    header "Workspace setup"
-    local selection_valid=0
-
-    mkdir -p .config/production .config/staging .config/uat
-    mkdir -p infra-knowledge/_shared infra-knowledge/production \
-        infra-knowledge/staging infra-knowledge/uat incidents
-    ok "per-environment config, infra-knowledge, and incidents directories ready"
-
-    if [ -f .reckon-env ]; then
-        case "$(tr -d '[:space:]' < .reckon-env)" in
-            production|staging|uat)
-                ok "active environment already selected in .reckon-env"
-                selection_valid=1
-                ;;
-            *)
-                err ".reckon-env is invalid — run: scripts/reckon use <production|staging|uat>"
-                FAILED=$((FAILED + 1))
-                ;;
-        esac
-    else
-        warn "no active environment selected — run: scripts/reckon use production"
-    fi
-
-    if [ -f .env.production ]; then
-        ok ".env.production already exists — leaving alone"
-    elif [ -f .env.example ]; then
-        (umask 077 && cp -n .env.example .env.production)
-        chmod 0600 .env.production
-        ok ".env.production created from .env.example"
-        warn "EDIT .env.production with real production credentials before using any CLI"
-    else
-        err ".env.example missing — are you running this from the repo root?"
-        FAILED=$((FAILED + 1))
-    fi
-
-    # Correct permissions on newly-created and pre-existing credential files.
-    [ ! -f .env.production ] || chmod 0600 .env.production
-    [ ! -f .env.common ] || chmod 0600 .env.common
-    [ ! -f .env.staging ] || chmod 0600 .env.staging
-    [ ! -f .env.uat ] || chmod 0600 .env.uat
-    for credential_file in .env.*.local; do
-        [ -f "$credential_file" ] || continue
-        chmod 0600 "$credential_file"
-    done
-
-    local seeded=0 template target env
-    if [ -d skills/reckon/templates/infra-knowledge/_shared ] && \
-       [ -d skills/reckon/templates/infra-knowledge/env ]; then
-        for template in skills/reckon/templates/infra-knowledge/_shared/*.md; do
-            [ -f "$template" ] || continue
-            target="infra-knowledge/_shared/${template##*/}"
-            if [ ! -f "$target" ]; then
-                cp -n "$template" "$target"
-                seeded=$((seeded + 1))
-            fi
-        done
-        for env in production staging uat; do
-            for template in skills/reckon/templates/infra-knowledge/env/*.md; do
-                [ -f "$template" ] || continue
-                target="infra-knowledge/$env/${template##*/}"
-                if [ ! -f "$target" ]; then
-                    cp -n "$template" "$target"
-                    seeded=$((seeded + 1))
-                fi
-            done
-        done
-        if [ "$seeded" -gt 0 ]; then
-            ok "infra-knowledge: seeded $seeded file(s) from templates"
-            warn "edit infra-knowledge/<environment>/*.md with your real service inventory and quirks"
-        else
-            ok "infra-knowledge: all template files already seeded"
-        fi
-    else
-        err "infra-knowledge templates missing — are you running this from the repo root?"
-        FAILED=$((FAILED + 1))
-    fi
-
-    # Skill wiring. .claude/ and .agents/ are gitignored (they hold local agent
-    # state), so a fresh clone has no symlinks and the reckon skill — which IS
-    # tracked, at skills/reckon/ — is unreachable to every runtime until we
-    # recreate the chain here:
-    #   .claude/skills/reckon -> .agents/skills/reckon -> skills/reckon
-    mkdir -p .agents/skills .claude/skills
-    if [ -d skills/reckon ]; then
-        [ -e .agents/skills/reckon ] || ln -s ../../skills/reckon .agents/skills/reckon
-        [ -e .claude/skills/reckon ] || ln -s ../../.agents/skills/reckon .claude/skills/reckon
-        if [ -f .claude/skills/reckon/SKILL.md ]; then
-            ok "reckon skill linked (.claude → .agents → skills/reckon)"
-        else
-            err "reckon skill symlink chain did not resolve — agents will not load the skill"
-            FAILED=$((FAILED + 1))
-        fi
-    else
-        err "skills/reckon missing — are you running this from the repo root?"
-        FAILED=$((FAILED + 1))
-    fi
-
-    if have direnv && [ "$selection_valid" -eq 1 ]; then
-        info "Approving .envrc with direnv..."
-        if direnv allow . >/dev/null 2>&1; then
-            ok ".envrc approved"
-        else
-            warn "direnv allow failed — run 'direnv allow' manually after hooking direnv into your shell"
-        fi
-    elif ! have direnv; then
-        warn "direnv not installed — workspace env vars won't auto-load; source the selected env files manually."
-    else
-        warn "skipping direnv allow until an environment is selected"
-    fi
+    header "Reckon home"
+    local home="${RECKON_HOME:-$HOME/.reckon}"
+    # Business data lives here, never in this checkout. Orgs, connections and
+    # their credentials are created by `reckon org add` and `reckon connect`.
+    (umask 077 && mkdir -p "$home/bin")
+    chmod 0700 "$home"
+    ln -sfn "$(pwd)/scripts/reckon.py" "$home/bin/reckon"
+    ok "reckon command linked at $home/bin/reckon"
+    case ":$PATH:" in
+        *":$home/bin:"*) ok "$home/bin is on PATH" ;;
+        *) warn "$home/bin is NOT on PATH; add to your shell rc:"
+           printf '       export PATH="%s/bin:$PATH"\n' "$home" ;;
+    esac
 }
 
 print_next_steps() {
     header "Next steps"
-    cat <<'EOF'
-  1. Select the environment explicitly (reckon never defaults to production):
-       ./scripts/reckon use production
-  2. Edit its credential file:
-       $EDITOR .env.production
-  3. Hook direnv into your shell (one-time, if not done already):
-       bash:  eval "$(direnv hook bash)"   # add to ~/.bashrc
-       zsh:   eval "$(direnv hook zsh)"    # add to ~/.zshrc
-  4. Approve or reload the selected environment:
-       direnv allow
-       direnv reload
-  5. Verify configured connections:
-       ./scripts/reckon verify
-  6. Read CLAUDE.md "Database safety contract" before any DB query.
+    cat <<'NEXT'
+  1. Create an org for each business, or bring this checkout's old layout over:
+       reckon org add acme --envs prod,uat,dev
+       reckon migrate --org acme --rename production=prod --dry-run
+  2. Connect its tools (credentials go in the file it prints, never in chat):
+       reckon connect jenkins-prod --org acme --provider jenkins --for-env prod
+       reckon connect cubeapm --org acme --provider cubeapm --label prod=PROD --label uat=UAT
+  3. Check them, then start the agent pinned to one environment:
+       reckon use acme/prod
+       reckon verify
+       reckon open
+  4. Read CLAUDE.md "Database safety contract" before any DB query.
 
-EOF
+NEXT
 }
 
 # -----------------------------------------------------------------------------
@@ -736,7 +623,6 @@ main() {
     ensure_go
 
     header "Observability & CI/CD"
-    install_direnv
     install_python
     install_jq
     install_aws
@@ -756,7 +642,7 @@ main() {
     install_kubectl
     install_redis_cli
 
-    header "Custom CLIs (grafana / jenkins / cubeapm / es)"
+    header "Custom CLIs (pinned in scripts/cli-releases.csv)"
     local binary module version release version_package
     while IFS=, read -r binary module version release version_package; do
         [ "$binary" = "binary" ] && continue

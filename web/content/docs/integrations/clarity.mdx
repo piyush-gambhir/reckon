@@ -1,0 +1,62 @@
+---
+title: Microsoft Clarity
+description: Read Microsoft Clarity dashboard exports, analytics answers and session recording samples with the clarity CLI.
+---
+
+## What it covers
+
+Clarity shows how real users behave on a site: dashboard metrics by device,
+country or page, sampled session recordings with rage clicks, dead clicks or
+JavaScript errors, and answers to analytics questions asked in plain language.
+
+## Connect
+
+Clarity issues one token per project, so make one connection per project. Tie
+it to an environment when each environment's site is a separate Clarity
+project:
+
+```bash
+reckon connect clarity-prod --org acme --provider clarity --for-env prod
+```
+
+An admin creates the token in Clarity under **Settings**, **Data Export**,
+**Generate new API token**. Fill in
+`~/.reckon/orgs/acme/secrets/clarity-prod.env`:
+
+```bash
+CLARITY_API_TOKEN=replace_me
+```
+
+Instead of the file, you can run `reckon login clarity-prod` in your own
+terminal: it runs `clarity auth login` and keeps the token in that connection's
+private config.
+
+`reckon verify clarity-prod` runs `clarity auth status --verify -o json`, which
+uses one of the project's 10 daily export requests.
+
+## Read-only contract
+
+Every Clarity API call the CLI makes is a read. Reckon still runs `clarity` with
+`CLARITY_READ_ONLY=true` and `CLARITY_NO_INPUT=true`, refuses `--token`,
+`--profile`, `--config`, `--read-only` and `--no-input`, and refuses the
+`auth login`, `auth logout`, `auth use`, `login`, `config` and `update`
+commands.
+
+## Key commands
+
+```bash
+reckon run clarity -- recordings list --days 2 --rage-clicks --count 100 -o json
+reckon run clarity -- recordings list --days 7 --device Mobile --url /checkout --count 25 -o json
+reckon run clarity -- export --days 1 --dimension Device -o json
+reckon run clarity -- analytics query 'Top pages by rage clicks in the last 3 days' --timezone UTC -o json
+reckon run clarity -- export dimensions -o json
+```
+
+The export API covers only the last 1 to 3 days, at most 3 dimensions and
+1,000 rows, and allows 10 requests per project per day. Spend them deliberately.
+Recordings are a sample, not a complete export.
+
+## Links
+
+- [clarity-cli source and command reference](https://github.com/piyush-gambhir/clarity-cli)
+- [Microsoft Clarity documentation](https://learn.microsoft.com/en-us/clarity/)

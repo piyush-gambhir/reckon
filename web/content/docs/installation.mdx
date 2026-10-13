@@ -1,99 +1,122 @@
 ---
 title: Setup
-description: Clone reckon and prepare an isolated, explicitly selected environment.
+description: Install Reckon and its CLIs on macOS or Linux, put the reckon command on your PATH, and migrate an older checkout.
 ---
 
-reckon is a repository workspace, not a standalone binary. Setup starts with
-a Git clone and runs the repository's idempotent installer.
+Reckon needs Python 3.9 or newer (no packages) and Claude Code or Codex. The
+checkout holds Reckon's code only. Orgs, credentials, knowledge and saved work
+live under `~/.reckon` (or `$RECKON_HOME`).
 
-## macOS
-
-```bash
-git clone https://github.com/piyush-gambhir/reckon.git
-cd reckon
-bash scripts/setup.sh
-```
-
-Homebrew is required. The script installs missing tools with Homebrew or pinned
-`go install` commands, creates `.env.production` from `.env.example` when needed, seeds the
-`infra-knowledge/` templates, and runs `direnv allow`.
-
-## Linux
+## macOS and Linux
 
 ```bash
 git clone https://github.com/piyush-gambhir/reckon.git
 cd reckon
 bash scripts/setup.sh
+export PATH="$HOME/.reckon/bin:$PATH"     # add this to your shell profile
 ```
 
-The same script detects Debian/Ubuntu or Fedora/RHEL-family systems through
-`/etc/os-release` and uses `apt` or `dnf`. Pinned `rpk` and `kubectl` downloads
-are checksum-verified; vendor repositories are used where available. Other
-Linux distributions receive manual-install guidance.
+`setup.sh` installs missing tools with Homebrew on macOS and `apt` or `dnf` on
+Debian, Ubuntu, Fedora and RHEL-family systems. Downloaded binaries such as
+`rpk` and `kubectl` are checksum-verified. It then creates `~/.reckon` (mode
+0700) and links `~/.reckon/bin/reckon` to `scripts/reckon.py` in the checkout.
+Other Linux distributions get manual-install guidance.
 
-Hook direnv into your shell once so the workspace environment loads when you
-enter the clone:
+<Callout type="info">
+  Setup is idempotent. Re-running it installs only what is missing and leaves
+  existing tools and orgs alone.
+</Callout>
 
-```bash
-eval "$(direnv hook bash)"
-```
-
-Use the equivalent zsh hook when zsh is your shell.
+Once you have created an org, `reckon doctor` reports the Python version,
+whether `~/.reckon` is private, your orgs, connections without credentials or
+without their CLI, and the default context.
 
 ## Windows
 
-WSL2 is the recommended Windows path because native Windows does not provide the
-complete toolbelt:
+Use WSL2 and the same script inside it:
 
 ```powershell
 wsl --install
 ```
 
-After rebooting, run the Linux clone and setup commands inside WSL.
+Native PowerShell (`scripts\setup.ps1`, `scripts\reckon.ps1`) is experimental.
+`reckon open` needs symlink rights there (Developer Mode).
 
-Native PowerShell support is partial. `scripts/setup.ps1` installs the available
-tools; `scripts/reckon.ps1`, `scripts/activate.ps1`, and `scripts/agent.ps1`
-provide the native control, activation, and launcher surfaces:
+## Where data lives
 
-```powershell
-git clone https://github.com/piyush-gambhir/reckon.git
-cd reckon
-.\scripts\setup.ps1
-.\scripts\reckon.ps1 use production
-notepad .env.production
-. .\scripts\activate.ps1
+```text
+~/.reckon/
+  bin/reckon                  link to the checkout's scripts/reckon.py
+  context                     default org/env for the next launch (reckon use)
+  orgs/<org>/
+    org.json                  environments and connections, no secrets
+    secrets/<connection>.env  credentials, 0600, never shown to the agent
+    config/<connection>/      the CLI's own config and saved logins
+    runtime/<connection>/     private HOME, cache and temp for that CLI
+    workspace/                the agent's folder for this org
+      RECKON.md               generated: environments and connections
+      CLAUDE.md, AGENTS.md    the org's agent guide; add your own notes
+      knowledge/              company and per-environment facts
+      sessions/               saved work with evidence
+      incidents/              promoted RCAs
 ```
 
-<Callout type="info">
-  Setup is idempotent. Re-running it leaves existing configuration alone and
-  installs only missing tools.
-</Callout>
+Next, create an org and connect its tools: see
+[Orgs & connections](/docs/connections) or the [Quick start](/docs/quickstart).
 
-## Finish the workspace
+## Migrate an older checkout
 
-Select an environment, edit its `.env.<env>` file, and fill the seeded
-`infra-knowledge/<env>/*.md` files with your service inventory, naming
-conventions, server quirks, and known issues. Then inspect local readiness and
-prove live connectivity:
+Older versions kept one business inside the checkout: `.env.<env>` files,
+`.config/<env>/`, `infra-knowledge/`, `sessions/` and `incidents/`.
+`reckon migrate` copies that layout into a new org. It changes and deletes
+nothing in the old checkout.
 
 ```bash
-./scripts/reckon doctor      # setup problems, with the fix for each
-./scripts/reckon status      # what is connected in the active environment
-./scripts/reckon verify      # one safe read per configured integration
+reckon migrate --org acme --rename production=prod --rename staging=dev --share cubeapm --dry-run
+reckon migrate --org acme --rename production=prod --rename staging=dev --share cubeapm
 ```
 
-`verify` is the only command that contacts your infrastructure; `doctor` and
-`status` are local inspection.
+- `--rename OLD=NEW` renames an environment. The new defaults are `prod`, `uat`
+  and `dev`.
+- `--share TOOL` makes one connection for every environment, for example
+  CubeAPM when one server holds them all. It needs identical settings and saved
+  CLI config in every environment, and fails otherwise. A tool that is
+  identical everywhere is shared automatically; any other tool becomes one
+  connection per environment, such as `jenkins-prod` and `jenkins-dev`.
+- `--from PATH` reads another checkout (default: this one). `--name` sets the
+  org's display name.
+- Settings that use shell expansion (`$(...)`, `${...}`) are skipped and listed
+  by name. Copy those by hand into the new secrets files.
 
-<Callout type="warn">
-  Keep approval prompts enabled in the agent runtime. Database queries must not
-  be broadly pre-approved, and database users must be true read-only roles.
-</Callout>
+A shared CubeAPM connection still needs its environment labels:
+
+```bash
+reckon connect cubeapm --org acme --label prod=PROD --label dev=DEV
+reckon use acme/prod
+reckon verify
+```
+
+Once you have checked the new org, delete the old files from the checkout.
 
 ## Pinned CLI releases
 
-Both setup scripts read `scripts/cli-releases.csv`. It pins Grafana and Jenkins
-to release 0.2.10, CubeAPM to 0.2.11, and Elasticsearch to 0.1.11. The source modules live
-under `cli-go/` and have matching `cli-go/v*` version tags. The installer stages
-each build and installs it using its public name (`grafana`, `jenkins`,
-`cubeapm`, or `es`). Existing commands on PATH are left in place when setup is rerun.
+Setup builds the nine CLIs maintained alongside Reckon with `go install` (it
+installs Go first if needed) at the versions pinned in
+`scripts/cli-releases.csv`, and installs each under its public name. A command
+already on your PATH is left in place.
+
+| CLI | Release |
+| --- | --- |
+| `grafana` | 0.2.10 |
+| `jenkins` | 0.2.10 |
+| `cubeapm` | 0.2.11 |
+| `es` | 0.1.11 |
+| `jira` | 0.1.12 |
+| `nginxpm` | 0.1.12 |
+| `gsc` | 0.1.6 |
+| `bwt` | 0.1.6 |
+| `clarity` | 0.1.4 |
+
+The other tools (`aws`, `gh`, `kubectl`, `psql`, `mysql`, `mongosh`,
+`clickhouse`, `redis-cli`, `kcat`, `rpk`, `jq`) come from your package manager
+or vendor releases.
