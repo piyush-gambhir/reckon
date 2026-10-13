@@ -246,6 +246,23 @@ def scope(spec, args, label, others):
     return list(args)
 
 
+def bind(spec, args, conn, values):
+    """Keep a bound connection on its allowed resources (repositories, sites, namespaces)."""
+    for kind, allowed in conn.get("resources", {}).items():
+        rule = spec["resources"][kind]
+        flags = rule["flags"]
+        pairs, _ = operands(args, spec, tuple(f for f in flags if f.startswith("--")))
+        chosen = [v for f, v in pairs if f in flags and v is not None]
+        if not chosen:
+            default = values.get(rule.get("default_env", ""), "")
+            if not default:
+                raise ValueError("this connection is limited to " + kind + " " + ", ".join(allowed) + "; name it with " + flags[0])
+            chosen = [default]
+        for value in chosen:
+            if not any(fnmatchcase(value, pattern) for pattern in allowed):
+                raise ValueError(kind + " " + value + " is outside this connection (allowed: " + ", ".join(allowed) + ")")
+
+
 def extra_args(provider, values, config):
     """Connection details some database and queue clients only take as arguments."""
     if provider == "mysql":
@@ -307,6 +324,7 @@ def run(h, ctx, target, args, registry, timeout=60, max_bytes=8 * 1048576, stdin
                          (" or run reckon login " + cname + " in your own terminal" if spec.get("login") else ""))
     label = conn.get("env_labels", {}).get(ctx["env"])
     check(conn["provider"], spec, args)
+    bind(spec, args, conn, values)
     args = scope(spec, args, label, conn.get("env_labels", {}).values())
     argv = command(h, ctx, cname, conn, spec, values, args)
     result = bounded(argv, env=env, cwd=os.getcwd(), timeout=timeout, max_bytes=max_bytes, stdin=stdin)

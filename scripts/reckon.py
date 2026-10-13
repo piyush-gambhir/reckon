@@ -55,6 +55,9 @@ def parser():
     command.add_argument("--label", action="append", default=[], metavar="ENV=LABEL",
                          help="label that selects ENV inside a shared backend, e.g. prod=production (repeatable)")
     command.add_argument("--list", action="store_true", help="list supported tools")
+    command.add_argument("--allow", action="append", default=[], metavar="KIND=PATTERN",
+                         help="limit the connection to resources, e.g. repo=acme/* or site=sc-domain:acme.com (repeatable)")
+    command.add_argument("--allow-any", action="store_true", help="remove the connection's resource limits")
     command.add_argument("--remove", action="store_true", help="remove the connection; its secrets file is kept for you to delete")
 
     command = sub.add_parser("login", parents=[scope], help="interactive login for a connection's CLI (run it yourself)")
@@ -190,13 +193,22 @@ def connect(h, args, registry):
     if args.label:
         conn.pop("env", None)
         conn["env_labels"] = dict(conn.get("env_labels", {}), **labels(args.label, data["environments"]))
+    if args.allow_any:
+        conn.pop("resources", None)
+    for item in args.allow:
+        kind, sep, pattern = item.partition("=")
+        if not sep or not pattern:
+            raise ValueError("--allow takes KIND=PATTERN")
+        conn.setdefault("resources", {}).setdefault(kind, [])
+        if pattern not in conn["resources"][kind]:
+            conn["resources"][kind].append(pattern)
     data["connections"][args.name] = conn
     orgs.save(h, data, registry)
     workspace.ensure(h, ctx, registry)
     path, created = connectors.template(h, ctx["org"], args.name, registry[conn["provider"]])
     spec = registry[conn["provider"]]
     return {"org": ctx["org"], "connection": args.name, "provider": conn["provider"], "environment": conn.get("env") or "all",
-            "env_labels": conn.get("env_labels", {}), "secrets": str(path), "secrets_created": created,
+            "env_labels": conn.get("env_labels", {}), "resources": conn.get("resources", {}), "secrets": str(path), "secrets_created": created,
             "next": "edit " + str(path) + (" or run: reckon login " + args.name if spec.get("login") else "") +
                     ", then: reckon verify " + args.name}
 

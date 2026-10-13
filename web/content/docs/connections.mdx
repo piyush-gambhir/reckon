@@ -68,6 +68,22 @@ The agent names either a connection or a provider:
   the active environment. If none or several apply, it fails and asks for a
   name.
 
+Limit a connection to the resources one business owns, because one token often
+reaches several:
+
+```bash
+reckon connect github --org acme --allow repo=acme/* --allow repo=acme-labs/site
+reckon connect gsc --org acme --allow site=sc-domain:acme.com
+reckon connect k8s-prod --org acme --allow namespace=shop --allow namespace=shop-*
+reckon connect github --org acme --allow-any      # remove the limits
+```
+
+Kinds per tool: GitHub `repo` (`--repo`, `-R`), Search Console and Bing `site`
+(`--site`, `-s`, or the connection's `GSC_SITE`/`BWT_SITE`), Kubernetes
+`namespace` (`--namespace`, `-n`), AWS `region` (`--region` or `AWS_REGION`).
+On a limited connection the target must be named and match; prepared GitHub
+issues are checked against `repo` too.
+
 Remove one with `reckon connect <name> --org acme --remove` (its secrets file stays
 for you to delete). Run `reckon connect` again on an existing name to change it, for example to add
 a label: `reckon connect cubeapm --org acme --label dev=DEV`. A connection keeps

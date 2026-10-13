@@ -5,6 +5,7 @@ in the operator's own terminal, shows the same preview, asks for confirmation (t
 org name for production or org-wide connections), runs the command once, and keeps
 a receipt: applied, failed, or unknown when the outcome cannot be established.
 """
+from fnmatch import fnmatchcase
 import hashlib
 import json
 import os
@@ -89,6 +90,9 @@ def is_live(ctx, conn):
 def prepare(h, ctx, root, operation, params, registry):
     provider = validate(operation, params)
     cname, conn = orgs.resolve(ctx, provider)
+    repos = conn.get("resources", {}).get("repo")
+    if repos and not any(fnmatchcase(params["repo"], p) for p in repos):
+        raise ValueError("repo " + params["repo"] + " is outside " + cname + " (allowed: " + ", ".join(repos) + ")")
     action_id = datetime.now(timezone.utc).strftime("a-%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:8]
     record = {"schema_version": 1, "id": action_id, "org": ctx["org"], "environment": ctx["env"], "connection": cname,
               "operation": operation, "params": params, "status": "prepared", "prepared_at": now(), "receipt": None}

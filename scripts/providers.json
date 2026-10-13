@@ -124,7 +124,8 @@
       "verify": ["auth", "status", "--verify", "-o", "json"],
       "login": ["auth", "login"],
       "short_values": "os",
-      "agent_scrub": ["GOOGLE_APPLICATION_CREDENTIALS"]
+      "agent_scrub": ["GOOGLE_APPLICATION_CREDENTIALS"],
+      "resources": {"site": {"flags": ["--site", "-s"], "default_env": "GSC_SITE"}}
     },
     "bing": {
       "title": "Bing Webmaster Tools",
@@ -141,7 +142,8 @@
       "deny_commands": [["auth", "login"], ["auth", "logout"], ["auth", "use"], ["config"], ["sites", "use"], ["indexnow", "key"], ["update"]],
       "verify": ["auth", "status", "--verify", "-o", "json"],
       "login": ["auth", "login"],
-      "short_values": "os"
+      "short_values": "os",
+      "resources": {"site": {"flags": ["--site", "-s"], "default_env": "BWT_SITE"}}
     },
     "clarity": {
       "title": "Microsoft Clarity",
@@ -172,7 +174,8 @@
       "deny_args": ["--web", "-w", "--hostname"],
       "verify": ["auth", "status"],
       "login": ["auth", "login", "--insecure-storage"],
-      "short_values": "RLqtsAlBHSajp"
+      "short_values": "RLqtsAlBHSajp",
+      "resources": {"repo": {"flags": ["--repo", "-R"]}}
     },
     "aws": {
       "abbreviations": true,
@@ -189,7 +192,8 @@
       "deny_args": ["--profile", "--endpoint-url", "--no-verify-ssl"],
       "verify": ["sts", "get-caller-identity", "--output", "json"],
       "login": ["configure"],
-      "_note": "Explicit read list: broad get-* patterns also matched credential-returning and file-writing operations."
+      "_note": "Explicit read list: broad get-* patterns also matched credential-returning and file-writing operations.",
+      "resources": {"region": {"flags": ["--region"], "default_env": "AWS_REGION"}}
     },
     "kubernetes": {
       "title": "Kubernetes",
@@ -202,7 +206,8 @@
       "read_commands": [["get"], ["describe"], ["logs"], ["top"], ["events"], ["rollout", "history"], ["rollout", "status"], ["version"], ["api-resources"], ["explain"], ["auth", "can-i"], ["config", "current-context"], ["config", "get-contexts"]],
       "deny_args": ["--kubeconfig", "--context", "--cluster", "--user", "--token", "--server", "-s", "--as", "--as-group", "--username", "--password", "--insecure-skip-tls-verify", "--raw", "-f", "--filename", "-k", "--kustomize", "-R", "--recursive", "--client-certificate", "--client-key", "--certificate-authority", "--tls-server-name", "--as-uid"],
       "verify": ["get", "ns", "-o", "name", "--request-timeout=15s"],
-      "short_values": "onlcL"
+      "short_values": "onlcL",
+      "resources": {"namespace": {"flags": ["--namespace", "-n"]}}
     },
     "postgres": {
       "abbreviations": true,

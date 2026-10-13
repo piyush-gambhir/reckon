@@ -133,6 +133,12 @@ model, results saved through the same session path.
 
 ### M6 Connections bound to resources
 
+First slice built 2026-10-14: `reckon connect --allow kind=pattern` for GitHub
+repos, Search Console and Bing sites, Kubernetes namespaces and AWS regions,
+enforced by `reckon run` and prepared writes. Still to do: account identity
+checked by `verify`, and more kinds (Jira projects, Jenkins folders, Stripe
+account).
+
 - Each connection records the expected account identity (checked by
   `reckon verify`) and the resources it may touch: repositories, Search Console
   properties, Jira projects, Kubernetes namespaces, Stripe account.

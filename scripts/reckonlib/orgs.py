@@ -69,8 +69,14 @@ def validate(data, org, registry):
         raise ValueError(org + ": connections must be an object")
     for cname, conn in data["connections"].items():
         name(cname, "connection")
-        if not isinstance(conn, dict) or set(conn) - {"provider", "env", "env_labels", "note"}:
-            raise ValueError(org + "/" + cname + ": allowed fields are provider, env, env_labels, note")
+        if not isinstance(conn, dict) or set(conn) - {"provider", "env", "env_labels", "resources", "note"}:
+            raise ValueError(org + "/" + cname + ": allowed fields are provider, env, env_labels, resources, note")
+        kinds = registry.get(conn.get("provider"), {}).get("resources", {})
+        bound = conn.get("resources", {})
+        if not isinstance(bound, dict) or set(bound) - set(kinds) or not all(
+                isinstance(v, list) and v and all(isinstance(x, str) and x for x in v) for v in bound.values()):
+            raise ValueError(org + "/" + cname + ": resources must map " + (", ".join(sorted(kinds)) or "nothing for this tool") +
+                             " to non-empty lists of names or patterns")
         if conn.get("provider") not in registry:
             raise ValueError(org + "/" + cname + ": unknown provider " + repr(conn.get("provider")))
         if "env" in conn and "env_labels" in conn:
