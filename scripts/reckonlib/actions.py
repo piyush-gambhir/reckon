@@ -70,12 +70,13 @@ def ask(prompt):
     return sys.stdin.readline()
 
 
-def preview(record, live):
+def preview(record, live, full=False):
     lines = ["Action " + record["id"] + " (" + record["status"] + ")",
              "  " + record["operation"] + " on " + record["connection"] + " in " + record["org"] + "/" + record["environment"] +
              ("  [LIVE: production or org-wide account]" if live else "")]
     for key, value in sorted(record["params"].items()):
-        text = printable(value if len(value) < 2000 else value[:2000] + "\n... (" + str(len(value)) + " characters)")
+        # Approval shows every character; the agent-facing summary may abbreviate.
+        text = printable(value if full or len(value) < 2000 else value[:2000] + "\n... (" + str(len(value)) + " characters)")
         lines.append("  " + key + ":" + ("\n    " + text.replace("\n", "\n    ") if "\n" in text else " " + text))
     return "\n".join(lines)
 
@@ -136,7 +137,7 @@ def apply(h, ctx, root, action_id, registry, confirm=None):
         if not conn or conn["provider"] != WRITES[record["operation"]][0] or not orgs.applies(conn, ctx["env"]):
             raise ValueError("connection " + cname + " changed or no longer serves " + ctx["env"] + "; prepare the action again")
         live = is_live(ctx, conn)
-        print(preview(record, live), file=sys.stderr)
+        print(preview(record, live, full=True), file=sys.stderr)
         expected = ctx["org"] if live else "yes"
         if confirm("Type " + expected + " to apply, anything else to cancel: ").strip() != expected:
             record.update(status="cancelled", decided_at=now())
