@@ -46,7 +46,7 @@ allow it.
   `SET default_transaction_read_only=off` or `BEGIN READ WRITE`.
 - Reckon refuses `-h`, `--host`, `-U`, `--username`, `-p` and `--port`, and
   any connection string (`postgres://...` or `host=...`) in place of a
-  database name.
+  database name, and a second positional word (psql would read it as the user).
 - `EXPLAIN` before any non-trivial query and put `LIMIT` on every `SELECT`
   (default 100). `EXPLAIN ANALYZE` executes the query.
 

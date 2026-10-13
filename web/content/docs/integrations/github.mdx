@@ -37,7 +37,9 @@ that connection's private config instead of the OS keychain.
 `gh` has no read-only mode, so Reckon allows only these commands:
 `pr list|view|diff|checks|status`, `run list|view`, `workflow list|view`,
 `release list|view`, `issue list|view|status`, `repo view|list`, `search`,
-`label list` and `auth status`. It also refuses `--web`, `-w` and `--hostname`.
+and `label list`. `auth status` is left out because it can print the saved
+token; `reckon verify` runs it for you. It also refuses `--web`, `-w` and
+`--hostname`.
 A token without write scopes is the server-side barrier.
 
 ## Key commands

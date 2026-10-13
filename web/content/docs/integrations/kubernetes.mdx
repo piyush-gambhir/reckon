@@ -44,7 +44,8 @@ kubectl has no read-only mode, so Reckon allows only `get`, `describe`, `logs`,
 (`secret`, `secrets`, `secret/name`, in any list); the
 target and identity flags `--kubeconfig`, `--context`, `--cluster`, `--user`,
 `--token`, `--server`, `-s`, `--as`, `--as-group`, `--username`, `--password`,
-`--insecure-skip-tls-verify` and `--raw`; and the file flags `-f`,
+`--client-certificate`, `--client-key`, `--certificate-authority`,
+`--tls-server-name`, `--as-uid`, `--insecure-skip-tls-verify` and `--raw`; and the file flags `-f`,
 `--filename`, `-k`, `--kustomize`, `-R` and `--recursive`. A read-only RBAC
 role is the real barrier.
 

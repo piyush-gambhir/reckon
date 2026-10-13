@@ -40,11 +40,15 @@ connection's own AWS config. Instead of the file, you can run
 
 ## Read-only contract
 
-The AWS CLI has no read-only mode, so Reckon allows only read-shaped commands:
-any service's `describe-*`, `list-*`, `get-*`, `search-*`, `lookup-*` and
-`batch-get-*`, plus `logs filter-log-events`, `logs start-query` and `s3 ls`.
-It refuses `secretsmanager`, `kms`, `ssm get-parameter*` and any `get-*`
-command that names a secret, password, token, credential or key. It also
+The AWS CLI has no read-only mode, so Reckon allows only a fixed list of
+operations reads: CloudWatch logs (`filter-log-events`, `get-log-events`,
+`describe-log-groups`, `describe-log-streams`, `start-query`,
+`get-query-results`), CloudWatch metrics and alarms, `describe-*` and `list-*`
+for ECS, ELB, EKS, EC2, RDS, Auto Scaling and ElastiCache, `sqs
+get-queue-attributes` and `list-queues`, `cloudtrail lookup-events`, `route53
+list-*`, `dynamodb describe-table` and `list-tables`, `lambda list-functions`,
+`sts get-caller-identity` and `s3 ls`. Anything else is refused, including
+operations that return secrets or write files (`s3api get-object`). It also
 refuses `--profile`, `--endpoint-url` and `--no-verify-ssl`. The IAM policy
 remains the real write barrier.
 

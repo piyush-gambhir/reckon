@@ -484,6 +484,34 @@ class CheckTests(unittest.TestCase):
         self.ok("postgres", ["--comm", "SELECT * FROM users WHERE user = 1"])
         self.refused("postgres", ["-c", "SELECT 1", "-dhost=prod.invalid"], pattern="connection strings")
 
+    def test_review_round_three_bypasses_are_closed(self):
+        # -t owns the next argument, so "-C" there is a topic name, not consumer mode.
+        self.refused("kafka", ["-t", "-C", "messages.txt"], pattern="read mode")
+        # Subcommands resolve across flags.
+        self.refused("gsc", ["auth", "-o", "json", "token"], pattern="auth token")
+        self.refused("github", ["auth", "status", "--show-token"], pattern="allows only")
+        # Boolean --show-labels does not own the next word; qualified singular secrets are secrets.
+        self.refused("kubernetes", ["get", "--show-labels", "secrets", "-o", "json"], pattern="secrets are not readable")
+        self.refused("kubernetes", ["get", "secret.v1.", "-o", "json"], pattern="secrets are not readable")
+        self.refused("kubernetes", ["get", "pods", "--client-certificate", "c.crt"], pattern="--client-certificate")
+        # Local file writes.
+        self.refused("jenkins", ["build", "artifacts", "job", "42", "-d", "--output-dir", "x"], pattern="fixed by the connection")
+        self.refused("jira", ["issue", "download", "10001"], pattern="issue download")
+        self.refused("grafana", ["dashboard", "export", "uid", "--output-file", "x"], pattern="--output-file")
+        self.ok("grafana", ["dashboard", "export", "uid", "-o", "json"])
+        # psql [DBNAME [USERNAME]].
+        self.refused("postgres", ["-c", "SELECT 1", "app", "admin"], pattern="at most a database name")
+        self.ok("postgres", ["-c", "SELECT 1", "app"])
+        # Subcommand-specific value flags own their attached values.
+        self.ok("jira", ["issue", "search", "-jstatus=Open"])
+        self.ok("jenkins", ["job", "list", "-fservices"])
+        self.refused("jenkins", ["build", "log", "job", "1", "-fs", "x"], pattern="-s")
+
+    def test_shared_backend_scoping_edges(self):
+        self.refused("cubeapm", ["logs", "query", "env:UAT OR error", "--stream", '{service="api"}'], pattern="or/unless", label="UAT")
+        self.refused("cubeapm", ["logs", "query", "error OR timeout | stats count()", "--stream", '{env="UAT"}'], pattern="or/unless", label="UAT")
+        self.refused("cubeapm", ["traces", "search", "--service", "checkout", "--"], pattern="-- is not allowed", label="UAT")
+
     def test_kubernetes_secrets_are_matched_by_resource_type(self):
         self.ok("kubernetes", ["get", "pods", "-n", "external-secrets"])
         self.ok("kubernetes", ["logs", "pod/external-secrets-controller"])
@@ -542,8 +570,11 @@ class CheckTests(unittest.TestCase):
         self.ok("aws", ["logs", "filter-log-events", "--log-group-name", "g"])
         self.ok("aws", ["ecs", "describe-services", "--cluster", "c"])
         self.ok("aws", ["s3", "ls"])
-        self.refused("aws", ["secretsmanager", "get-secret-value", "--secret-id", "x"], pattern="secretsmanager")
-        self.refused("aws", ["ssm", "get-parameter", "--name", "x"], pattern="ssm get-parameter")
+        # Only listed reads run: credential-returning and file-writing gets are simply not on the list.
+        for args in (["secretsmanager", "get-secret-value", "--secret-id", "x"], ["ssm", "get-parameter", "--name", "x"],
+                     ["lightsail", "get-instance-access-details", "--instance-name", "x"], ["s3api", "get-object", "--bucket", "b", "--key", "k", "out"],
+                     ["lambda", "get-function", "--function-name", "f"]):
+            self.refused("aws", args, pattern="allows only")
         self.refused("aws", ["iam", "create-user", "--user-name", "x"], pattern="allows only")
         self.refused("aws", ["s3", "rm", "s3://b/k"], pattern="allows only")
         self.refused("aws", ["ecs", "describe-services", "--profile", "other"], pattern="--profile")
@@ -687,6 +718,12 @@ class RunTests(OrgCase):
         self.assertIn("pinned to acme/staging", result.stderr)
         self.assertFalse(self.marker.exists())
         self.assertEqual(self.cli("run", "jenkins", "--", "job", "list", RECKON_ORG="acme", RECKON_ENV="staging").returncode, 0)
+
+    def test_admin_commands_are_refused_inside_a_pinned_agent(self):
+        for args in (["connect", "new", "--org", "other", "--provider", "jenkins"], ["use", "acme/uat"], ["org", "add", "x"]):
+            result = self.cli(*args, RECKON_ORG="acme", RECKON_ENV="staging")
+            self.assertEqual(result.returncode, 1, args)
+            self.assertIn("not a pinned agent", result.stderr)
 
     def test_session_evidence_never_stores_injected_credentials(self):
         data = orgs.load(self.home, "acme", self.registry)

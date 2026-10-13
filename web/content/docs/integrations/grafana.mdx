@@ -38,7 +38,8 @@ keeps the profile in that connection's private config.
 Reckon runs `grafana` with `GRAFANA_READ_ONLY=true` and
 `GRAFANA_NO_INPUT=true`, so the CLI refuses writes. It also refuses `--url`,
 `--token`, `--username`, `--password`, `--org-id`, `--profile`, `--read-only`
-and `--no-input`, and the `login`, `config` and `update` commands. A Viewer
+and `--no-input`, `--output-file` (exports go to standard output instead), and
+the `login`, `config` and `update` commands. A Viewer
 service account token keeps the server side read-only too.
 
 ## Key commands

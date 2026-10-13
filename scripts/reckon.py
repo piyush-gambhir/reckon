@@ -261,6 +261,9 @@ def execute(args):
     h = orgs.home()
     registry = orgs.providers()
     name = args.command
+    if os.environ.get("RECKON_ORG") and (name in ("use", "connect", "login", "migrate", "open") or name == "org" and args.action == "add"):
+        # An agent started by reckon open works only inside its pinned org and environment.
+        raise ValueError("reckon " + name + " is for the operator's own terminal, not a pinned agent")
     if name == "org":
         if args.action == "add":
             envs = [e.strip() for e in args.envs.split(",") if e.strip()]

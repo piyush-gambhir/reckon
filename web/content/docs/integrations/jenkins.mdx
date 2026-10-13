@@ -40,7 +40,8 @@ Reckon runs `jenkins` with `JENKINS_READ_ONLY=true` and
 `JENKINS_NO_INPUT=true`, so the CLI refuses builds, stops, deletes and other
 writes. It also refuses `--server`, `--user`, `--token`, `--insecure` and their
 short forms (`-s`, `-u`, `-t`, `-k`), `--profile`, `--read-only`, `--no-input`
-and `--download`, and the `login`, `config` and `update` commands. Give the
+and the artifact download flags `--download`, `-d` and `--output-dir`, and the
+`login`, `config` and `update` commands. Give the
 Jenkins user read-only permissions as well.
 
 ## Key commands

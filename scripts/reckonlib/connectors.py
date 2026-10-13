@@ -98,8 +98,29 @@ def operands(args, spec, long_values=()):
     return pairs, positional
 
 
+def short_flags_set(args, spec):
+    """Short flags actually set, skipping arguments that belong to a value flag (-t -C sets only -t)."""
+    found, index = set(), 0
+    while index < len(args):
+        arg = args[index]
+        if arg.startswith("-") and len(arg) > 1 and not arg.startswith("--"):
+            flags, attached = cluster(arg, spec)
+            found.update(flags)
+            if flags and flags[-1] in spec.get("short_values", "") and attached is None:
+                index += 1
+        index += 1
+    return found
+
+
+def with_command_values(spec, args):
+    """Value-taking short flags that only some subcommands define (jira issue search -j)."""
+    extra = "".join(v for path, v in spec.get("command_short_values", {}).items() if matches(path.split(), tokens(args, spec)))
+    return dict(spec, short_values=spec.get("short_values", "") + extra) if extra else spec
+
+
 def check(provider, spec, args, label=None):
     """Refuse arguments that would change the target, credentials or safety mode."""
+    spec = with_command_values(spec, args)
     if spec.get("mode") == "typed":
         raise ValueError(provider + " has no reckon run surface; use its typed operations (reckon capabilities)")
     for arg in args:
@@ -116,11 +137,14 @@ def check(provider, spec, args, label=None):
     if allowed and not any(matches(p, words) for p in allowed):
         raise ValueError(provider + " allows only these read commands through reckon run: " +
                          "; ".join(" ".join(p) for p in allowed) + " (put the command before any flags)")
+    # Cobra resolves subcommands across flags (auth -o json token), so match on positional words too.
+    aliases = spec.get("aliases", {})
+    positional = [aliases.get(w.lower(), w.lower()) for w in operands(args, spec)[1]]
     for pattern in spec.get("deny_commands", []):
-        if matches(pattern, words):
+        if matches(pattern, words) or matches(pattern, positional):
             raise ValueError("'" + " ".join(pattern) + "' is not allowed through reckon run")
     required = spec.get("require_short")
-    if required and not any(set(cluster(a, spec)[0]) & set(required) for a in args if a.startswith("-") and not a.startswith("--")):
+    if required and not short_flags_set(args, spec) & set(required):
         # kcat picks producer mode by itself when stdin is not a terminal; insist on a read mode.
         raise ValueError(provider + " needs an explicit read mode: one of " + ", ".join("-" + c for c in required))
     if provider == "kubernetes":
@@ -132,7 +156,7 @@ def check(provider, spec, args, label=None):
 
 
 KUBE_VALUES = ("--namespace", "--selector", "--output", "--sort-by", "--field-selector", "--label-columns", "--container",
-               "--since", "--since-time", "--tail", "--template", "--chunk-size", "--request-timeout", "--show-labels")
+               "--since", "--since-time", "--tail", "--template", "--chunk-size", "--request-timeout")
 
 
 def secrets_(args, spec):
@@ -143,8 +167,9 @@ def secrets_(args, spec):
     _, positional = operands(args, spec, KUBE_VALUES)
     for word in positional[1:]:
         for part in word.split(","):
-            kind = part.split("/", 1)[0].lower()
-            if kind in ("secret", "secrets") or kind.startswith("secrets."):
+            # secret, secrets, secret.v1., secrets.v1, secret/name: the resource is the part before the first dot.
+            kind = part.split("/", 1)[0].lower().split(".", 1)[0]
+            if kind in ("secret", "secrets"):
                 raise ValueError("Kubernetes secrets are not readable through reckon run")
 
 
@@ -155,6 +180,9 @@ PSQL_VALUES = ("--command", "--dbname", "--file", "--set", "--variable", "--outp
 def conninfo(args, spec):
     """psql reads a connection string wherever a database name goes; it would replace the connection."""
     pairs, positional = operands(args, spec, PSQL_VALUES)
+    if len(positional) > 1:
+        # psql [DBNAME [USERNAME]]: a second word would replace the connection's user.
+        raise ValueError("psql takes at most a database name here; the user is fixed by the connection")
     names = positional + [v for f, v in pairs if f in ("-d", "--dbname") and v]
     for value in names:
         if "://" in value or "=" in value:
@@ -173,6 +201,9 @@ def scope(spec, args, label, others):
     parser, so keep queries simple."""
     if not label:
         return list(args)
+    if "--" in args:
+        # After --, cobra stops reading flags: an added --env would be ignored.
+        raise ValueError("-- is not allowed on a shared backend; pass every flag before it")
     words = tokens(args, spec)
     family = spec.get("env_label_families", [])
     if words and words[0] in family and len(words) < 2 and args not in ([words[0]],):
@@ -205,7 +236,10 @@ def scope(spec, args, label, others):
         if not positive:
             raise ValueError("this backend holds every environment: select " + label + " in the query, e.g. {env=\"" + label +
                              "\"} in PromQL or --stream '{env=\"" + label + "\"}' for logs")
-        streamed = any(a == "--stream" or a.startswith("--stream=") for a in args)
+        streams = [args[i + 1] if a == "--stream" and i + 1 < len(args) else a.split("=", 1)[1]
+                   for i, a in enumerate(args) if a == "--stream" or a.startswith("--stream=")]
+        # The CLI wraps the query in parentheses after the stream filter, except around pipes.
+        streamed = any(any(k in keys and v == label for k, _, v in SELECTOR.findall(st)) for st in streams) and not any("|" in a for a in args)
         if any(re.search(r"(?i)(?<![\w-])(or|unless)(?![\w-])", a) for a in args) and not streamed:
             raise ValueError("or/unless can read past the " + label + " selector; for logs put it in --stream '{env=\"" + label +
                              "\"}', which applies to the whole query")

@@ -48,8 +48,9 @@ this:
 - **Metrics and logs:** `metrics query`, `metrics query-range`, `logs query`,
   `logs hits` and `logs stats` must select the label with a positive selector:
   `{env="<label>"}` in PromQL, `env:<label>` or `--stream '{env="<label>"}'` in
-  LogsQL. `or` and `unless` are refused unless the label is in `--stream`,
-  which applies to the whole query.
+  LogsQL. `or` and `unless` are refused unless `--stream` itself selects the
+  label and the query has no `|` pipe, so the filter covers the whole query.
+  A trailing `--` is refused, because flags after it are ignored.
 - **Anything else:** a selector naming another environment's label, or
   excluding the active one (`env!=`), is refused, including
   `--tags environment=...`. Put the full command first (`metrics query ...`).

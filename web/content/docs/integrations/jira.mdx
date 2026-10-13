@@ -41,7 +41,8 @@ Reckon runs `jira` with `JIRA_READ_ONLY=true` and `JIRA_NO_INPUT=true`, so the
 CLI refuses creates, edits, transitions, comments and every other write. It also
 refuses `--site`, `--email`, `--token`, `--user`, `--insecure` and their short
 forms (`-s`, `-e`, `-t`, `-u`, `-k`), `--api-version`, `--profile`,
-`--read-only` and `--no-input`, and the `auth` and `update` commands.
+`--read-only` and `--no-input`, the `auth` and `update` commands, and `issue
+download` with `--out`, which write local files.
 
 Writes such as creating an issue are not supported yet. The agent describes the
 change and you make it.
