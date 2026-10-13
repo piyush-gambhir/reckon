@@ -93,11 +93,15 @@ cubeapm. Reckon keeps its own checks for a CLI until that CLI passes conformance
 tests (catalog complete, resolver agrees with execution, false flags resisted,
 previews never mutate).
 
-Fix first, in the CLIs themselves: sticky read-only in gsc, bwt and clarity;
-jira's `--no-input=false` override; gsc `export` and `auth token` classified as
-local-write and deny; es `index settings`/`mappings` read forms wrongly marked
-mutating; jenkins artifact download and jira attachment download classified as
-local writes.
+Fix first, in the CLIs themselves:
+
+- Done 2026-10-14: sticky read-only and no-input in gsc (v0.1.7, with `auth token`
+  refused under read-only and marked `secret_output`, and `export` a local write);
+  bwt (bing-webmaster-cli#25) and clarity (clarity-cli#16) sticky read-only;
+  jira sticky no-input (jira-cli#50).
+- Open: es `index settings`/`mappings` read forms wrongly marked mutating;
+  jenkins artifact download and jira attachment download classified as local
+  writes. Reckon blocks these paths meanwhile.
 
 ### M5 Connectors: adopt, then build
 
