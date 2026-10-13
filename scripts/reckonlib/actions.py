@@ -7,6 +7,7 @@ a receipt: applied, failed, or unknown when the outcome cannot be established.
 """
 import hashlib
 import json
+import os
 import re
 import sys
 import uuid
@@ -54,12 +55,27 @@ def digest(record):
     return hashlib.sha256(json.dumps(frozen, sort_keys=True).encode()).hexdigest()
 
 
+def printable(text):
+    """Show control characters instead of letting them redraw the approval screen."""
+    return "".join(c if c in "\n\t" or (c >= " " and c != "\x7f") else "\\x%02x" % ord(c) for c in text)
+
+
+def terminal():
+    return sys.stdin.isatty()
+
+
+def ask(prompt):
+    sys.stderr.write(prompt)
+    sys.stderr.flush()
+    return sys.stdin.readline()
+
+
 def preview(record, live):
     lines = ["Action " + record["id"] + " (" + record["status"] + ")",
              "  " + record["operation"] + " on " + record["connection"] + " in " + record["org"] + "/" + record["environment"] +
              ("  [LIVE: production or org-wide account]" if live else "")]
     for key, value in sorted(record["params"].items()):
-        text = value if len(value) < 2000 else value[:2000] + "\n... (" + str(len(value)) + " characters)"
+        text = printable(value if len(value) < 2000 else value[:2000] + "\n... (" + str(len(value)) + " characters)")
         lines.append("  " + key + ":" + ("\n    " + text.replace("\n", "\n    ") if "\n" in text else " " + text))
     return "\n".join(lines)
 
@@ -99,10 +115,12 @@ def listing(root):
 
 def apply(h, ctx, root, action_id, registry, confirm=None):
     """Run one prepared action once. confirm(prompt) returns what the operator typed."""
-    if confirm is None:
-        if not sys.stdin.isatty():
-            raise ValueError("reckon act apply is for the operator's own terminal")
-        confirm = input
+    # Enforced here, not only in the CLI, so no caller inside an agent can apply.
+    if os.environ.get("RECKON_ORG"):
+        raise ValueError("reckon act apply is for the operator, not a pinned agent")
+    if not terminal():
+        raise ValueError("reckon act apply is for the operator's own terminal")
+    confirm = confirm or ask
     path, _ = load(root, action_id)
     with lock(path):
         _, record = load(root, action_id)
@@ -113,9 +131,12 @@ def apply(h, ctx, root, action_id, registry, confirm=None):
         if record["payload_sha256"] != digest(record):
             raise ValueError("action " + action_id + " changed after it was prepared; prepare it again")
         validate(record["operation"], record["params"])
-        cname, conn = orgs.resolve(ctx, record["connection"])
+        # The exact connection that was prepared; never a provider lookup that could pick another.
+        cname, conn = record["connection"], ctx["data"]["connections"].get(record["connection"])
+        if not conn or conn["provider"] != WRITES[record["operation"]][0] or not orgs.applies(conn, ctx["env"]):
+            raise ValueError("connection " + cname + " changed or no longer serves " + ctx["env"] + "; prepare the action again")
         live = is_live(ctx, conn)
-        print(preview(record, live))
+        print(preview(record, live), file=sys.stderr)
         expected = ctx["org"] if live else "yes"
         if confirm("Type " + expected + " to apply, anything else to cancel: ").strip() != expected:
             record.update(status="cancelled", decided_at=now())

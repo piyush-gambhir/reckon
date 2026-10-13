@@ -503,6 +503,8 @@ def main():
             return 2
         if args.command == "doctor" and result["problems"]:
             return 1
+        if args.command == "act" and isinstance(result, dict) and result.get("status") in ("failed", "unknown", "cancelled"):
+            return 2 if result["status"] == "unknown" else 1
         return 0
     except (ValueError, OSError, KeyError, TypeError) as exc:
         print("reckon: " + str(exc), file=sys.stderr)

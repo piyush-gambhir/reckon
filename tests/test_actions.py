@@ -19,6 +19,9 @@ FAKE_GH = ("import os, sys\n"
 class ActionTests(OrgCase):
     def setUp(self):
         super().setUp()
+        patcher = mock.patch.object(actions, "terminal", return_value=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.org(envs=("staging", "prod"), production=["prod"],
                  connections={"gh-staging": {"provider": "github", "env": "staging"}, "gh-prod": {"provider": "github", "env": "prod"}},
                  secrets={"gh-staging": GH, "gh-prod": GH})
@@ -89,6 +92,26 @@ class ActionTests(OrgCase):
             self.assertEqual(self.apply(record, "yes")["status"], "unknown")
         with self.assertRaisesRegex(ValueError, "runs once"):
             self.apply(record, "yes")
+
+    def test_review_fixes(self):
+        record = self.prepare()
+        # The executor itself refuses inside a pinned agent, whatever confirm a caller passes.
+        with mock.patch.dict("os.environ", RECKON_ORG="acme", RECKON_ENV="staging"):
+            with self.assertRaisesRegex(ValueError, "not a pinned agent"):
+                self.apply(record, "yes")
+        with mock.patch.object(actions, "terminal", return_value=False):
+            with self.assertRaisesRegex(ValueError, "own terminal"):
+                self.apply(record, "yes")
+        # A replaced connection is not silently used.
+        data = orgs.load(self.home, "acme", self.registry)
+        data["connections"]["github"] = data["connections"].pop("gh-staging")
+        orgs.save(self.home, data, self.registry)
+        with self.assertRaisesRegex(ValueError, "changed or no longer serves"):
+            self.apply(record, "yes")
+        # Control characters are shown, not interpreted.
+        shown = actions.preview(dict(record, params=dict(PARAMS, body="ok\x1b[2J\x1b[Hfake")), False)
+        self.assertNotIn("\x1b", shown)
+        self.assertIn("\\x1b[2J", shown)
 
     def test_the_agent_may_prepare_but_never_apply(self):
         record = self.prepare()
