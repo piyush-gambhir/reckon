@@ -108,6 +108,8 @@ Pick by **what's known**, not by what the user called it: a request phrased as "
 
 ## Reference files
 
+- [workflows/growth-review.md](workflows/growth-review.md) · [workflows/release-review.md](workflows/release-review.md): repeatable reviews outside incidents
+
 - [modes/investigate.md](modes/investigate.md) · [modes/monitor.md](modes/monitor.md) · [modes/analyze.md](modes/analyze.md) — the three modes
 - [references/cascade-playbook.md](references/cascade-playbook.md) — per-level checklists with exact commands
 - [references/query-recipes.md](references/query-recipes.md) — PromQL and LogsQL snippets indexed by "what are you trying to find out"

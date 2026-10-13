@@ -102,6 +102,15 @@ Investigations (`debug`, `investigate`, `monitor`, `analyze`) need the service
 mapped in `knowledge/<env>/services.json`; see `docs/INVESTIGATIONS.md` in the
 Reckon checkout. `reckon collect <id>` runs the mapped typed reads.
 
+## Workflows
+
+Repeatable reviews live in the `reckon` skill, under `workflows/`:
+
+- `growth-review.md`: weekly search and on-site behaviour (Search Console, Bing, Clarity).
+- `release-review.md`: what shipped to an environment and whether it is healthy (Jenkins, GitHub, CubeAPM or Grafana).
+
+Incident work uses the skill's modes (investigate, monitor, analyze).
+
 ## Knowledge
 
 `knowledge/_shared/` holds facts true for the whole org; `knowledge/<env>/` holds
