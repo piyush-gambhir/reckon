@@ -90,3 +90,28 @@ reach you before they execute.
   user. Keep server-side permissions read-only, and never put privileged
   database credentials in a connection.
 </Callout>
+
+## Writes
+
+The agent never performs a write. It prepares one, and you apply it:
+
+```bash
+# in the agent
+reckon act prepare github.issue.create --body-stdin \
+  --params '{"repo": "acme/api", "title": "Checkout times out on pricing"}' <<'BODY'
+What we saw, with the session and evidence IDs.
+BODY
+
+# in your own terminal
+reckon act list --org acme --env prod
+reckon act apply <action-id>
+```
+
+`prepare` freezes the exact payload and target with a hash. `apply` refuses inside
+an agent and without a terminal, shows the same preview, and asks you to type `yes`,
+or the org name for production environments and for accounts shared by every
+environment. It runs the action once and keeps a receipt: `applied`, `failed`,
+`cancelled`, or `unknown` when a timeout leaves the outcome unclear (check before
+preparing it again). The agent's Claude Code settings deny `reckon act apply`.
+Supported today: `github.issue.create`.
+

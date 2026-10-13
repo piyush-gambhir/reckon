@@ -34,8 +34,10 @@ reckon run gsc -- top queries --site sc-domain:acme.com --last 28d -o json
 - **The agent never holds credentials.** `reckon run` loads one connection's settings
   into one command. `reckon open` strips tool credentials from the agent's environment.
 - **Reads are read-only.** Reckon forces each CLI's read-only and no-prompt modes and
-  refuses arguments that would change the target or switch safety off. Writes are the
-  next milestone: the agent will prepare them and you will apply them.
+  refuses arguments that would change the target or switch safety off.
+- **Writes are yours to apply.** The agent prepares one (`reckon act prepare
+  github.issue.create ...`); you read the preview and run `reckon act apply <id>`
+  in your own terminal. Production and org-wide accounts need the org name typed.
 - **The context cannot drift.** An agent stays on the org and environment it started
   with. A connection from another environment is refused, and so is another
   environment's label on a shared server like CubeAPM.

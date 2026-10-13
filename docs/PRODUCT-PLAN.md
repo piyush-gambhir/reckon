@@ -119,7 +119,7 @@ write barrier for databases.
 | --- | --- | --- |
 | M1 | Orgs, environments and connections (built 2026-10-14) | Two orgs work side by side. All nine CLIs plus `gh`, `aws`, `kubectl` and `git` run through `reckon run` and `reckon verify` with per-connection credentials. Sessions are per org. The current single-org data migrates with one command. Missing credentials fail with no fallback to global logins. |
 | M2 | First cross-area workflows | A GTM review (Search Console, Bing, Clarity) and a release review (Jenkins, GitHub) run as saved sessions with evidence. Each org has a company profile. Read-only MCP for tools without a CLI. |
-| M3 | Approved writes | Prepare and apply, receipts, the production guard, a first write (create a GitHub or Jira issue). |
+| M3 | Approved writes (started 2026-10-14: prepare/apply, receipts, github.issue.create) | Prepare and apply, receipts, the production guard, a first write (create a GitHub or Jira issue). |
 | M4 | Dogfood and measure | Used on two real businesses for two weeks; the next connectors and workflows chosen from what was actually repeated. |
 
 ## Deferred

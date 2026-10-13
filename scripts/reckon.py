@@ -133,6 +133,11 @@ def parser():
     command = sub.add_parser("close", parents=[scope], help="record a session's outcome")
     command.add_argument("session")
     command.add_argument("--outcome", choices=("diagnosed", "done", "inconclusive"), required=True)
+    command = sub.add_parser("act", parents=[scope], help="prepare a write for the operator, or apply one (operator only)")
+    command.add_argument("action", choices=("prepare", "apply", "list", "show"))
+    command.add_argument("target", nargs="?", help="prepare: the write operation (github.issue.create); apply/show: the action ID")
+    command.add_argument("--params", default="{}", help="prepare: parameters as a JSON object")
+    command.add_argument("--body-stdin", action="store_true", help="prepare: read the body parameter from standard input")
     command = sub.add_parser("demo", help="synthetic investigation in a throwaway org; no network")
     command.add_argument("--json", action="store_true")
     return p
@@ -269,7 +274,8 @@ def execute(args):
     h = orgs.home()
     registry = orgs.providers()
     name = args.command
-    if os.environ.get("RECKON_ORG") and (name in ("use", "connect", "login", "migrate", "open") or name == "org" and args.action == "add"):
+    if os.environ.get("RECKON_ORG") and (name in ("use", "connect", "login", "migrate", "open") or name == "org" and args.action == "add"
+                                         or name == "act" and args.action == "apply"):
         # An agent started by reckon open works only inside its pinned org and environment.
         raise ValueError("reckon " + name + " is for the operator's own terminal, not a pinned agent")
     if name == "org":
@@ -323,6 +329,16 @@ def execute(args):
         return demo(h)
     if name == "doctor":
         return doctor(h, registry)
+    if name == "act" and args.action == "apply":
+        from reckonlib import actions
+        if not args.target:
+            raise ValueError("usage: reckon act apply <action-id>")
+        owner = next((o for o in orgs.orgs(h) if (orgs.workspace(h, o) / "actions" / args.target / "action.json").is_file()), None)
+        if not owner:
+            raise ValueError("unknown action: " + args.target)
+        record = actions.load(orgs.workspace(h, owner), args.target)[1]
+        ctx = orgs.context(h, owner, record["environment"], registry)
+        return actions.apply(h, ctx, orgs.workspace(h, owner), args.target, registry)
 
     ctx = context(h, args, registry)
     root = orgs.workspace(h, ctx["org"])
@@ -422,6 +438,19 @@ def execute(args):
         return work.history(root, None if args.all_envs else ctx["env"], args.service, args.query, args.limit)
     if name == "promote":
         return {"incident": str(work.promote(root, args.session, args.slug)), "note": "Preliminary snapshot; complete RCA.md using the RCA template."}
+    if name == "act":
+        from reckonlib import actions
+        if args.action == "list":
+            return actions.listing(root)
+        if args.action == "show":
+            return actions.load(root, args.target or "")[1]
+        params = json.loads(args.params)
+        if args.body_stdin:
+            params["body"] = sys.stdin.read(65537)
+        record, text = actions.prepare(h, ctx, root, args.target or "", params, registry)
+        print(text, file=sys.stderr)
+        return {"action": record["id"], "status": record["status"],
+                "next": "the operator reviews and runs: reckon act apply " + record["id"]}
     if name == "close":
         path, _ = session_path(root, args.session)
         with lock(path):

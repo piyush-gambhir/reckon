@@ -98,7 +98,7 @@ can be promoted to an RCA under `incidents/`. See
 </Callout>
 
 <Callout type="warn">
-  Reckon does not perform writes yet. When a change is needed (rerun a build,
-  create an issue, submit a sitemap), the agent describes the exact change and
-  its target, and you make it.
+  The agent never performs writes. It can prepare a GitHub issue for you to
+  apply with `reckon act apply <id>` (see [Agents](/docs/agents#writes)); for
+  any other change it describes the exact change and its target, and you make it.
 </Callout>

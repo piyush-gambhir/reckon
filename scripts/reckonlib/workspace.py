@@ -59,7 +59,7 @@ def settings(h, ctx, registry):
     """Claude Code permissions: reads through Reckon run freely, logins and secrets are off limits."""
     allow = ["Bash(reckon " + c + ":*)" for c in ("status", "preflight", "capabilities", "services", "resume", "report",
                                                  "note", "history", "verify", "collect", "task", "debug", "investigate",
-                                                 "monitor", "analyze", "close", "promote")]
+                                                 "monitor", "analyze", "close", "promote", "act prepare", "act list", "act show")]
     ask = []
     for cname, conn in sorted(ctx["data"]["connections"].items()):
         mode = registry[conn["provider"]].get("mode")
@@ -67,7 +67,7 @@ def settings(h, ctx, registry):
         (ask if mode == "approval" else allow if mode in ("own", "allowlist") else []).extend(rules)
     # Claude Code reads "//path" as an absolute path.
     secrets = "/" + str(h / "orgs") + "/*/secrets/**"
-    deny = ["Bash(reckon login:*)", "Bash(reckon use:*)", "Bash(reckon connect:*)", "Bash(reckon org:*)", "Bash(reckon migrate:*)",
+    deny = ["Bash(reckon act apply:*)", "Bash(reckon login:*)", "Bash(reckon use:*)", "Bash(reckon connect:*)", "Bash(reckon org:*)", "Bash(reckon migrate:*)",
             "Read(" + secrets + ")", "Edit(" + secrets + ")", "Write(" + secrets + ")"]
     return {"permissions": {"allow": sorted(set(allow) - set(ask)), "ask": sorted(set(ask)), "deny": deny}}
 

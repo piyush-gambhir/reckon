@@ -123,10 +123,22 @@ knowledge is missing, say so and discover it with bounded reads.
 
 ## Writes
 
-Reckon does not perform writes yet: every connection is read-only. When a change
-is needed (create an issue, rerun a build, edit a dashboard, submit a sitemap),
-describe the exact change and its target, and let the operator make it. Prepared,
-operator-approved writes are the next milestone.
+You never perform a write. You prepare it, and the operator applies it in their own
+terminal after reading exactly what will happen:
+
+```bash
+reckon act prepare github.issue.create --body-stdin \
+  --params '{"repo": "acme/api", "title": "Checkout times out on pricing", "labels": "bug"}' <<'BODY'
+What we saw, with the session and evidence IDs.
+BODY
+reckon act list
+```
+
+Tell the operator the action ID and what it does. They run `reckon act apply <id>`,
+which shows the same preview, asks for `yes` (or the org name for production and
+for org-wide accounts), runs it once, and keeps a receipt. Supported writes:
+`github.issue.create`. For any other change (rerun a build, edit a dashboard,
+submit a sitemap), describe the exact change and its target for the operator.
 
 ## Areas and recipes
 
