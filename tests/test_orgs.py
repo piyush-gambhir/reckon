@@ -719,6 +719,26 @@ class RunTests(OrgCase):
         self.assertFalse(self.marker.exists())
         self.assertEqual(self.cli("run", "jenkins", "--", "job", "list", RECKON_ORG="acme", RECKON_ENV="staging").returncode, 0)
 
+    def test_verify_runs_one_live_check_per_connection_in_this_environment(self):
+        data = orgs.load(self.home, "acme", self.registry)
+        data["connections"]["grafana"] = {"provider": "grafana"}
+        orgs.save(self.home, data, self.registry)
+        self.fake("import sys\nif sys.argv[1:3] == ['org', 'current']: print('{}')\nelse: sys.exit(3)", "grafana")
+        result = self.cli("verify", "--org", "acme", "--env", "staging", "--json")
+        rows = {r["connection"]: r for r in json.loads(result.stdout)}
+        # jenkins-staging is checked with whoami (the fake jenkins answers), jenkins-uat is another environment,
+        # grafana has no credentials yet.
+        self.assertEqual(rows["jenkins-staging"]["status"], "ok")
+        self.assertNotIn("jenkins-uat", rows)
+        self.assertEqual((rows["grafana"]["status"], rows["grafana"]["detail"]), ("skipped", "no credentials"))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.secret("acme", "grafana", ["GRAFANA_URL=https://g.invalid", "GRAFANA_TOKEN=grafana-secret-token"])
+        self.fake("import sys\nprint('denied for grafana-secret-token', file=sys.stderr); sys.exit(1)", "grafana")
+        failed = self.cli("verify", "grafana", "--org", "acme", "--env", "staging", "--json")
+        self.assertEqual(failed.returncode, 1)
+        self.assertNotIn("grafana-secret-token", failed.stdout + failed.stderr)
+        self.assertIn("[REDACTED]", failed.stdout)
+
     def test_admin_commands_are_refused_inside_a_pinned_agent(self):
         for args in (["connect", "new", "--org", "other", "--provider", "jenkins"], ["use", "acme/uat"], ["org", "add", "x"]):
             result = self.cli(*args, RECKON_ORG="acme", RECKON_ENV="staging")
@@ -797,6 +817,27 @@ class WorkspaceTests(OrgCase):
         self.ctx_ = self.ctx()
         self.root = workspace.ensure(self.home, self.ctx_, self.registry)
         self.settings = json.loads((self.root / ".claude" / "settings.json").read_text())["permissions"]
+
+    def test_open_launches_the_runtime_in_the_org_folder_without_credentials(self):
+        from unittest import mock
+        os.environ.update(GH_TOKEN="leak", JENKINS_TOKEN="leak")
+        self.fake("", "claude")
+        with mock.patch("os.execvpe") as execvpe, mock.patch("os.chdir") as chdir:
+            workspace.launch(self.home, self.ctx_, self.registry, None, ["--continue"])
+        runtime, argv, env = execvpe.call_args[0]
+        self.assertEqual((runtime, argv), ("claude", ["claude", "--continue"]))
+        chdir.assert_called_once_with(self.root)
+        self.assertEqual((env["RECKON_ORG"], env["RECKON_ENV"]), ("acme", "staging"))
+        self.assertNotIn("GH_TOKEN", env)
+        self.assertNotIn("JENKINS_TOKEN", env)
+        with self.assertRaisesRegex(ValueError, "install Claude Code"):
+            workspace.launch(self.home, self.ctx_, self.registry, "codex", [])
+
+    def test_a_connection_can_be_removed(self):
+        result = self.cli("connect", "grafana", "--org", "acme", "--remove", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("grafana", orgs.load(self.home, "acme", self.registry)["connections"])
+        self.assertNotIn("Bash(reckon run grafana:*)", json.loads((self.root / ".claude" / "settings.json").read_text())["permissions"]["allow"])
 
     def test_workspace_lives_under_the_org_and_is_private(self):
         self.assertEqual(self.root, self.home / "orgs" / "acme" / "workspace")

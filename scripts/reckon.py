@@ -55,6 +55,7 @@ def parser():
     command.add_argument("--label", action="append", default=[], metavar="ENV=LABEL",
                          help="label that selects ENV inside a shared backend, e.g. prod=production (repeatable)")
     command.add_argument("--list", action="store_true", help="list supported tools")
+    command.add_argument("--remove", action="store_true", help="remove the connection; its secrets file is kept for you to delete")
 
     command = sub.add_parser("login", parents=[scope], help="interactive login for a connection's CLI (run it yourself)")
     command.add_argument("connection")
@@ -161,6 +162,13 @@ def connect(h, args, registry):
     ctx = context(h, args, registry, need_env=False)
     data = ctx["data"]
     orgs.name(args.name, "connection")
+    if args.remove:
+        if args.name not in data["connections"]:
+            raise ValueError("unknown connection: " + args.name)
+        del data["connections"][args.name]
+        orgs.save(h, data, registry)
+        workspace.ensure(h, ctx, registry)
+        return {"org": ctx["org"], "removed": args.name, "secrets_kept": str(orgs.secrets_path(h, ctx["org"], args.name))}
     conn = dict(data["connections"].get(args.name, {}))
     if conn:
         if args.provider and args.provider != conn["provider"]:

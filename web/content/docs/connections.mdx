@@ -68,7 +68,8 @@ The agent names either a connection or a provider:
   the active environment. If none or several apply, it fails and asks for a
   name.
 
-Run `reckon connect` again on an existing name to change it, for example to add
+Remove one with `reckon connect <name> --org acme --remove` (its secrets file stays
+for you to delete). Run `reckon connect` again on an existing name to change it, for example to add
 a label: `reckon connect cubeapm --org acme --label dev=DEV`. A connection keeps
 its provider; use a new name for another tool. The org's connections are stored
 in `~/.reckon/orgs/acme/org.json`, with no secrets:
