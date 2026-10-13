@@ -35,3 +35,14 @@ Read `knowledge/<env>/deploy-pipelines.md` for each service's deploy job and bra
 A table of deploys (service, time, revision, result, health after), findings with
 evidence, and follow-ups (failed deploys, regressions, rollbacks to consider). If a
 regression looks like an incident, start `reckon debug` for that service.
+
+## Done when
+
+Close the session (`reckon close <id> --outcome done`) only when each item is met
+or recorded as skipped with a reason (`reckon note <id> --kind question`):
+
+- [ ] Every deploy job in deploy-pipelines.md read for the window, or the gap noted
+- [ ] Each deploy's revision established from build evidence, not inferred from CI
+- [ ] Failed deploys listed with their log evidence
+- [ ] Health compared before and after each deploy for its services, or telemetry gaps stated
+- [ ] Deploy table, findings with evidence, and follow-ups recorded with reckon note

@@ -8,7 +8,7 @@ environment, and Claude Code or Codex works on that business through the tools
 you already use: development, product, growth and operations.
 
 📖 **Docs site:** [`web/`](web/) (Next.js + Fumadocs, static export to Cloudflare Workers Assets).
-Plan and status: [docs/PRODUCT-PLAN.md](docs/PRODUCT-PLAN.md).
+Plan and status: [docs/PRODUCT-PLAN.md](docs/PRODUCT-PLAN.md); long view: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## How it works
 

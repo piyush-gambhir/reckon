@@ -122,6 +122,12 @@ write barrier for databases.
 | M3 | Approved writes (started 2026-10-14: prepare/apply, receipts, github.issue.create) | Prepare and apply, receipts, the production guard, a first write (create a GitHub or Jira issue). |
 | M4 | Dogfood and measure | Used on two real businesses for two weeks; the next connectors and workflows chosen from what was actually repeated. |
 
+## Beyond M4
+
+[ROADMAP.md](ROADMAP.md) holds the long view from the October 2026 research: the
+agent CLI contract, which CLIs to adopt or build, resource binding, knowledge
+provenance, evaluations and briefings.
+
 ## Deferred
 
 Team accounts, a hosted or scheduled agent, MCP writes, a web dashboard and

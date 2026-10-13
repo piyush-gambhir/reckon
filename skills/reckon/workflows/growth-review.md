@@ -39,3 +39,16 @@ Record each finding with `reckon note <id> --kind finding --evidence <ids>`, the
 `reckon report <id>`. End with at most five actions, each with its page or query,
 the evidence, and the expected effect. Writes (sitemaps, page edits, issues) are
 for the operator.
+
+## Done when
+
+Close the session (`reckon close <id> --outcome done`) only when each item is met
+or recorded as skipped with a reason (`reckon note <id> --kind question`):
+
+- [ ] Search Console totals and trend read for every property in the company profile, or the gap noted
+- [ ] Top queries and pages compared for 7 and 28 days
+- [ ] Opportunities read (striking distance and low CTR)
+- [ ] Bing summary and crawl issues read, or the connection noted as missing
+- [ ] Behaviour checked on each page with a material change, or skipped with the reason (for example the Clarity quota)
+- [ ] Every finding cites evidence from this session; preliminary data is labelled
+- [ ] At most five actions, each with page or query, evidence and expected effect
