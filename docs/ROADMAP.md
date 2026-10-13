@@ -99,9 +99,9 @@ Fix first, in the CLIs themselves:
   refused under read-only and marked `secret_output`, and `export` a local write);
   bwt (bing-webmaster-cli#25) and clarity (clarity-cli#16) sticky read-only;
   jira sticky no-input (jira-cli#50).
-- Open: es `index settings`/`mappings` read forms wrongly marked mutating;
-  jenkins artifact download and jira attachment download classified as local
-  writes. Reckon blocks these paths meanwhile.
+- Done 2026-10-14 as PRs: es `index settings`/`mappings` read forms allowed in
+  read-only mode (es-cli#50); jenkins artifact download (jenkins-cli#42) and jira
+  attachment download (jira-cli#51) refused as local writes in read-only mode.
 
 ### M5 Connectors: adopt, then build
 
