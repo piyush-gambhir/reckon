@@ -144,7 +144,8 @@
       "verify": ["auth", "status", "--verify", "-o", "json"],
       "login": ["auth", "login"],
       "short_values": "os",
-      "resources": {"site": {"flags": ["--site", "-s"], "default_env": ["BWT_SITE"], "positional": "^https?://", "refuse_commands": [["sites", "list"], ["api"]]}}
+      "resources": {"site": {"flags": ["--site", "-s"], "default_env": ["BWT_SITE"], "positional": "^https?://", "refuse_commands": [["sites", "list"], ["api"]]}},
+      "resolver": ["commands", "resolve", "--"]
     },
     "clarity": {
       "title": "Microsoft Clarity",
@@ -160,7 +161,8 @@
       "verify": ["auth", "status", "--verify", "-o", "json"],
       "verify_note": "uses one of Clarity's 10 daily export requests",
       "login": ["auth", "login"],
-      "short_values": "o"
+      "short_values": "o",
+      "resolver": ["commands", "resolve", "--"]
     },
     "github": {
       "title": "GitHub",

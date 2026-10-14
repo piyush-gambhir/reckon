@@ -54,3 +54,17 @@ class ResolverTests(OrgCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RealResolverTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get("RECKON_REAL_BWT") and os.environ.get("RECKON_REAL_CLARITY"), "set RECKON_REAL_BWT and RECKON_REAL_CLARITY")
+    def test_bwt_and_clarity_resolvers(self):
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        env = {"PATH": os.environ["PATH"], "TMPDIR": tmp, "HOME": tmp, "BWT_NO_UPDATE_NOTIFIER": "1", "CLARITY_NO_UPDATE_NOTIFIER": "1"}
+        for name, binary, read, write in (("bing", os.environ["RECKON_REAL_BWT"], ["sites", "list"], ["-o", "json", "submit", "urls", "https://x.com/a"]),
+                                          ("clarity", os.environ["RECKON_REAL_CLARITY"], ["export", "--days", "1"], ["auth", "logout"])):
+            spec = dict(REGISTRY[name], binary=binary)
+            self.assertEqual(connectors.resolved(spec, env, read)["effect"], "read")
+            with self.assertRaises(ValueError):
+                connectors.resolved(spec, env, write)
