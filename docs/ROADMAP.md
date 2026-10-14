@@ -176,6 +176,8 @@ this order (each a Go CLI with `commands resolve` from day one):
 
 1. WhatsApp Business Cloud API: Meta archived its SDKs; phone numbers, templates,
    conversation and pricing analytics, quality rating. Indian sales and support.
+   First version built 2026-10-14 as `whatsapp-cli` (local, not yet published):
+   GET-only, `commands resolve`, Graph v25.0; not yet run against a live account.
 2. Zoho CRM: no CLI anywhere; records, search and COQL share Zoho Books' OAuth.
 3. Tally (TallyPrime): XML over a local HTTP port; ledgers, vouchers, trial balance.
 4. Plausible: one Stats API v2 endpoint and a sites list; a one-day build.

@@ -232,6 +232,8 @@ numbers are not complete history.
 | Email delivery | `resend -- emails list --json`, `domains list` |
 | Shopify orders (queries only) | `shopify -- store execute --query 'query { orders(first: 20) { nodes { name totalPriceSet { shopMoney { amount } } } } }' --json` |
 | Supabase projects and advisors | `supabase -- projects list -o json`, `db advisors --linked` |
+| WhatsApp numbers and quality | `whatsapp -- numbers list`, `templates list --status rejected` |
+| WhatsApp spend per category | `whatsapp -- analytics pricing --from <date> --to <date> --dimension pricing_category` |
 
 These CLIs run as allowlists; `reckon run <tool> -- --help` shows each one's flags.
 

@@ -139,3 +139,19 @@ reckon run supabase -- orgs list ...
 Settings: `SUPABASE_ACCESS_TOKEN`; optional `SUPABASE_PROJECT_ID`.
 
 Read commands: `orgs list`, `projects list`, `branches list`, `backups list`, `functions list`, `db advisors`, `postgres-config get`, `ssl-enforcement get`, `network-restrictions get`, `network-bans get`, `vanity-subdomains get`, `domains get`, `sso list`, `sso show`.
+
+## WhatsApp Business
+
+Phone numbers with their quality rating and messaging limit, message templates
+and their review status, and message, conversation and pricing analytics. CLI:
+`whatsapp`, our own read-only CLI (every request is a `GET`). Use a system user
+token with `whatsapp_business_management`.
+
+```bash
+reckon connect whatsapp --org acme --provider whatsapp   # then set WHATSAPP_ACCESS_TOKEN and WHATSAPP_BUSINESS_ACCOUNT_ID
+reckon verify whatsapp   # runs: whatsapp account get
+reckon run whatsapp -- analytics pricing --from 2026-10-01 --to 2026-10-08 --dimension pricing_category
+```
+
+Settings: `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_BUSINESS_ACCOUNT_ID`; optional `WHATSAPP_API_VERSION` (default `v25.0`).
+Reckon forces the Graph host, so a connection cannot send the token elsewhere.

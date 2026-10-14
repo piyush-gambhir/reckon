@@ -42,6 +42,14 @@ class AdoptedTests(unittest.TestCase):
                     connectors.check(name, spec, args)
 
 
+class WhatsAppTests(unittest.TestCase):
+    def test_entry_reads_only_and_pins_the_graph_host(self):
+        spec = REGISTRY["whatsapp"]
+        self.assertEqual(spec["always"]["WHATSAPP_GRAPH_URL"], "")
+        for args in (["numbers", "list"], ["analytics", "pricing", "--from", "2026-10-01"], spec["verify"]):
+            connectors.check("whatsapp", spec, args)
+
+
 @unittest.skipUnless(os.environ.get("RECKON_ADOPTED_BIN"), "set RECKON_ADOPTED_BIN to a folder of release binaries")
 class RealBinaryTests(unittest.TestCase):
     def test_every_allowed_command_exists(self):

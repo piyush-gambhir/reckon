@@ -81,6 +81,7 @@ Try one offline: `reckon demo`.
 | Product | `jira`, `clarity`, `linear` |
 | Growth | `gsc` (Google Search Console), `bing` (bwt), `gog` (Google Workspace, GA4, YouTube) |
 | Revenue and reliability | `stripe`, `razorpay`, `shopify`, `resend`, `sentry`, `cloudflare` (cf), `supabase`; adopted CLIs, read-only lists |
+| Sales and support | `whatsapp` (WhatsApp Business: numbers, templates, message and pricing analytics; ours, read-only) |
 
 `reckon connect --list` shows them all. The nine CLIs above that are ours
 (grafana, jenkins, cubeapm, es, jira, nginxpm, gsc, bwt, clarity) are pinned in

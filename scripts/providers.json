@@ -483,6 +483,25 @@
       "login": ["login"],
       "isolated_cwd": true,
       "_note": "Management API reads only (all GET, plus network-bans get, a POST that only retrieves). No built-in read-only mode. inspect db and migration list are excluded: on a linked project they mint a read-write login role and may lift network bans. For database inspection use a postgres connection with a read-only role. Five config gets (postgres-config, ssl-enforcement, network-restrictions, network-bans, vanity-subdomains) need --experimental. Project-scoped reads use SUPABASE_PROJECT_ID. JSON: -o json."
+    },
+    "whatsapp": {
+      "title": "WhatsApp Business",
+      "binary": "whatsapp",
+      "mode": "own",
+      "prefixes": ["WHATSAPP_"],
+      "required": ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_BUSINESS_ACCOUNT_ID"],
+      "optional": ["WHATSAPP_API_VERSION"],
+      "config_files": [],
+      "real_home": false,
+      "always": {"WHATSAPP_GRAPH_URL": ""},
+      "deny_args": [],
+      "deny_commands": [],
+      "short_values": "o",
+      "verify": ["account", "get"],
+      "login": [],
+      "isolated_cwd": true,
+      "resolver": ["commands", "resolve", "--"],
+      "_note": "Our read-only CLI (whatsapp-cli): every command is a GET; the token comes only from the environment. WHATSAPP_GRAPH_URL is forced empty so a connection cannot send the token to another host."
     }
   }
 }
