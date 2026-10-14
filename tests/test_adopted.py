@@ -12,6 +12,15 @@ CASES = {
                                                       ["api", "GET", "/x"], ["auth", "add"], ["drive", "get", "id", "--out", "f"]]),
     "sentry": (["issue", "list", "--limit", "10"], [["auth", "token"], ["api", "/x"], ["issue", "list", "--token", "x"], ["issue", "resolve", "1"]]),
     "cloudflare": (["zones", "list"], [["dns", "records", "create"], ["deploy"], ["zones", "list", "--profile", "x"], ["accounts", "tokens", "list"]]),
+    "linear": (["issue", "list", "--json", "-s", "started"], [["api", "query { viewer { id } }"], ["auth", "token"], ["issue", "create"],
+                                                         ["issue", "list", "--workspace", "x"], ["issue", "view", "ENG-1", "-w"], ["config"]]),
+    "resend": (["emails", "list", "--json"], [["emails", "send"], ["api-keys", "list"], ["logs", "get", "x"], ["emails", "list", "--api-key", "x"],
+                                              ["domains", "list", "-p", "other"], ["broadcasts", "send", "b"]]),
+    "shopify": (["store", "execute", "--query", "query { shop { name } }"], [["store", "execute", "--allow-mutations", "--query", "mutation {}"],
+                                                                            ["store", "execute", "--store", "other.myshopify.com"], ["theme", "push"],
+                                                                            ["app", "deploy"], ["store", "execute", "--query-file", "q.graphql"]]),
+    "supabase": (["projects", "list", "-o", "json"], [["projects", "api-keys"], ["db", "push"], ["inspect", "db", "bloat", "--linked"],
+                                                      ["migration", "list"], ["functions", "list", "--project-ref", "x"], ["link"]]),
 }
 
 

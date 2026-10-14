@@ -69,9 +69,9 @@ Try one offline: `reckon demo`.
 | --- | --- |
 | Development | `jenkins`, `github` (gh), `kubernetes` (kubectl), `aws` |
 | Operations | `cubeapm`, `grafana`, `elasticsearch` (es), `nginxpm`, plus `postgres`, `mysql`, `mongodb`, `clickhouse`, `redis`, `kafka`, `kafka-rpk` (each run asks you first) |
-| Product | `jira`, `clarity` |
+| Product | `jira`, `clarity`, `linear` |
 | Growth | `gsc` (Google Search Console), `bing` (bwt), `gog` (Google Workspace, GA4, YouTube) |
-| Revenue and reliability | `stripe`, `razorpay`, `sentry`, `cloudflare` (cf); adopted CLIs, read-only lists |
+| Revenue and reliability | `stripe`, `razorpay`, `shopify`, `resend`, `sentry`, `cloudflare` (cf), `supabase`; adopted CLIs, read-only lists |
 
 `reckon connect --list` shows them all. The nine CLIs above that are ours
 (grafana, jenkins, cubeapm, es, jira, nginxpm, gsc, bwt, clarity) are pinned in

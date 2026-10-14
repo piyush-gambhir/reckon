@@ -200,7 +200,7 @@ Search Console dates are inclusive Pacific-time days and the last two or three d
 are preliminary. Bing filters dates locally after fetching its own top rows, so its
 numbers are not complete history.
 
-### Revenue, Google Workspace, Sentry and Cloudflare
+### Revenue, product and platform CLIs
 
 | Need | Command |
 | --- | --- |
@@ -211,6 +211,10 @@ numbers are not complete history.
 | Calendar, Drive, Gmail search | `gog -- calendar events`, `drive search <query>`, `gmail search <query>` |
 | Sentry issues and releases | `sentry -- issue list --limit 25`, `release list` |
 | DNS records | `cloudflare -- dns records list ...` |
+| Linear issues and cycles | `linear -- issue list --json`, `cycle view active --team ENG -j` |
+| Email delivery | `resend -- emails list --json`, `domains list` |
+| Shopify orders (queries only) | `shopify -- store execute --query 'query { orders(first: 20) { nodes { name totalPriceSet { shopMoney { amount } } } } }' --json` |
+| Supabase projects and advisors | `supabase -- projects list -o json`, `db advisors --linked` |
 
 These CLIs run as allowlists; `reckon run <tool> -- --help` shows each one's flags.
 

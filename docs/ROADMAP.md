@@ -133,13 +133,47 @@ gog, Sentry, Cloudflare. HubSpot waits for its CLI source to be published.
 | Cloudflare | [cf](https://github.com/cloudflare/cf) | DNS, security and Workers across sites (beta: pin it) |
 | HubSpot | [agent-cli](https://github.com/HubSpot/agent-cli) | Pipeline and CRM hygiene |
 
-Next tier: Resend, Shopify (first tier for ecommerce orgs), Linear, Supabase, and
-whichever accounting tool each business uses (Zoho Books, Xero, QuickBooks).
+Done 2026-10-14 from source, pending live tests: Linear (schpet/linear-cli),
+Resend, Shopify (`store execute`, which refuses mutations; forced off) and Supabase
+(Management API reads only: `inspect db` and `migration list` create a read-write
+login role on linked projects, so database inspection goes through a `postgres`
+connection with a read-only role).
 
-**Build only after a failed adoption trial**, in this order: WhatsApp Business
-Cloud API (no good native CLI; Indian sales and support), PostHog (try the
-official MCP first), Crisp (official MCP first), Plausible (small API, cheap to
-own). Intercom, Mailchimp, SendGrid and Google Ads already have usable clients.
+**Next wave**, from a GitHub survey on 2026-10-14 (stars, releases and commits
+fetched, not guessed). Adopt in this order, each only when a business uses it:
+
+| Order | Tool | CLI | Why this one |
+| --- | --- | --- | --- |
+| 1 | Meta Ads | `meta` (official, PyPI meta-ads) | `ads_read` system-user token is a hard read-only boundary |
+| 2 | App Store Connect | [asc](https://github.com/rorkai/App-Store-Connect-CLI) (7.8k stars, Go) | Sales, analytics, reviews, TestFlight; JSON output |
+| 3 | Chargebee | [chargebee/cli](https://github.com/chargebee/cli) (official) | Env auth, JSON, live-site writes blocked by the CLI |
+| 4 | Railway, Render, Fly | official CLIs | Hosting status and deploys; env tokens, JSON |
+| 5 | PostHog | `posthog-cli` (official, in the PostHog monorepo) | HogQL `query` and flags; replaces the planned MCP or build path |
+| 6 | Google Ads | [google-ads-open-cli](https://github.com/Bin-Huang/google-ads-open-cli) | Read-only by design; pin a commit (no releases) |
+| 7 | Chatwoot | [chatwoot/cli](https://github.com/chatwoot/cli) (official, Go) | Support inbox reads; allowlist, since it can reply |
+| 8 | Neon, PlanetScale, Upstash | official CLIs | Hosted database status with scoped service tokens |
+| 9 | Google Play | [gplay](https://github.com/tamtom/play-console-cli) | Official APIs only, JSON default; trial first |
+| 10 | Slack | [slackcli](https://github.com/shaharia-lab/slackcli) | Search and history with a read-scoped bot token only |
+
+Trial before adopting (official but alpha, closed or quiet): HubSpot agent-cli,
+Xero, QuickBooks (`intuit-cli`), Zoho Books (`zb`, community), Loops, Mailchimp
+(`mcapi`), Freshdesk, UptimeRobot, Checkly, Vercel, Netlify, Turso, Lemon Squeezy,
+Paddle. Skip: GST portal (needs a licensed intermediary; read GST from Zoho Books
+or Tally), Mixpanel and Amplitude (no CLI, no current user), Discord (only user-token
+CLIs exist, against its terms).
+
+
+**Build our own** where GitHub has no maintained CLI and the read API is small, in
+this order (each a Go CLI with `commands resolve` from day one):
+
+1. WhatsApp Business Cloud API: Meta archived its SDKs; phone numbers, templates,
+   conversation and pricing analytics, quality rating. Indian sales and support.
+2. Zoho CRM: no CLI anywhere; records, search and COQL share Zoho Books' OAuth.
+3. Tally (TallyPrime): XML over a local HTTP port; ledgers, vouchers, trial balance.
+4. Plausible: one Stats API v2 endpoint and a sites list; a one-day build.
+5. WooCommerce: REST `/wc/v3` with read-only consumer keys, so no shell on each host.
+6. Zendesk Support: the official `zcli` covers apps and themes, not tickets.
+7. Better Stack, Crisp, Brevo, Porkbun, Attio: small APIs, built when a business uses one.
 
 **MCP, read-only, through the same connection policy** for gaps no CLI fills
 (PostHog, Crisp, Notion): curated read tools, credentials injected outside the
@@ -193,6 +227,29 @@ stale knowledge, saved to `briefs/` for a cron or launchd job.
   after memory caused problems).
 - Optional local scheduling through launchd or cron, producing saved sessions;
   delivery to email or chat only when the operator asks.
+
+### Features found in comparable projects
+
+From a survey of Paperclip, OpenHands, Goose, Composio, OpenWork, OpenSRE,
+HumanLayer, Steampipe, agentgateway, ContextForge, HolmesGPT, OneCLI, Agent Vault
+and ToolHive (2026-10-14), ranked by value for one person running several businesses:
+
+| Feature | Seen in | Effort |
+| --- | --- | --- |
+| Cross-org brief (`reckon brief --all-orgs`): one morning view of every business | Steampipe aggregators, Paperclip | S |
+| Activity log of every run, refusal, prepare and apply, with or without a session | Paperclip, Agent Vault | S |
+| Secret references (`keychain:`, `op://`) resolved only inside `reckon run` | ToolHive | S |
+| Saved routines: launchd or cron runs a headless agent on a workflow, with skip and catch-up policies | Paperclip, HolmesGPT, Goose | M |
+| Workflow recipes: typed parameters, required checks and a report schema | Goose recipes | M |
+| Large output spilled to the session, with a preview and the path | HolmesGPT | S |
+| Agent spend per org from Claude Code and Codex transcripts | Paperclip | M |
+| Goals and KPIs per org, bound to reads, reported in briefs | Paperclip | M |
+| Per-connection circuit breaker and quota ledger | ContextForge | S |
+| Polled watches and an inbox (new dispute, new Sentry issue, failed deploy) | Composio triggers | M |
+| Org export and import without secrets, to start a new business from an old one | Paperclip companies spec | S |
+
+Rejected for now: an HTTP credential proxy (Agent Vault, OneCLI) needs a TLS
+intercepting CA and a separate machine to mean anything.
 
 ### Later, deliberately
 

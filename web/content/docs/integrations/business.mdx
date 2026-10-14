@@ -1,6 +1,6 @@
 ---
 title: Business tools
-description: Stripe, Razorpay, Google Workspace (gog), Sentry and Cloudflare through fixed read-only command lists.
+description: Stripe, Razorpay, Google Workspace (gog), Sentry, Cloudflare, Linear, Resend, Shopify and Supabase through fixed read-only command lists.
 ---
 
 These CLIs are maintained by their vendors or communities, and Reckon adopts them
@@ -84,3 +84,58 @@ Settings: `CLOUDFLARE_API_TOKEN`.
 
 Read commands: `user tokens verify`, `accounts tokens verify`, `accounts list`, `zones list`, `zones get`, `dns records list`, `dns records get`, `dns dnssec get`, `workers list`, `d1 list`, `kv namespaces list`, `r2 buckets list`, `queues list`, `rulesets list`.
 
+## Linear
+
+Issues, projects, cycles and milestones. CLI: [linear](https://github.com/schpet/linear-cli). Linear has no read-only mode in the CLI, so create the API key with read-only permission. Use `--all`, not `-a` (which opens the desktop app on some commands).
+
+```bash
+reckon connect linear --org acme --provider linear   # then set LINEAR_API_KEY in the secrets file
+reckon verify linear   # runs: linear auth whoami
+reckon run linear -- issue list ...
+```
+
+Settings: `LINEAR_API_KEY`; optional `LINEAR_TEAM_ID`.
+
+Read commands: `issue list`, `issue query`, `issue view`, `issue comment list`, `issue relation list`, `project list`, `project view`, `project comment list`, `project-update list`, `milestone list`, `milestone view`, `cycle list`, `cycle view`, `team list`, `team members`, `team states`, `user list`, `label list`, `auth whoami`.
+
+## Resend
+
+Sent emails and their status, domains, contacts, segments and broadcasts. CLI: [resend](https://github.com/resend/resend-cli). Resend has no read-only key type, so this list is the only write guard; `logs get` is excluded because request bodies can contain new API keys.
+
+```bash
+reckon connect resend --org acme --provider resend   # then set RESEND_API_KEY in the secrets file
+reckon verify resend   # runs: resend domains list --limit 1 --json
+reckon run resend -- emails list ...
+```
+
+Settings: `RESEND_API_KEY`.
+
+Read commands: `emails list`, `emails get`, `emails metrics`, `domains list`, `domains get`, `contacts list`, `contacts get`, `contacts segments`, `segments list`, `segments get`, `segments contacts`, `broadcasts list`, `broadcasts get`, `logs list`, `whoami`.
+
+## Shopify
+
+Store data through Admin GraphQL queries. CLI: [shopify](https://github.com/Shopify/cli), `store` commands only. `store execute` refuses mutations unless `--allow-mutations` is given, which Reckon refuses and forces off. Set `SHOPIFY_FLAG_STORE` to the store domain and run `reckon login shopify` once for a read-scoped token.
+
+```bash
+reckon connect shopify --org acme --provider shopify   # then set SHOPIFY_FLAG_STORE in the secrets file
+reckon verify shopify   # runs: shopify store execute --query 'query { shop { name myshopifyDomain } }' --json
+reckon run shopify -- store execute ...
+```
+
+Settings: `SHOPIFY_FLAG_STORE`.
+
+Read commands: `store execute`, `store info`, `store auth list`.
+
+## Supabase
+
+Organisations, projects, branches, backups, functions, advisors and project settings through the Management API. CLI: [supabase](https://github.com/supabase/cli). `inspect db` and `migration list` are excluded: on a linked project they create a read-write login role. Inspect the database through a `postgres` connection with a read-only role instead. The five config `get` commands need `--experimental`.
+
+```bash
+reckon connect supabase --org acme --provider supabase   # then set SUPABASE_ACCESS_TOKEN in the secrets file
+reckon verify supabase   # runs: supabase orgs list
+reckon run supabase -- orgs list ...
+```
+
+Settings: `SUPABASE_ACCESS_TOKEN`; optional `SUPABASE_PROJECT_ID`.
+
+Read commands: `orgs list`, `projects list`, `branches list`, `backups list`, `functions list`, `db advisors`, `postgres-config get`, `ssl-enforcement get`, `network-restrictions get`, `network-bans get`, `vanity-subdomains get`, `domains get`, `sso list`, `sso show`.
