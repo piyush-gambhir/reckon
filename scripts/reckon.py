@@ -141,6 +141,9 @@ def parser():
     command.add_argument("target", nargs="?", help="prepare: the write operation (github.issue.create); apply/show: the action ID")
     command.add_argument("--params", default="{}", help="prepare: parameters as a JSON object")
     command.add_argument("--body-stdin", action="store_true", help="prepare: read the body parameter from standard input")
+    command = sub.add_parser("brief", parents=[scope], help="local digest: open work, findings, writes waiting, gaps (no network)")
+    command.add_argument("--days", type=int, default=7)
+    command.add_argument("--save", action="store_true", help="also write it to the org folder's briefs/<date>-<env>.md")
     command = sub.add_parser("demo", help="synthetic investigation in a throwaway org; no network")
     command.add_argument("--json", action="store_true")
     return p
@@ -450,6 +453,19 @@ def execute(args):
         return work.history(root, None if args.all_envs else ctx["env"], args.service, args.query, args.limit)
     if name == "promote":
         return {"incident": str(work.promote(root, args.session, args.slug)), "note": "Preliminary snapshot; complete RCA.md using the RCA template."}
+    if name == "brief":
+        from reckonlib.brief import brief
+        if not 1 <= args.days <= 365:
+            raise ValueError("--days must be 1-365")
+        result = brief(h, ctx, registry, args.days)
+        if args.save:
+            from datetime import datetime, timezone
+            from reckonlib.brief import render
+            from reckonlib.store import write as save
+            target = local_path(root, "briefs", datetime.now(timezone.utc).strftime("%Y-%m-%d") + "-" + ctx["env"] + ".md")
+            save(target, render(result) + "\n")
+            result["saved"] = str(target)
+        return result
     if name == "act":
         from reckonlib import actions
         if args.action == "list":
@@ -554,6 +570,11 @@ def display(command, result):
     elif command == "connect" and isinstance(result, list):
         for row in result:
             print(row["provider"].ljust(15) + row["title"].ljust(24) + row["mode"].ljust(10) + ", ".join(row["settings"]))
+    elif command == "brief":
+        from reckonlib.brief import render
+        print(render(result))
+        if result.get("saved"):
+            print("Saved: " + result["saved"])
     elif command == "verify":
         for row in result:
             print(("ok      " if row["status"] == "ok" else row["status"].ljust(8)) + row["connection"].ljust(22) + row.get("detail", "")[:200])

@@ -194,6 +194,18 @@ def resolve_service(root, env, name):
     return matches[0]
 
 
+def knowledge_snapshot(root, env):
+    """Hashes of the knowledge files a session starts from, so its context can be checked later."""
+    files = {}
+    for layer in ("_shared", env):
+        base = root / "knowledge" / layer
+        if base.is_dir() and not base.is_symlink():
+            for path in sorted(base.glob("*")):
+                if path.is_file() and not path.is_symlink() and path.stat().st_size <= 8 * 1048576:
+                    files[layer + "/" + path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return files
+
+
 def create(root, org, env, question, mode, service=None, bounds=None, playbook=None, area=None):
     """An investigation (service, window, playbook) or a task in any area."""
     private_dir(local_path(root, "sessions"))
@@ -202,7 +214,8 @@ def create(root, org, env, question, mode, service=None, bounds=None, playbook=N
     private_dir(path / "evidence")
     data = {"schema_version": SCHEMA, "id": sid, "org": org, "environment": env, "mode": mode,
             "service": service["id"] if service else None, "service_context": service, "question": question,
-            "window": bounds, "playbook": playbook, "area": area, "created_at": now(), "status": "open", "notes": []}
+            "window": bounds, "playbook": playbook, "area": area, "created_at": now(), "status": "open", "notes": [],
+            "knowledge": knowledge_snapshot(root, env)}
     write_json(path / "session.json", data)
     return path, data
 

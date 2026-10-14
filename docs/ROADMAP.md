@@ -147,6 +147,9 @@ account).
 
 ### M7 Knowledge with provenance
 
+First slice built 2026-10-14: sessions record a hash of every knowledge file they
+start from, and `reckon resume` reports which changed since.
+
 - Facts in `knowledge/` carry source (evidence ID or URL), observed date, org/env
   and a review date; superseded facts are kept and marked.
 - Sessions snapshot the exact runbook and company-profile content they used, by
@@ -162,6 +165,10 @@ account).
   optional model review for quality. Run before and after every workflow change.
 
 ### M9 Briefings and schedules
+
+First slice built 2026-10-14: `reckon brief [--days N] [--save]`, a local digest of
+open sessions, recent findings, writes waiting or unknown, connection gaps and
+stale knowledge, saved to `briefs/` for a cron or launchd job.
 
 - `reckon brief`: a stateless daily or weekly summary per org built from the
   workflows, never from accumulated chat memory (OpenSRE moved to stateless loops

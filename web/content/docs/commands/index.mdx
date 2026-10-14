@@ -81,3 +81,17 @@ For operations work, the agent narrows from broad to specific:
   These pages are a curated read-only surface, not full CLI references. Each
   [integration page](/docs/integrations) links the CLI's own documentation.
 </Callout>
+
+## Daily brief
+
+```bash
+reckon brief                 # last 7 days, this org and environment
+reckon brief --days 30 --save  # also writes briefs/<date>-<env>.md in the org folder
+```
+
+The brief is built from saved files only: open sessions, recent findings, writes
+waiting for `reckon act apply` or with an `unknown` outcome, connections that are
+not ready, and knowledge untouched for 90 days. It contacts no tool, so it is safe
+to run from cron or launchd, for example
+`0 8 * * 1-5 RECKON_HOME=~/.reckon ~/.reckon/bin/reckon brief --org acme --env prod --save`.
+
