@@ -103,6 +103,7 @@ def parser():
     command = sub.add_parser("task", parents=[scope], help="start a session for any piece of work")
     command.add_argument("--question", required=True, help="what this work is about")
     command.add_argument("--area", help="dev, product, gtm, sales, ops or your own word")
+    command.add_argument("--budget", type=int, help="most reads this session may record (protects quotas and production)")
     command.add_argument("--from", dest="start", help="optional window start (ISO time with timezone)")
     command.add_argument("--to", dest="end", help="optional window end")
 
@@ -400,7 +401,9 @@ def execute(args):
         if args.label and not args.session:
             raise ValueError("--label needs --session")
         if args.session:
-            work.matching(session_path(root, args.session)[1], ctx)
+            spath, sdata = session_path(root, args.session)
+            work.matching(sdata, ctx)
+            work.spend(spath, sdata, 1)
         stdin = sys.stdin.buffer.read(1048577) if args.stdin else None
         if stdin is not None and len(stdin) > 1048576:
             raise ValueError("standard input over 1 MiB; pass a file argument instead")
@@ -446,7 +449,9 @@ def execute(args):
         if args.area:
             orgs.name(args.area, "area")
         bounds = window(args.start, args.end) if args.start else None
-        path, data = create(root, ctx["org"], ctx["env"], args.question, "task", bounds=bounds, area=args.area)
+        if args.budget is not None and not 1 <= args.budget <= 1000:
+            raise ValueError("--budget must be 1-1000")
+        path, data = create(root, ctx["org"], ctx["env"], args.question, "task", bounds=bounds, area=args.area, budget=args.budget)
         report = work.report(root, data["id"])
         return {"session": data["id"], "org": ctx["org"], "environment": ctx["env"], "path": str(path), "report": str(report),
                 "next": "reckon run <connection> --session " + data["id"] + " -- <arguments>"}

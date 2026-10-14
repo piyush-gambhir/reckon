@@ -7,7 +7,7 @@ health. Run it in the environment being reviewed; another environment needs anot
 ## Start
 
 ```bash
-reckon task --question "Release review <env>, <from> to <to>" --area dev --from <ISO> --to <ISO>
+reckon task --question "Release review <env>, <from> to <to>" --area dev --from <ISO> --to <ISO> --budget 60
 ```
 
 Read `knowledge/<env>/deploy-pipelines.md` for each service's deploy job and branch.

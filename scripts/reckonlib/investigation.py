@@ -121,6 +121,7 @@ def collect(h, ctx, root, sid, operation=None, params=None, refresh=False, timeo
                 task["params"] = dict(task["params"], env_label=label)
     # Validate every command before launching any. No partially executed plan on bad input.
     commands = [build(t["operation"], t["params"], t["window"], root) for t in tasks]
+    spend(path, session, len(commands))
     for command in commands:
         if command["provider"] == "cubeapm":
             try:
@@ -202,6 +203,17 @@ def output_format(args, spec=None):
     if spec and any(matches(p, tokens(args, spec)) for p in spec.get("ndjson_commands", [])):
         return "ndjson"
     return "json"
+
+
+def spend(path, session, reads):
+    """Refuse reads beyond the session's budget; None means unlimited."""
+    budget = session.get("budget")
+    if budget is None:
+        return
+    used = len(evidence(path))
+    if used + reads > budget:
+        raise ValueError("session budget of " + str(budget) + " reads reached (" + str(used) + " used); "
+                         "finish with what you have, or start a new session with a larger --budget")
 
 
 def record_run(root, sid, ctx, outcome, label=None, timeout=60, max_bytes=8388608):

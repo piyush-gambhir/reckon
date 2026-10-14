@@ -92,7 +92,7 @@ Every piece of work that matters gets a session, so the evidence and reasoning
 survive this conversation:
 
 ```bash
-reckon task --question "Weekly search review" --area gtm      # any area
+reckon task --question "Weekly search review" --area gtm --budget 40   # any area; at most 40 reads
 reckon debug --service checkout --question "Why is checkout slow?" \
   --from 2026-10-14T13:00:00Z --to 2026-10-14T13:30:00Z         # incident investigation
 reckon run gsc --session <id> --label "top queries 28d" -- top queries --site sc-domain:example.com --last 28d -o json

@@ -7,7 +7,7 @@ org does not have and say so.
 ## Start
 
 ```bash
-reckon task --question "Growth review, week of <date>" --area gtm
+reckon task --question "Growth review, week of <date>" --area gtm --budget 40
 ```
 
 Read `knowledge/_shared/company.md` for the sites, key pages and target queries.
