@@ -1,4 +1,5 @@
 """Run one CLI for one connection: its credentials, its target, read-only forced."""
+from datetime import datetime, timezone
 from fnmatch import fnmatchcase
 import os
 import re
@@ -9,7 +10,7 @@ import sys
 
 from . import orgs
 from .process import run as bounded
-from .store import local_path
+from .store import local_path, lock, read_json, write_json
 
 
 def tokens(args, spec=None):
@@ -422,12 +423,45 @@ def run(h, ctx, target, args, registry, timeout=60, max_bytes=8 * 1048576, stdin
                   "stdout": hit["stdout"].encode(), "stderr": hit["stderr"].encode()}
         return {"connection": cname, "provider": conn["provider"], "argv": argv, "values": values, "result": result, "spec": spec,
                 "cached_at": hit["observed_at"]}
+    note = quota(h, ctx, cname, spec, args)
     # Some CLIs pick a target from the working directory (gh: the git remote); give them none.
     cwd = env["TMPDIR"] if spec.get("isolated_cwd") else os.getcwd()
     result = bounded(argv, env=env, cwd=cwd, timeout=timeout, max_bytes=max_bytes, stdin=stdin)
     if result["status"] == "ok":
         remember(h, ctx, key, result, values)
-    return {"connection": cname, "provider": conn["provider"], "argv": argv, "values": values, "result": result, "spec": spec}
+    return {"connection": cname, "provider": conn["provider"], "argv": argv, "values": values, "result": result, "spec": spec,
+            "quota_note": note}
+
+
+def counts(rule, words, args):
+    """Whether one quota rule covers this call: its command (exactly, if marked) and its flag."""
+    if not matches(rule["command"], words) or rule.get("exact") and len(words) != len(rule["command"]):
+        return False
+    return not rule.get("flag") or any(a == rule["flag"] or a.startswith(rule["flag"] + "=") for a in args)
+
+
+def quota(h, ctx, cname, spec, args):
+    """Spend one call of a daily API quota (Clarity: 10 export requests per project per
+    UTC day), counted per connection so retries cannot burn it unseen. Refuses once it
+    is used up; returns a warning when two or fewer remain."""
+    rule = spec.get("quota")
+    if not rule or not any(counts(c, tokens(args, spec), args) for c in rule["commands"]):
+        return None
+    folder = local_path(orgs.org_path(h, ctx["org"]), "runtime", cname)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    try:
+        with lock(folder):
+            path = folder / "quota.json"
+            data = read_json(path) if path.is_file() else {}
+            used = data.get("used", 0) if data.get("day") == today else 0
+            if used >= rule["per_day"]:
+                raise ValueError(cname + " has used its " + str(rule["per_day"]) + " " + rule["unit"] + " for " + today +
+                                 " (UTC); reuse saved evidence or a --cache result, or wait for 00:00 UTC")
+            write_json(path, {"day": today, "used": used + 1, "per_day": rule["per_day"]})
+    except BlockingIOError:
+        raise ValueError("another run is counting " + cname + "'s quota right now; run one at a time")
+    left = rule["per_day"] - used - 1
+    return cname + ": " + str(left) + " of " + str(rule["per_day"]) + " " + rule["unit"] + " left today (UTC)" if left <= 2 else None
 
 
 def verify(h, ctx, registry, names=()):
@@ -451,6 +485,11 @@ def verify(h, ctx, registry, names=()):
         elif not orgs.configured(h, ctx["org"], cname, spec, values):
             rows.append(dict(row, status="skipped", detail="no credentials"))
         else:
+            try:
+                quota(h, ctx, cname, spec, spec["verify"])
+            except ValueError as exc:
+                rows.append(dict(row, status="skipped", detail=str(exc)))
+                continue
             argv = command(h, ctx, cname, conn, spec, values, spec["verify"])
             result = bounded(argv, env=env, cwd=str(orgs.org_path(h, ctx["org"]) / "runtime" / cname / "tmp"), timeout=20, max_bytes=262144)
             detail = "" if result["status"] == "ok" else orgs.redact(result["stderr"].decode(errors="replace"), values).strip()[-400:]

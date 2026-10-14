@@ -453,6 +453,8 @@ def execute(args):
         except ValueError as exc:
             activity.record(h, ctx, "refused", target=args.target, command=words, args=command, session=args.session, detail=exc)
             raise
+        if outcome.get("quota_note"):
+            print("reckon: " + outcome["quota_note"], file=sys.stderr)
         if outcome.get("cached_at"):
             print("reckon: cached result observed at " + outcome["cached_at"] + "; drop --cache for a fresh read", file=sys.stderr)
         result = outcome["result"]

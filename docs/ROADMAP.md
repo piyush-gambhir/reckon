@@ -60,7 +60,8 @@ outcomes.
   command, stored redacted, evidence keeps the original observation time.
 - Done 2026-10-14: per-session read budgets (`reckon task --budget N`), enforced
   before any read runs.
-- Quota warnings per tool (Clarity allows 10 exports a day).
+- Done 2026-10-14: daily quota ledger per connection (`quota` in providers.json; Clarity's
+  10 Export API requests), warning at two left and refusing when spent; cache hits are free.
 - Data-quality fields in evidence records for the commands the two reviews use.
 - Dogfood on two real businesses for two weeks.
 

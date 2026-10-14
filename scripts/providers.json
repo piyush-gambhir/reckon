@@ -166,6 +166,7 @@
       "deny_commands": [["auth", "login"], ["auth", "logout"], ["auth", "use"], ["login"], ["config"], ["update"]],
       "verify": ["auth", "status", "--verify", "-o", "json"],
       "verify_note": "uses one of Clarity's 10 daily export requests",
+      "quota": {"per_day": 10, "unit": "Export API requests", "commands": [{"command": ["export"], "exact": true}, {"command": ["auth", "status"], "flag": "--verify"}, {"command": ["status"], "flag": "--verify"}]},
       "login": ["auth", "login"],
       "short_values": "o",
       "resolver": ["commands", "resolve", "--"]

@@ -53,7 +53,10 @@ reckon run clarity -- export dimensions -o json
 ```
 
 The export API covers only the last 1 to 3 days, at most 3 dimensions and
-1,000 rows, and allows 10 requests per project per day. Spend them deliberately.
+1,000 rows, and allows 10 requests per project per day. Reckon counts them per
+connection (`export` and `--verify` checks, not cache hits), warns when two are
+left and refuses the rest of the UTC day once all 10 are spent. Use `--cache` and
+saved evidence instead of asking again.
 Recordings are a sample, not a complete export.
 
 ## Links

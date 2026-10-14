@@ -48,6 +48,8 @@ reckon run jenkins-uat -- whoami -o json
 - `--cache 15m` reuses an identical successful read from the last 15 minutes (any
   `s`, `m`, `h`, `d` age) and says when it was observed. Use it for quota-limited
   tools (Clarity allows 10 exports a day) and repeated reviews; drop it for fresh data.
+  Reckon counts quota-limited calls per connection, warns when two are left and
+  refuses the rest of the UTC day once they are spent.
 - `--stdin` passes standard input through (for example an Elasticsearch query body
   with `-f -`).
 - Always ask for JSON (`-o json`, `--json`, `--output json`) when you will parse output.
