@@ -129,7 +129,8 @@ the `reckon` skill, under `workflows/`:
 
 Record recommended follow-ups as `reckon note <id> --kind action --evidence <ids>`;
 like findings, they must cite evidence, and a recipe can cap how many a review ends
-with. Start one with `reckon task --workflow growth-review --param site=sc-domain:acme.com`,
+with. A note that no longer stands is withdrawn, not deleted:
+`reckon note <id> --withdraw <note-id> --text "<why>"` (note ids are in `reckon resume`). Start one with `reckon task --workflow growth-review --param site=sc-domain:acme.com`,
 follow its playbook, and save every read with `--session`. `reckon check <id>`
 shows which checks the saved evidence meets; the session can be closed as done
 only when none is left to do (skip one with

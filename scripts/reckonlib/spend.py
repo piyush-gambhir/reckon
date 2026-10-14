@@ -133,13 +133,10 @@ def prices(h):
 
 def budget(h, org):
     """The org's agent token budget, {"tokens": N, "days": D}, or None."""
-    value = orgs.load(h, org).get("agent_token_budget")
-    if value is None:
-        return None
-    if (not isinstance(value, dict) or not isinstance(value.get("tokens"), int) or value["tokens"] < 1
-            or not isinstance(value.get("days"), int) or not 1 <= value["days"] <= 365):
-        raise ValueError(org + ": agent_token_budget needs whole numbers tokens >= 1 and days 1-365")
-    return value
+    data = orgs.load(h, org)
+    if orgs.budget_problem(data):
+        raise ValueError(orgs.budget_problem(data))
+    return data.get("agent_token_budget")
 
 
 def set_budget(h, org, tokens, days):
@@ -178,6 +175,10 @@ def report(h, org, days=30):
                 rates.append(model)
     tokens = sum(sum(m[f] for f in FIELDS) for m in models)
     priced = [m["usd"] for m in models if m["usd"] is not None]
-    return {"org": org, "days": days, "tokens": tokens, "models": models, "budget": budget(h, org),
+    try:
+        limit = budget(h, org)
+    except ValueError:
+        limit = None
+    return {"org": org, "days": days, "tokens": tokens, "models": models, "budget": limit,
             "usd": round(sum(priced), 2) if priced and not rates else None,
             "unpriced_models": sorted(set(rates))}

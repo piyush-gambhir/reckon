@@ -33,7 +33,8 @@ Read `knowledge/<env>/deploy-pipelines.md` for each service's deploy job and bra
 ## Output
 
 A table of deploys (service, time, revision, result, health after), findings with
-evidence, and follow-ups (failed deploys, regressions, rollbacks to consider). If a
+evidence, and follow-ups (failed deploys, regressions, rollbacks to consider) as
+`reckon note <id> --kind action --evidence <ids>`, at most ten. If a
 regression looks like an incident, start `reckon debug` for that service.
 
 ## Done when

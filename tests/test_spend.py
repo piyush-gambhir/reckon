@@ -83,6 +83,18 @@ class SpendTests(OrgCase):
         self.assertEqual(self.cli("spend", "--org", "acme", "--set-budget", "5", RECKON_ORG="acme", RECKON_ENV="staging").returncode, 1)
         self.cli("spend", "--org", "acme", "--set-budget", "0")
         self.assertIsNone(spend.over(self.home, "acme"))
+        # A hand-edited bad budget warns instead of breaking open, spend or the brief, and can be cleared.
+        path = orgs.org_path(self.home, "acme") / "org.json"
+        data = json.loads(path.read_text())
+        data["agent_token_budget"] = {"tokens": True, "days": 0}
+        path.write_text(json.dumps(data))
+        self.assertEqual(self.cli("spend", "--org", "acme").returncode, 0)
+        self.assertEqual(self.cli("brief", "--all-orgs").returncode, 0)
+        self.assertIn("could not check the agent budget", self.cli("brief", "--org", "acme", "--env", "staging").stdout)
+        with self.assertRaisesRegex(ValueError, "agent_token_budget needs"):
+            orgs.save(self.home, data, self.registry)
+        self.assertEqual(self.cli("spend", "--org", "acme", "--set-budget", "0").returncode, 0)
+        self.assertEqual(self.cli("spend", "--set-budget", "5", "--all-orgs").returncode, 1)
 
     def test_all_orgs_spend_is_for_the_operator(self):
         refused = self.cli("spend", "--all-orgs", RECKON_ORG="acme", RECKON_ENV="staging")

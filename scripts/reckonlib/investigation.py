@@ -247,6 +247,27 @@ def record_run(root, sid, ctx, outcome, label=None, timeout=60, max_bytes=838860
         return record
 
 
+def live(notes):
+    """Notes that count: withdrawn ones stay in the session for the record but are left out."""
+    return [n for n in notes if not n.get("withdrawn_at")]
+
+
+def withdraw(root, sid, note_id, reason):
+    path, _ = session_path(root, sid)
+    if not reason.strip() or len(reason) > 2000:
+        raise ValueError("say why the note is withdrawn (--text, 1-2000 characters)")
+    with lock(path):
+        _, data = session_path(root, sid)
+        found = [n for n in data["notes"] if n["id"] == note_id]
+        if not found:
+            raise ValueError("no note " + note_id + " in " + sid)
+        if found[0].get("withdrawn_at"):
+            raise ValueError(note_id + " is already withdrawn")
+        found[0].update(withdrawn_at=now(), withdrawn_reason=reason)
+        write_json(path / "session.json", data)
+    return {"session": sid, "withdrawn": note_id}
+
+
 def note(root, sid, kind, text, references, next_check=""):
     path, _ = session_path(root, sid)
     if not text.strip() or len(text) > 16000:
@@ -335,7 +356,7 @@ def _write_report(root, sid):
     for kind, title in (("finding", "Findings recorded by the investigator"), ("action", "Recommended actions"),
                         ("hypothesis", "Hypotheses to test"), ("rejected", "Rejected explanations"), ("question", "Open questions")):
         lines += ["## " + title, ""]
-        notes = [n for n in data["notes"] if n["kind"] == kind]
+        notes = [n for n in live(data["notes"]) if n["kind"] == kind]
         if not notes:
             lines += ["None recorded.", ""]
         for n in notes:
@@ -420,8 +441,8 @@ def check(root, sid, available=None, registry=None):
         records = {r["id"]: r for r in evidence(path)}
     except ValueError as exc:
         return {"session": sid, "ok": False, "problems": ["evidence integrity: " + str(exc)], "warnings": []}
-    findings = [n for n in data["notes"] if n["kind"] == "finding"]
-    for note in data["notes"]:
+    findings = [n for n in live(data["notes"]) if n["kind"] == "finding"]
+    for note in live(data["notes"]):
         if note["kind"] in ("finding", "rejected", "action"):
             if not note["evidence"]:
                 problems.append(note["kind"] + " without evidence: " + note["text"][:80])

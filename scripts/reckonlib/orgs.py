@@ -91,6 +91,17 @@ def validate(data, org, registry):
     return data
 
 
+def budget_problem(data):
+    """Why the org's agent token budget is invalid, or None. Checked on save and when
+    read, never on load, so a bad value cannot lock the org (or its repair) out."""
+    limit = data.get("agent_token_budget")
+    if limit is None or (isinstance(limit, dict) and set(limit) == {"tokens", "days"}
+                         and all(isinstance(v, int) and not isinstance(v, bool) for v in limit.values())
+                         and limit["tokens"] >= 1 and 1 <= limit["days"] <= 365):
+        return None
+    return data.get("id", "org") + ": agent_token_budget needs whole numbers tokens >= 1 and days 1-365 (reckon spend --set-budget 0 clears it)"
+
+
 def load(h, org, registry=None):
     path = local_path(org_path(h, org), "org.json")
     if not path.is_file():
@@ -100,6 +111,8 @@ def load(h, org, registry=None):
 
 def save(h, data, registry=None):
     validate(data, data.get("id"), registry or providers())
+    if budget_problem(data):
+        raise ValueError(budget_problem(data))
     write_json(local_path(org_path(h, data["id"]), "org.json"), data)
 
 

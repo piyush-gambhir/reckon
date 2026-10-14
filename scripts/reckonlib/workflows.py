@@ -48,6 +48,8 @@ def validate(data, name):
     for check in checks:
         if not isinstance(check, dict) or not orgs.NAME.fullmatch(str(check.get("id", ""))) or check["id"] in ids or not check.get("text"):
             fail("each check needs a unique id and a text")
+        if check["id"] == "report-actions":
+            fail("report-actions is reserved for the report rule")
         ids.add(check["id"])
         if "findings" in check:
             if not isinstance(check["findings"], int) or isinstance(check["findings"], bool) or check["findings"] < 1:
@@ -115,11 +117,12 @@ def progress(session, records, available, registry=None):
     if not recipe:
         return None
     skipped = {}
-    for note in session.get("notes", []):
+    notes = [n for n in session.get("notes", []) if not n.get("withdrawn_at")]
+    for note in notes:
         match = SKIP.match(note["text"]) if note["kind"] == "question" else None
         if match:
             skipped[match.group(1).lower()] = note["text"]
-    findings = sum(n["kind"] == "finding" for n in session.get("notes", []))
+    findings = sum(n["kind"] == "finding" for n in notes)
     rows = []
     for check in recipe["checks"]:
         row = {"id": check["id"], "text": check["text"]}
@@ -139,7 +142,7 @@ def progress(session, records, available, registry=None):
         rows.append(row)
     rule = recipe.get("report", {})
     if rule:
-        count = sum(n["kind"] == "action" for n in session.get("notes", []))
+        count = sum(n["kind"] == "action" for n in notes)
         low, high = rule.get("min_actions", 0), rule.get("max_actions")
         text = "Actions recorded with evidence: " + str(low) + (" to " + str(high) if high is not None else " or more")
         fits = count >= low and (high is None or count <= high)

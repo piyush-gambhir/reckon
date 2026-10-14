@@ -58,10 +58,10 @@ class WorkflowTests(OrgCase):
             self.cli("note", sid, "--kind", "action", "--text", "Fix page " + str(n), "--evidence", evidence, *self.scope)
         too_many = self.cli("close", sid, "--outcome", "done", *self.scope)
         self.assertIn("report-actions", too_many.stderr)
-        session = orgs.workspace(self.home, "acme") / "sessions" / sid / "session.json"
-        data = json.loads(session.read_text())
-        data["notes"] = [n for n in data["notes"] if n["text"] != "Fix page 5"]
-        write_json(session, data)
+        self.assertIn("--withdraw", too_many.stderr)
+        sixth = [n["id"] for n in json.loads(self.cli("resume", sid, *self.scope, "--json").stdout)["session"]["notes"] if n["text"] == "Fix page 5"][0]
+        withdrawn = self.cli("note", sid, "--withdraw", sixth, "--text", "same page as action 4", *self.scope)
+        self.assertEqual(withdrawn.returncode, 0, withdrawn.stderr)
         closed = self.cli("close", sid, "--outcome", "done", *self.scope)
         self.assertEqual(closed.returncode, 0, closed.stderr)
         report = json.loads(self.cli("report", sid, *self.scope, "--json").stdout)["report"]

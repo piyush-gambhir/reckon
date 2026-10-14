@@ -153,8 +153,9 @@ def parser():
         command.add_argument("session")
     command = sub.add_parser("note", parents=[scope], help="record findings, actions, hypotheses, rejected ideas and questions")
     command.add_argument("session")
-    command.add_argument("--kind", choices=("finding", "action", "hypothesis", "rejected", "question"), required=True)
-    command.add_argument("--text", required=True)
+    command.add_argument("--kind", choices=("finding", "action", "hypothesis", "rejected", "question"))
+    command.add_argument("--text", required=True, help="the note, or with --withdraw why it no longer stands")
+    command.add_argument("--withdraw", metavar="NOTE_ID", help="withdraw a note: it stays on record but no longer counts")
     command.add_argument("--evidence", nargs="*", default=[])
     command.add_argument("--next-check", default="")
     command = sub.add_parser("history", parents=[scope], help="search this org's sessions and RCAs")
@@ -416,7 +417,10 @@ def execute(args):
             raise ValueError("name the environment too: reckon open " + org + "/<env>")
         ctx = orgs.context(h, org, env, registry) if org else saved_context(h, registry)
         from reckonlib import spend
-        warning = spend.over(h, ctx["org"])
+        try:
+            warning = spend.over(h, ctx["org"])
+        except (ValueError, OSError) as exc:
+            warning = "could not check the agent budget: " + str(exc)
         if warning:
             print("warning: " + warning + " (reckon spend)", file=sys.stderr)
         workspace.launch(h, ctx, registry, args.runtime, args.passthrough)
@@ -469,7 +473,11 @@ def execute(args):
         from reckonlib import spend
         if not 1 <= args.days <= 365:
             raise ValueError("--days must be 1-365")
+        if args.set_budget is None and "--budget-days" in sys.argv:
+            raise ValueError("--budget-days goes with --set-budget")
         if args.set_budget is not None:
+            if args.all_orgs:
+                raise ValueError("set a budget for one org at a time (--org)")
             if activity.pinned():
                 raise ValueError("budgets are for the operator's own terminal, not a pinned agent")
             if args.set_budget < 0 or not 1 <= args.budget_days <= 365:
@@ -665,6 +673,10 @@ def execute(args):
     if name == "report":
         return {"report": str(work.report(root, args.session))}
     if name == "note":
+        if args.withdraw:
+            return work.withdraw(root, args.session, args.withdraw, args.text)
+        if not args.kind:
+            raise ValueError("note needs --kind, or --withdraw <note-id>")
         return work.note(root, args.session, args.kind, args.text, args.evidence, args.next_check)
     if name == "history":
         if not 1 <= args.limit <= 200:
@@ -717,6 +729,9 @@ def execute(args):
                 if "workflow" not in checked:
                     raise ValueError("cannot close as done: " + "; ".join(checked["problems"]))
                 todo = checked["workflow"]["todo"]
+                if "report-actions" in todo:
+                    raise ValueError("report-actions: the recorded actions are outside the workflow's limit; merge or withdraw some with reckon note " +
+                                     args.session + " --withdraw <note-id> --text \"<why>\"")
                 if todo:
                     raise ValueError("workflow checks still to do: " + ", ".join(todo) + "; read them, or record why with reckon note " +
                                      args.session + " --kind question --text \"skip <check>: <reason>\"")

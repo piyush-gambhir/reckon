@@ -24,7 +24,7 @@ def brief(h, ctx, registry, days=7, envs=None):
         if data.get("status") == "open":
             sessions.append({"id": data["id"], "environment": data["environment"], "question": data["question"], "since": data["created_at"]})
         for note in data.get("notes", []):
-            if note["kind"] == "finding" and parse(note["recorded_at"]) >= since:
+            if note["kind"] == "finding" and not note.get("withdrawn_at") and parse(note["recorded_at"]) >= since:
                 findings.append({"session": data["id"], "environment": data["environment"], "text": note["text"], "at": note["recorded_at"]})
     pending, unknown = [], []
     for path in sorted(local_path(root, "actions").glob("*/action.json"), reverse=True) if (root / "actions").is_dir() else []:
@@ -58,7 +58,15 @@ def brief(h, ctx, registry, days=7, envs=None):
             "recent_findings": findings[:20], "writes_waiting_for_approval": pending,
             "writes_with_unknown_outcome": unknown, "connections_needing_attention": attention, "stale_knowledge": stale,
             "refused_runs": refused[:20], "runs": sum(e["event"] == "run" for e in events), "goals": targets,
-            "inbox": new[:30]}
+            "inbox": new[:30], "agent_budget": budget_warning(h, ctx["org"])}
+
+
+def budget_warning(h, org):
+    try:
+        warning = spend.over(h, org)
+    except (ValueError, OSError) as exc:
+        warning = "could not check the agent budget: " + str(exc)
+    return [warning] if warning else []
 
 
 def all_orgs(h, registry, days=7):
@@ -70,10 +78,10 @@ def all_orgs(h, registry, days=7):
         data = orgs.load(h, org, registry)
         ctx = orgs.context(h, org, data["environments"][0], registry)
         result = brief(h, ctx, registry, days, data["environments"])
-        result["agent_tokens"] = spend.report(h, org, days)["tokens"]
-        warning = spend.over(h, org)
-        if warning:
-            result["connections_needing_attention"].append(warning)
+        try:
+            result["agent_tokens"] = spend.report(h, org, days)["tokens"]
+        except (ValueError, OSError):
+            result["agent_tokens"] = 0
         results.append(result)
     return {"days": days, "orgs": results}
 
@@ -106,7 +114,8 @@ def goal_line(r):
 
 def render(result):
     lines = ["# Brief: " + result["org"] + " / " + result["environment"] + " (last " + str(result["days"]) + " days)", ""]
-    sections = (("New from watches (reckon inbox)", "inbox",
+    sections = (("Agent budget", "agent_budget", str),
+                ("New from watches (reckon inbox)", "inbox",
                  lambda r: "[" + r["environment"] + "] " + r["watch"] + ": " + r["title"] + "  (" + r["at"][:16] + ")"),
                 ("Goals (from the newest saved read)", "goals", goal_line),
                 ("Writes with an unknown outcome (run reckon act reconcile)", "writes_with_unknown_outcome",
