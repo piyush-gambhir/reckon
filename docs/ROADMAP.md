@@ -79,9 +79,10 @@ outcomes.
 - Done 2026-10-15: non-secret target fingerprint on prepared actions (the connection
   as configured plus settings such as `GH_HOST`); any change means preparing again.
 - Done 2026-10-15: `jira.issue.create` (a marker as the description's last line,
-  reconciled by a bounded JQL search that also matches the summary). Done 2026-10-15: `gsc.sitemap.submit` (idempotent; reconciled from
-  the sitemap's `lastSubmitted`; bound by the connection's site limits). Next writes:
-  `grafana.annotation.create`, `jenkins.job.build`.
+  reconciled by a bounded JQL search that also matches the summary) and
+  `gsc.sitemap.submit` (idempotent; reconciled from the sitemap's `lastSubmitted`;
+  bound by the connection's site limits). Next writes: `grafana.annotation.create`,
+  `jenkins.job.build`.
 
 ### M4 The agent CLI contract (`agent-cli/v1`)
 
