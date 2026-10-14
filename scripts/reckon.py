@@ -111,6 +111,9 @@ def parser():
     command.add_argument("--to", dest="end", help="optional window end")
 
     sub.add_parser("workflows", parents=[scope], help="workflow recipes: parameters and the checks that make one done")
+    command = sub.add_parser("spend", parents=[scope], help="agent tokens used in this org's workspace (Claude Code and Codex)")
+    command.add_argument("--days", type=int, default=30)
+    command.add_argument("--all-orgs", action="store_true", help="every org (operator only)")
     command = sub.add_parser("routine", parents=[scope], help="run a workflow on a schedule with a headless agent (operator only)")
     command.add_argument("action", choices=("add", "list", "remove", "run", "install"))
     command.add_argument("name", nargs="?")
@@ -432,6 +435,17 @@ def execute(args):
         if args.action == "install":
             return routines.install(h, org, args.name)
         return routines.run(h, org, args.name, registry)
+    if name == "spend":
+        from reckonlib import spend
+        if not 1 <= args.days <= 365:
+            raise ValueError("--days must be 1-365")
+        if args.all_orgs:
+            if activity.pinned():
+                raise ValueError("a pinned agent sees only its own org; run reckon spend --all-orgs in your own terminal")
+            return [spend.report(h, org, args.days) for org in orgs.orgs(h)]
+        org = args.org or orgs.context(h, registry=registry)["org"]
+        orgs.load(h, org, registry)
+        return [spend.report(h, org, args.days)]
     if name == "brief" and args.all_orgs:
         from reckonlib.brief import all_orgs, render_all
         if not 1 <= args.days <= 365:
@@ -763,6 +777,15 @@ def display(command, result):
             print("workflow " + result["workflow"]["workflow"] + ":")
             for row in result["workflow"]["checks"]:
                 print("  " + row["status"].ljust(12) + row["id"].ljust(16) + row["text"])
+    elif command == "spend":
+        for row in result:
+            cost = "  ~$" + format(row["usd"], ".2f") if row["usd"] is not None else ""
+            print(row["org"].ljust(18) + format(row["tokens"], ",").rjust(16) + " tokens in " + str(row["days"]) + " days" + cost)
+            for m in row["models"]:
+                print("  " + (m["runtime"] + " " + m["model"]).ljust(34) + "in " + format(m["input"], ",") + "  out " + format(m["output"], ",") +
+                      "  cache read " + format(m["cache_read"], ",") + "  cache write " + format(m["cache_write"], ","))
+            if row["unpriced_models"] and row["models"]:
+                print("  no price for " + ", ".join(row["unpriced_models"]) + " (add it to ~/.reckon/prices.json for an estimate)")
     elif command == "workflows":
         for row in result:
             print(row["workflow"].ljust(18) + row["title"])

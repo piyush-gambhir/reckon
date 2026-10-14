@@ -5,7 +5,7 @@ to run on a schedule and its output is the same for the same state."""
 from datetime import datetime, timedelta, timezone
 import json
 
-from . import activity, orgs
+from . import activity, orgs, spend
 from .store import local_path, read_json
 
 
@@ -65,19 +65,21 @@ def all_orgs(h, registry, days=7):
     for org in orgs.orgs(h):
         data = orgs.load(h, org, registry)
         ctx = orgs.context(h, org, data["environments"][0], registry)
-        results.append(brief(h, ctx, registry, days, data["environments"]))
+        result = brief(h, ctx, registry, days, data["environments"])
+        result["agent_tokens"] = spend.report(h, org, days)["tokens"]
+        results.append(result)
     return {"days": days, "orgs": results}
 
 
 def render_all(result):
     lines = ["# Brief: all orgs (last " + str(result["days"]) + " days)", "",
-             "| Org | Unknown writes | Waiting writes | Open sessions | Findings | Refused | Runs | Attention |",
-             "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+             "| Org | Unknown writes | Waiting writes | Open sessions | Findings | Refused | Runs | Attention | Agent tokens |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     for r in result["orgs"]:
         lines.append("| " + " | ".join([r["org"]] + [str(len(r[k])) for k in ("writes_with_unknown_outcome", "writes_waiting_for_approval",
-                     "open_sessions", "recent_findings", "refused_runs")] + [str(r["runs"]), str(len(r["connections_needing_attention"]))]) + " |")
+                     "open_sessions", "recent_findings", "refused_runs")] + [str(r["runs"]), str(len(r["connections_needing_attention"])), format(r.get("agent_tokens", 0), ",")]) + " |")
     if not result["orgs"]:
-        lines.append("| no orgs yet | | | | | | | |")
+        lines.append("| no orgs yet | | | | | | | | |")
     lines.append("")
     for r in result["orgs"]:
         for line in render(r).splitlines():

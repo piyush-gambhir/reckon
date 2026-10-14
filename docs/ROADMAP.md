@@ -245,7 +245,7 @@ and ToolHive (2026-10-14), ranked by value for one person running several busine
 | Done 2026-10-14: routines (`reckon routine add/install/run`): launchd or cron runs a pinned headless agent on a workflow; overlapping runs skip | Paperclip, HolmesGPT, Goose | M |
 | Done 2026-10-14: workflow recipes with parameters and required checks (report schema still to do) | Goose recipes | M |
 | Large output spilled to the session, with a preview and the path | HolmesGPT | S |
-| Agent spend per org from Claude Code and Codex transcripts | Paperclip | M |
+| Done 2026-10-14: agent spend per org from Claude Code and Codex session files (`reckon spend`; prices from `~/.reckon/prices.json`); budgets still to do | Paperclip | M |
 | Goals and KPIs per org, bound to reads, reported in briefs | Paperclip | M |
 | Per-connection circuit breaker and quota ledger | ContextForge | S |
 | Polled watches and an inbox (new dispute, new Sentry issue, failed deploy) | Composio triggers | M |

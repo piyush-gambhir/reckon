@@ -28,7 +28,9 @@ class OrgCase(unittest.TestCase):
         self.home = self.dir / "home"
         self.bin = self.dir / "bin"
         self.bin.mkdir()
-        patcher = mock.patch.dict(os.environ, {"RECKON_HOME": str(self.home), "PATH": str(self.bin) + ":/usr/bin:/bin"})
+        # Agent transcripts are read by reckon spend; never the real ones.
+        self.agents = {"CLAUDE_CONFIG_DIR": str(self.dir / "claude"), "CODEX_HOME": str(self.dir / "codex")}
+        patcher = mock.patch.dict(os.environ, dict(self.agents, RECKON_HOME=str(self.home), PATH=str(self.bin) + ":/usr/bin:/bin"))
         patcher.start()
         self.addCleanup(patcher.stop)
         os.environ.pop("RECKON_ORG", None)
@@ -64,7 +66,7 @@ class OrgCase(unittest.TestCase):
         return orgs.context(self.home, org, env, self.registry)
 
     def cli_env(self, **extra):
-        env = {"RECKON_HOME": str(self.home), "PATH": os.environ["PATH"], "HOME": os.environ.get("HOME", str(self.dir))}
+        env = dict(self.agents, RECKON_HOME=str(self.home), PATH=os.environ["PATH"], HOME=os.environ.get("HOME", str(self.dir)))
         env.update(extra)
         return env
 

@@ -125,6 +125,25 @@ Routines spend model usage without anyone watching, so start with one a week.
 `install` writes the schedule but does not load it; it prints the `launchctl`
 command for you to run.
 
+## Agent spend
+
+```bash
+reckon spend                  # tokens used in this org's workspace, last 30 days
+reckon spend --all-orgs --days 7
+```
+
+Each org has its own workspace folder, and Claude Code and Codex record the folder
+each session ran in, so Reckon totals input, output and cache tokens per org and
+model from their session files (`~/.claude/projects`, `~/.codex/sessions`). Only
+usage counters are read, never content. Prices change, so dollar estimates appear
+only for models you list in `~/.reckon/prices.json`, in USD per million tokens:
+
+```json
+{"claude-opus-5-5": {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}}
+```
+
+`reckon brief --all-orgs` shows each org's token total next to its open work.
+
 ## Activity log
 
 Every `reckon run`, every refusal (wrong environment, denied command, spent
