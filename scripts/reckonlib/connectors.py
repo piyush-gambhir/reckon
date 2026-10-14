@@ -251,27 +251,37 @@ def scope(spec, args, label, others):
 HOST = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*")
 
 
+def ascii_host(host):
+    """A host name in its ASCII (punycode) form, lower case, or None if it is not a plain host name."""
+    try:
+        host = host.rstrip(".").encode("idna").decode("ascii").lower()
+    except UnicodeError:
+        return None
+    return host if HOST.fullmatch(host) else None
+
+
 def site_parts(value):
     """(kind, host, prefix) of a Search Console or Bing target: a domain property
     (sc-domain:), a URL, or a bare host. None when it cannot be read safely: user
-    info, a fragment, or anything but a plain host name, so text like
-    https://evil.net#.acme.com/ is never taken for acme.com."""
+    info, a fragment, port 0, or anything but a plain host name, so text like
+    https://evil.net#.acme.com/ is never taken for acme.com. Internationalized
+    names compare in their punycode form."""
     from urllib.parse import urlsplit
     if value.startswith("sc-domain:"):
-        host = value[len("sc-domain:"):].lower()
-        return ("domain", host, None) if HOST.fullmatch(host) else None
+        host = ascii_host(value[len("sc-domain:"):])
+        return ("domain", host, None) if host else None
     if "://" not in value:
-        host = value.lower()
-        return ("host", host, None) if HOST.fullmatch(host) else None
+        host = ascii_host(value)
+        return ("host", host, None) if host else None
     try:
         parts = urlsplit(value)
         port = parts.port
     except ValueError:
         return None
-    scheme, host = parts.scheme.lower(), (parts.hostname or "").rstrip(".")
-    if scheme not in ("http", "https") or not HOST.fullmatch(host) or "@" in parts.netloc or "#" in value:
+    scheme, host = parts.scheme.lower(), ascii_host(parts.hostname or "")
+    if scheme not in ("http", "https") or not host or port == 0 or "@" in parts.netloc or "#" in value:
         return None
-    netloc = host + (":" + str(port) if port and port != (443 if scheme == "https" else 80) else "")
+    netloc = host + (":" + str(port) if port is not None and port != (443 if scheme == "https" else 80) else "")
     return ("url", host, scheme + "://" + netloc + (parts.path or "/") + ("?" + parts.query if parts.query else ""))
 
 
