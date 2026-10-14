@@ -137,7 +137,7 @@ def parser():
     command.add_argument("session")
     command.add_argument("--outcome", choices=("diagnosed", "done", "inconclusive"), required=True)
     command = sub.add_parser("act", parents=[scope], help="prepare a write for the operator, or apply one (operator only)")
-    command.add_argument("action", choices=("prepare", "apply", "list", "show"))
+    command.add_argument("action", choices=("prepare", "apply", "list", "show", "reconcile"))
     command.add_argument("target", nargs="?", help="prepare: the write operation (github.issue.create); apply/show: the action ID")
     command.add_argument("--params", default="{}", help="prepare: parameters as a JSON object")
     command.add_argument("--body-stdin", action="store_true", help="prepare: read the body parameter from standard input")
@@ -456,6 +456,8 @@ def execute(args):
             return actions.listing(root)
         if args.action == "show":
             return actions.load(root, args.target or "")[1]
+        if args.action == "reconcile":
+            return actions.reconcile(h, ctx, root, args.target or "", registry)
         params = json.loads(args.params)
         if args.body_stdin:
             params["body"] = sys.stdin.read(65537)

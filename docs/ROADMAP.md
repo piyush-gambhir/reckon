@@ -63,9 +63,9 @@ outcomes.
 
 ### M3 Approved writes, complete
 
-- Non-secret target fingerprint and an expiry on prepared actions; editing means
-  preparing again.
-- `reckon act reconcile <id>` reads back the remote state for `unknown` receipts.
+- Done 2026-10-14: 24-hour expiry on prepared actions; `reckon act reconcile <id>`
+  reads back the remote state for `unknown` receipts (GitHub issues).
+- Non-secret target fingerprint on prepared actions; editing means preparing again.
 - More writes, in this order: `jira.issue.create`, `gsc.sitemap.submit` (has a
   native dry run), `grafana.annotation.create`, `jenkins.job.build`.
 

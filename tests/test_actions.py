@@ -113,6 +113,28 @@ class ActionTests(OrgCase):
         self.assertNotIn("\x1b", shown)
         self.assertIn("\\x1b[2J", shown)
 
+    def test_stale_actions_expire(self):
+        record = self.prepare()
+        path = self.root / "actions" / record["id"] / "action.json"
+        write_json(path, dict(json.loads(path.read_text()), prepared_at="2020-01-01T00:00:00Z"))
+        with self.assertRaisesRegex(ValueError, "prepare it again"):
+            self.apply(record, "yes")
+        self.assertEqual(json.loads(path.read_text())["status"], "expired")
+
+    def test_reconcile_reads_back_an_unknown_outcome(self):
+        found = ("import json\nprint(json.dumps([{'number': 7, 'title': 'Fix checkout timeout', 'url': 'https://github.com/acme/api/issues/7',"
+                 " 'createdAt': '2999-01-01T00:00:00Z'}]))")
+        for listing, expected in ((found, "applied"), ("print('[]')", "failed")):
+            record = self.prepare()
+            with mock.patch.object(actions, "bounded", return_value={"status": "timeout", "exit_code": None, "stdout": b"", "stderr": b""}):
+                self.assertEqual(self.apply(record, "yes")["status"], "unknown")
+            self.fake(listing, "gh")
+            done = actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)
+            self.assertEqual(done["status"], expected)
+            self.assertTrue(done["receipt"]["reconciled"])
+        with self.assertRaisesRegex(ValueError, "only unknown outcomes"):
+            actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)
+
     def test_the_agent_may_prepare_but_never_apply(self):
         record = self.prepare()
         pinned = self.cli("act", "apply", record["id"], RECKON_ORG="acme", RECKON_ENV="staging")

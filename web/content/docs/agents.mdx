@@ -111,7 +111,10 @@ reckon act apply <action-id>
 an agent and without a terminal, shows the same preview, and asks you to type `yes`,
 or the org name for production environments and for accounts shared by every
 environment. It runs the action once and keeps a receipt: `applied`, `failed`,
-`cancelled`, or `unknown` when a timeout leaves the outcome unclear (check before
-preparing it again). The agent's Claude Code settings deny `reckon act apply`.
+`cancelled`, or `unknown` when a timeout leaves the outcome unclear. For `unknown`,
+run `reckon act reconcile <id>`: it reads the target back (for a GitHub issue, an
+issue with exactly that title created after approval) and records `applied` or
+`failed`, so you never re-run a write that already landed. Prepared actions expire
+after 24 hours. The agent's Claude Code settings deny `reckon act apply`.
 Supported today: `github.issue.create`.
 

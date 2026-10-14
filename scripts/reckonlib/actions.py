@@ -18,6 +18,8 @@ from . import orgs
 from .process import run as bounded
 from .store import identifier, local_path, lock, now, private_dir, read_json, write_json
 
+EXPIRY_HOURS = 24
+
 # operation: provider, required params, optional params
 WRITES = {
     "github.issue.create": ("github", ("repo", "title", "body"), ("labels",)),
@@ -131,6 +133,11 @@ def apply(h, ctx, root, action_id, registry, confirm=None):
         _, record = load(root, action_id)
         if record["status"] != "prepared":
             raise ValueError("action " + action_id + " is " + record["status"] + "; each action runs once")
+        prepared = datetime.fromisoformat(record["prepared_at"].replace("Z", "+00:00"))
+        if (datetime.now(timezone.utc) - prepared).total_seconds() > EXPIRY_HOURS * 3600:
+            record.update(status="expired", decided_at=now())
+            write_json(path / "action.json", record)
+            raise ValueError("action " + action_id + " was prepared over " + str(EXPIRY_HOURS) + " hours ago; prepare it again")
         if record["org"] != ctx["org"] or record["environment"] != ctx["env"]:
             raise ValueError("action belongs to " + record["org"] + "/" + record["environment"] + "; this context is " + ctx["org"] + "/" + ctx["env"])
         if record["payload_sha256"] != digest(record):
@@ -172,3 +179,38 @@ def apply(h, ctx, root, action_id, registry, confirm=None):
                                                                   "url": next(iter(re.findall(r"https://\S+", out)), None)})
         write_json(path / "action.json", record)
         return record
+
+
+def reconcile(h, ctx, root, action_id, registry):
+    """Find out what happened to an action whose outcome is unknown, by reading the target.
+
+    For github.issue.create: an issue with exactly this title in the repo, created
+    after the action was approved, means it was applied."""
+    path, _ = load(root, action_id)
+    with lock(path):
+        _, record = load(root, action_id)
+        if record["status"] not in ("unknown", "running"):
+            raise ValueError("action " + action_id + " is " + record["status"] + "; only unknown outcomes need reconciling")
+        cname, conn = record["connection"], ctx["data"]["connections"].get(record["connection"])
+        if not conn or record["org"] != ctx["org"] or record["environment"] != ctx["env"]:
+            raise ValueError("action belongs to " + record["org"] + "/" + record["environment"] + " and connection " + cname)
+        spec = registry[conn["provider"]]
+        env, values = orgs.child_env(h, ctx, cname, conn, spec)
+        params = record["params"]
+        since = record.get("approved_at") or record["prepared_at"]
+        command = ["gh", "issue", "list", "--repo", params["repo"], "--state", "all", "--limit", "20",
+                   "--search", params["title"] + " in:title", "--json", "number,title,url,createdAt"]
+        result = bounded(command, env=env, cwd=env["TMPDIR"], timeout=60, max_bytes=262144)
+        if result["status"] != "ok":
+            raise ValueError("could not read " + params["repo"] + " (" + result["status"] + "); the outcome stays unknown")
+        found = [i for i in json.loads(result["stdout"].decode() or "[]")
+                 if i.get("title") == params["title"] and i.get("createdAt", "") >= since[:19]]
+        if found:
+            record.update(status="applied", reconciled_at=now(), receipt=dict(record.get("receipt") or {}, url=found[0]["url"], reconciled=True))
+        else:
+            # Nothing landed: safe to prepare again.
+            record.update(status="failed", reconciled_at=now(), receipt=dict(record.get("receipt") or {}, reconciled=True,
+                                                                          note="no matching issue found after approval"))
+        write_json(path / "action.json", record)
+        return record
+
