@@ -125,6 +125,25 @@ Routines spend model usage without anyone watching, so start with one a week.
 `install` writes the schedule but does not load it; it prints the `launchctl`
 command for you to run.
 
+## Watches and the inbox
+
+A watch is a saved read polled for new items: a new Stripe dispute, a new Sentry
+issue, a failed Jenkins build. New items land in the org's inbox, and the brief
+lists them.
+
+```bash
+reckon watch add disputes --org acme --env prod --connection stripe --items data --key id --title reason \
+  -- disputes list --limit 20
+reckon watch run --org acme        # by hand, or from cron: */30 * * * * ~/.reckon/bin/reckon watch run --org acme
+reckon inbox                       # new items in this environment, last 7 days
+```
+
+The read must pass the same checks as `reckon run` when the watch is added and
+each time it runs. `--items` is the dotted path to the list in the JSON output and
+`--key` the field that identifies an item. The first run records what already
+exists, so only later items reach the inbox. Watches are for the operator; an
+agent can read its own environment's inbox.
+
 ## Goals
 
 Put an org's targets in `knowledge/_shared/goals.json` (or `knowledge/<env>/goals.json`),

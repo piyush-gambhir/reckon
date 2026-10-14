@@ -45,6 +45,8 @@ def brief(h, ctx, registry, days=7, envs=None):
     refused = [{"at": e["at"], "environment": e["environment"], "actor": e["actor"], "target": e.get("target"),
                 "command": " ".join(e.get("command", [])), "detail": e.get("detail", "")} for e in events if e["event"] == "refused"]
     targets = [dict(row, environment=env) for env in envs for row in goals.report(root, env, registry)]
+    from .watches import inbox
+    new = [item for env in envs for item in inbox(h, ctx["org"], days, env)]
     stale = []
     for layer in ["_shared"] + list(envs):
         base = root / "knowledge" / layer
@@ -55,7 +57,8 @@ def brief(h, ctx, registry, days=7, envs=None):
     return {"org": ctx["org"], "environment": ctx["env"] if len(envs) == 1 else "all", "days": days, "open_sessions": sessions,
             "recent_findings": findings[:20], "writes_waiting_for_approval": pending,
             "writes_with_unknown_outcome": unknown, "connections_needing_attention": attention, "stale_knowledge": stale,
-            "refused_runs": refused[:20], "runs": sum(e["event"] == "run" for e in events), "goals": targets}
+            "refused_runs": refused[:20], "runs": sum(e["event"] == "run" for e in events), "goals": targets,
+            "inbox": new[:30]}
 
 
 def all_orgs(h, registry, days=7):
@@ -100,7 +103,9 @@ def goal_line(r):
 
 def render(result):
     lines = ["# Brief: " + result["org"] + " / " + result["environment"] + " (last " + str(result["days"]) + " days)", ""]
-    sections = (("Goals (from the newest saved read)", "goals", goal_line),
+    sections = (("New from watches (reckon inbox)", "inbox",
+                 lambda r: "[" + r["environment"] + "] " + r["watch"] + ": " + r["title"] + "  (" + r["at"][:16] + ")"),
+                ("Goals (from the newest saved read)", "goals", goal_line),
                 ("Writes with an unknown outcome (run reckon act reconcile)", "writes_with_unknown_outcome",
                  lambda r: r["id"] + "  " + r["operation"] + " " + str(r["target"] or "") + " via " + r["connection"]),
                 ("Writes waiting for approval (reckon act apply)", "writes_waiting_for_approval",

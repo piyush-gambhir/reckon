@@ -1,0 +1,146 @@
+"""Watches: saved reads polled for new items (a new dispute, a new Sentry issue, a
+failed deploy), which land in the org's inbox for the brief and the agent.
+
+A watch names a connection, an environment, the read's arguments, where the list
+of items is in its JSON output and which field identifies an item. `reckon watch
+run` (by hand, cron or launchd) runs each read through the same checks as
+`reckon run`, remembers the ids it has seen, and appends new items to
+workspace/inbox.jsonl. The first run only records what exists, so nothing floods in."""
+import json
+import os
+
+from . import activity, connectors, orgs
+from .goals import PATH
+from .store import local_path, now, read_json, write_json
+
+SEEN_LIMIT = 5000
+
+
+def path(h, org):
+    return local_path(orgs.org_path(h, org), "watches.json")
+
+
+def load(h, org):
+    target = path(h, org)
+    return read_json(target) if target.is_file() else {}
+
+
+def pick(data, where):
+    for part in where.split(".") if where else []:
+        if isinstance(data, list) and part.isdigit() and int(part) < len(data):
+            data = data[int(part)]
+        elif isinstance(data, dict):
+            data = data.get(part)
+        else:
+            return None
+    return data
+
+
+def add(h, ctx, name, target, args, items, key, title=None, registry=None):
+    orgs.name(name, "watch")
+    for label, value in (("--items", items), ("--key", key), ("--title", title)):
+        if value and not PATH.fullmatch(value):
+            raise ValueError(label + " is a dotted path such as data or result.items")
+    if not args:
+        raise ValueError("give the read after --, e.g. -- disputes list --limit 20")
+    cname, conn = orgs.resolve(ctx, target)
+    spec = (registry or orgs.providers())[conn["provider"]]
+    # The read must pass reckon run's checks now, not first at 3 a.m.
+    connectors.check(conn["provider"], spec, args)
+    watches = load(h, ctx["org"])
+    if name in watches:
+        raise ValueError("watch " + name + " exists; remove it first")
+    watches[name] = {"connection": cname, "environment": ctx["env"], "args": list(args), "items": items or "", "key": key,
+                     "title": title, "created_at": now()}
+    write_json(path(h, ctx["org"]), watches)
+    return dict(watches[name], watch=name)
+
+
+def remove(h, org, name):
+    watches = load(h, org)
+    if name not in watches:
+        raise ValueError("unknown watch: " + name)
+    del watches[name]
+    write_json(path(h, org), watches)
+    return {"org": org, "removed": name}
+
+
+def poll(h, org, name, watch, registry):
+    ctx = orgs.context(h, org, watch["environment"], registry)
+    outcome = connectors.run(h, ctx, watch["connection"], watch["args"], registry, timeout=60)
+    result = outcome["result"]
+    if result["status"] != "ok":
+        raise ValueError(name + ": the read " + result["status"] + " (exit " + str(result["exit_code"]) + ")")
+    try:
+        data = json.loads(orgs.redact(result["stdout"].decode("utf-8", errors="replace"), outcome["values"]))
+    except ValueError:
+        raise ValueError(name + ": the read did not return JSON; add the tool's JSON flag to the watch")
+    found = pick(data, watch["items"])
+    if not isinstance(found, list):
+        raise ValueError(name + ": no list at " + (watch["items"] or "the top level") + " in the output")
+    state_path = local_path(orgs.org_path(h, org), "runtime", "watches", name + ".json")
+    state = read_json(state_path) if state_path.is_file() else None
+    order = list(state["seen"]) if state else []
+    seen = set(order)
+    fresh = []
+    for item in found:
+        ident = pick(item, watch["key"])
+        if ident is None or str(ident) in seen:
+            continue
+        seen.add(str(ident))
+        order.append(str(ident))
+        title = pick(item, watch["title"]) if watch.get("title") else None
+        fresh.append({"id": str(ident), "title": str(title)[:200] if title is not None else str(ident)})
+    orgs.private_dir(state_path.parent)
+    # Oldest first, so the cap forgets the oldest ids.
+    write_json(state_path, {"seen": order[-SEEN_LIMIT:], "checked_at": now()})
+    if state is None:
+        return ctx, {"watch": name, "status": "baseline", "items": len(found), "new": 0}
+    inbox = local_path(orgs.workspace(h, org), "inbox.jsonl")
+    if fresh:
+        fd = os.open(str(inbox), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as out:
+            for item in fresh:
+                out.write(json.dumps({"at": now(), "watch": name, "environment": ctx["env"], "connection": watch["connection"],
+                                      "id": item["id"], "title": item["title"]}, ensure_ascii=False) + "\n")
+    return ctx, {"watch": name, "status": "ok", "items": len(found), "new": len(fresh)}
+
+
+def run(h, org, registry, names=()):
+    watches = load(h, org)
+    for unknown in set(names) - set(watches):
+        raise ValueError("unknown watch: " + unknown)
+    rows = []
+    for name, watch in sorted(watches.items()):
+        if names and name not in names:
+            continue
+        try:
+            ctx, row = poll(h, org, name, watch, registry)
+            activity.record(h, ctx, "watch", target=name, status=row["status"], new=row["new"])
+        except ValueError as exc:
+            row = {"watch": name, "status": "error", "detail": str(exc)}
+            try:
+                activity.record(h, orgs.context(h, org, watch["environment"], registry), "watch", target=name, status="error", detail=exc)
+            except ValueError:
+                pass
+        rows.append(row)
+    return rows
+
+
+def inbox(h, org, days=7, env=None):
+    from datetime import datetime, timedelta, timezone
+    target = local_path(orgs.workspace(h, org), "inbox.jsonl")
+    if not target.is_file():
+        return []
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    rows = []
+    for line in target.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            item = json.loads(line)
+            if datetime.fromisoformat(item["at"].replace("Z", "+00:00")) < since:
+                continue
+        except (ValueError, KeyError, TypeError, AttributeError):
+            continue
+        if env is None or item.get("environment") == env:
+            rows.append(item)
+    return rows[::-1]

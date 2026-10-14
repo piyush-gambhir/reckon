@@ -248,7 +248,7 @@ and ToolHive (2026-10-14), ranked by value for one person running several busine
 | Done 2026-10-14: agent spend per org from Claude Code and Codex session files (`reckon spend`; prices from `~/.reckon/prices.json`); budgets still to do | Paperclip | M |
 | Done 2026-10-14: goals per org (`knowledge/*/goals.json`) bound to reads, reported in briefs from the newest saved evidence | Paperclip | M |
 | Per-connection circuit breaker and quota ledger | ContextForge | S |
-| Polled watches and an inbox (new dispute, new Sentry issue, failed deploy) | Composio triggers | M |
+| Done 2026-10-14: polled watches and an inbox (`reckon watch`, `reckon inbox`, brief section); first poll is a baseline | Composio triggers | M |
 | Done 2026-10-14 as `reckon org add <new> --like <org>`: environments and connection layout, never secrets or resource limits | Paperclip companies spec | S |
 
 Rejected for now: an HTTP credential proxy (Agent Vault, OneCLI) needs a TLS

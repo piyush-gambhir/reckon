@@ -111,6 +111,16 @@ def parser():
     command.add_argument("--to", dest="end", help="optional window end")
 
     sub.add_parser("workflows", parents=[scope], help="workflow recipes: parameters and the checks that make one done")
+    command = sub.add_parser("watch", parents=[scope], help="poll saved reads for new items into the inbox (operator only)")
+    command.add_argument("action", choices=("add", "list", "remove", "run"))
+    command.add_argument("name", nargs="*")
+    command.add_argument("--connection", help="connection or tool to read")
+    command.add_argument("--items", default="", help="dotted path to the list of items in the JSON output (default: the top level)")
+    command.add_argument("--key", default="id", help="field that identifies an item (default id)")
+    command.add_argument("--title", help="field to show for an item")
+    command = sub.add_parser("inbox", parents=[scope], help="new items found by watches")
+    command.add_argument("--days", type=int, default=7)
+    command.add_argument("--all-envs", action="store_true")
     command = sub.add_parser("spend", parents=[scope], help="agent tokens used in this org's workspace (Claude Code and Codex)")
     command.add_argument("--days", type=int, default=30)
     command.add_argument("--all-orgs", action="store_true", help="every org (operator only)")
@@ -341,7 +351,7 @@ def execute(args):
     h = orgs.home()
     registry = orgs.providers()
     name = args.command
-    if os.environ.get("RECKON_ORG") and (name in ("use", "connect", "login", "migrate", "open", "routine") or name == "org" and args.action == "add"
+    if os.environ.get("RECKON_ORG") and (name in ("use", "connect", "login", "migrate", "open", "routine", "watch") or name == "org" and args.action == "add"
                                          or name == "act" and args.action == "apply"):
         # An agent started by reckon open works only inside its pinned org and environment.
         raise ValueError("reckon " + name + " is for the operator's own terminal, not a pinned agent")
@@ -435,6 +445,17 @@ def execute(args):
         if args.action == "install":
             return routines.install(h, org, args.name)
         return routines.run(h, org, args.name, registry)
+    if name == "watch" and args.action != "add":
+        from reckonlib import watches
+        org = args.org or orgs.context(h, registry=registry)["org"]
+        orgs.load(h, org, registry)
+        if args.action == "list":
+            return [dict(w, watch=n) for n, w in sorted(watches.load(h, org).items())]
+        if args.action == "remove":
+            if len(args.name) != 1:
+                raise ValueError("usage: reckon watch remove <name>")
+            return watches.remove(h, org, args.name[0])
+        return watches.run(h, org, registry, tuple(args.name))
     if name == "spend":
         from reckonlib import spend
         if not 1 <= args.days <= 365:
@@ -537,6 +558,16 @@ def execute(args):
         report = work.report(root, data["id"])
         return {"session": data["id"], "org": ctx["org"], "environment": ctx["env"], "path": str(path), "report": str(report),
                 "planned_operations": len(tasks), "gaps": gaps, "collection": collection, "next": "reckon resume " + data["id"]}
+    if name == "watch" and args.action == "add":
+        from reckonlib import watches
+        if len(args.name) != 1 or not args.connection:
+            raise ValueError("reckon watch add <name> --connection <conn> --items <path> --key <field> -- <read>")
+        return watches.add(h, ctx, args.name[0], args.connection, args.passthrough, args.items, args.key, args.title, registry)
+    if name == "inbox":
+        from reckonlib import watches
+        if args.all_envs and activity.pinned():
+            raise ValueError("a pinned agent sees only its own environment's inbox")
+        return watches.inbox(h, ctx["org"], args.days, None if args.all_envs else ctx["env"])
     if name == "routine" and args.action == "add":
         from reckonlib import routines
         if not args.name or not args.workflow or not args.at:
@@ -712,8 +743,8 @@ def main():
     cut = argv.index("--") if "--" in argv else len(argv)
     args = parser().parse_args(argv[:cut])
     args.passthrough = argv[cut + 1:]
-    if args.passthrough and args.command not in ("run", "open"):
-        parser().error("only run and open take arguments after --")
+    if args.passthrough and args.command not in ("run", "open", "watch"):
+        parser().error("only run, open and watch add take arguments after --")
     try:
         result = execute(args)
         if isinstance(result, dict) and "_exit" in result:
@@ -777,6 +808,14 @@ def display(command, result):
             print("workflow " + result["workflow"]["workflow"] + ":")
             for row in result["workflow"]["checks"]:
                 print("  " + row["status"].ljust(12) + row["id"].ljust(16) + row["text"])
+    elif command == "inbox":
+        for row in result:
+            print(row["at"][:16] + "  [" + row["environment"] + "] " + row["watch"].ljust(18) + row["title"])
+        if not result:
+            print("nothing new")
+    elif command == "watch" and isinstance(result, list) and result and "status" in result[0]:
+        for row in result:
+            print(row["status"].ljust(9) + row["watch"].ljust(20) + (str(row["new"]) + " new of " + str(row["items"]) if "new" in row else row.get("detail", "")))
     elif command == "spend":
         for row in result:
             cost = "  ~$" + format(row["usd"], ".2f") if row["usd"] is not None else ""
