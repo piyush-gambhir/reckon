@@ -16,6 +16,9 @@ import shutil
 import signal
 import subprocess
 import sys
+# Imported here, not inside plist(): it pulls in urllib.request, which looks for macOS
+# proxy support whenever sys.platform says darwin (as the routine tests make it say on Linux).
+from xml.sax.saxutils import escape
 
 from . import activity, orgs, workflows, workspace
 from .store import local_path, lock, read_json, write_json
@@ -176,7 +179,6 @@ def quote(value):
 
 
 def plist(label, command, env, sched, folder):
-    from xml.sax.saxutils import escape
     intervals = "".join("<dict><key>Weekday</key><integer>" + str(d) + "</integer><key>Hour</key><integer>" + str(sched["hour"]) +
                         "</integer><key>Minute</key><integer>" + str(sched["minute"]) + "</integer></dict>" for d in sched["days"])
     return ('<?xml version="1.0" encoding="UTF-8"?>\n'
