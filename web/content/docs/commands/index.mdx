@@ -82,6 +82,14 @@ For operations work, the agent narrows from broad to specific:
   [integration page](/docs/integrations) links the CLI's own documentation.
 </Callout>
 
+## Checking a session
+
+`reckon check <session>` exits 1 when a saved session should not be trusted as is:
+broken evidence integrity, a finding without successful evidence, evidence from
+another org or environment, or a session closed as done without a finding. It
+also warns about partial evidence, hypotheses without a next check and knowledge
+that changed since the session started.
+
 ## Reusing recent reads
 
 `reckon run <tool> --cache 15m -- <args>` returns an identical successful read from

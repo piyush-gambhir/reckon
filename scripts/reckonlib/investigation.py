@@ -396,3 +396,42 @@ def knowledge_changes(root, data):
     return {"changed": sorted(k for k in then if k in current and then[k] != current[k]),
             "added": sorted(set(current) - set(then)), "removed": sorted(set(then) - set(current))}
 
+
+
+def check(root, sid):
+    """Deterministic quality checks on one saved session; the base of workflow evaluations.
+
+    Problems mean the session should not be trusted as is; warnings are worth a look."""
+    path, data = session_path(root, sid)
+    problems, warnings = [], []
+    try:
+        records = {r["id"]: r for r in evidence(path)}
+    except ValueError as exc:
+        return {"session": sid, "ok": False, "problems": ["evidence integrity: " + str(exc)], "warnings": []}
+    findings = [n for n in data["notes"] if n["kind"] == "finding"]
+    for note in data["notes"]:
+        if note["kind"] in ("finding", "rejected"):
+            if not note["evidence"]:
+                problems.append(note["kind"] + " without evidence: " + note["text"][:80])
+            for ref in note["evidence"]:
+                record = records.get(ref)
+                if not record:
+                    problems.append("cites missing evidence " + ref)
+                elif record["status"] != "ok":
+                    problems.append("cites " + ref + " whose status is " + record["status"])
+                elif record.get("completeness") in ("partial", "limit_reached"):
+                    warnings.append("cites " + ref + " which is " + record["completeness"] + "; say so in the finding")
+        if note["kind"] == "hypothesis" and not note.get("next_check"):
+            warnings.append("hypothesis without a next check: " + note["text"][:80])
+    for record in records.values():
+        if record.get("environment") != data["environment"] or record.get("org", data.get("org")) != data.get("org"):
+            problems.append("evidence " + record["id"] + " belongs to another org or environment")
+    if data["status"] in ("diagnosed", "done") and not findings:
+        problems.append("closed as " + data["status"] + " without a finding")
+    if not records:
+        warnings.append("no evidence collected")
+    changes = knowledge_changes(root, data)
+    if any(changes.values()):
+        warnings.append("knowledge changed since the session started: " + ", ".join(changes["changed"] + changes["added"] + changes["removed"]))
+    return {"session": sid, "ok": not problems, "problems": problems, "warnings": warnings,
+            "counts": {"evidence": len(records), "findings": len(findings), "notes": len(data["notes"])}}

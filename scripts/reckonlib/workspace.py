@@ -60,7 +60,7 @@ def settings(h, ctx, registry):
     """Claude Code permissions: reads through Reckon run freely, logins and secrets are off limits."""
     allow = ["Bash(reckon " + c + ":*)" for c in ("status", "preflight", "capabilities", "services", "resume", "report",
                                                  "note", "history", "verify", "collect", "task", "debug", "investigate",
-                                                 "monitor", "analyze", "close", "promote", "act prepare", "act list", "act show", "act reconcile", "brief")]
+                                                 "monitor", "analyze", "close", "promote", "act prepare", "act list", "act show", "act reconcile", "brief", "check")]
     ask = []
     for cname, conn in sorted(ctx["data"]["connections"].items()):
         mode = registry[conn["provider"]].get("mode")

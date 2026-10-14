@@ -100,6 +100,7 @@ reckon note <id> --kind finding --text "..." --evidence <evidence-id>
 reckon note <id> --kind hypothesis --text "..." --next-check "..."
 reckon report <id>          # writes the briefing
 reckon resume <id> --json   # everything saved, for a later conversation
+reckon check <id>           # citations, integrity, completeness; fix problems before closing
 reckon close <id> --outcome done|diagnosed|inconclusive
 reckon history              # this org's sessions in this environment (--all-envs for all)
 ```

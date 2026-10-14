@@ -117,6 +117,8 @@ def parser():
     command.add_argument("--refresh", action="store_true")
     command.add_argument("--timeout", type=float, default=15)
     command.add_argument("--max-bytes", type=int, default=1048576)
+    command = sub.add_parser("check", parents=[scope], help="quality checks on a saved session (citations, integrity, completeness)")
+    command.add_argument("session")
     for name in ("resume", "report"):
         command = sub.add_parser(name, parents=[scope])
         command.add_argument("session")
@@ -452,6 +454,8 @@ def execute(args):
         return result
     if name == "resume":
         return work.resume(root, args.session)
+    if name == "check":
+        return work.check(root, args.session)
     if name == "report":
         return {"report": str(work.report(root, args.session))}
     if name == "note":
@@ -540,7 +544,7 @@ def main():
             return 2  # explicit partial collection; successful artifacts remain available
         if isinstance(result, dict) and result.get("collection") and result["collection"]["partial"]:
             return 2
-        if args.command == "doctor" and result["problems"]:
+        if args.command in ("doctor", "check") and result["problems"]:
             return 1
         if args.command == "act" and isinstance(result, dict) and result.get("status") in ("failed", "unknown", "cancelled"):
             return 2 if result["status"] == "unknown" else 1
@@ -579,6 +583,12 @@ def display(command, result):
     elif command == "connect" and isinstance(result, list):
         for row in result:
             print(row["provider"].ljust(15) + row["title"].ljust(24) + row["mode"].ljust(10) + ", ".join(row["settings"]))
+    elif command == "check":
+        print(("ok" if result["ok"] else "problems") + "  " + result["session"])
+        for item in result["problems"]:
+            print("  problem: " + item)
+        for item in result["warnings"]:
+            print("  warning: " + item)
     elif command == "brief":
         from reckonlib.brief import render
         print(render(result))

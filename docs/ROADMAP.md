@@ -165,6 +165,11 @@ start from, and `reckon resume` reports which changed since.
 
 ### M8 Evaluations
 
+First slice built 2026-10-14: `reckon check <session>` runs the deterministic part
+(evidence integrity, findings citing successful evidence, partial evidence,
+hypotheses without next checks, foreign evidence, closed without a finding,
+knowledge changed since the start).
+
 - 10 to 20 recorded cases: growth drop, causal deploy, unrelated deploy, missing
   telemetry, preliminary search data, quota exhaustion, wrong-environment
   request, prompt injection inside tool output.
