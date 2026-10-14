@@ -100,6 +100,28 @@ observed. The cache is per org, environment and connection, stored without
 secrets in `~/.reckon/orgs/<org>/cache/`. Evidence saved from a cached read keeps
 its original observation time.
 
+## Routines
+
+A routine runs a workflow on a schedule with a headless agent (`claude -p` or
+`codex exec`), pinned to one org and environment like `reckon open`: it reads
+through `reckon run`, saves a session, may prepare writes and never applies them.
+
+```bash
+reckon routine add weekly-growth --org acme --env prod --workflow growth-review \
+  --param site=sc-domain:acme.com --at "mon 08:30"
+reckon routine install weekly-growth --org acme   # writes the launchd job (macOS) or prints a crontab line
+reckon routine run weekly-growth --org acme       # what the scheduler runs; try it once by hand
+reckon routine list --org acme
+```
+
+`--at` takes `daily HH:MM`, `weekdays HH:MM` or a day such as `mon HH:MM`, in
+local time. A run still going makes the next one skip; launchd runs a missed job
+once after the Mac wakes. Each run's output is kept in
+`~/.reckon/orgs/<org>/routines/<name>/`, and the activity log records its result.
+Routines spend model usage without anyone watching, so start with one a week.
+`install` writes the schedule but does not load it; it prints the `launchctl`
+command for you to run.
+
 ## Activity log
 
 Every `reckon run`, every refusal (wrong environment, denied command, spent

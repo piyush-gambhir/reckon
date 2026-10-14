@@ -70,7 +70,7 @@ def settings(h, ctx, registry):
     secrets = "/" + str(h / "orgs") + "/*/secrets/**"
     log = "/" + str(h / "orgs") + "/*/activity.jsonl"
     deny = ["Bash(reckon act apply:*)", "Bash(reckon login:*)", "Bash(reckon use:*)", "Bash(reckon connect:*)", "Bash(reckon org:*)", "Bash(reckon migrate:*)",
-            "Bash(reckon brief --all-orgs:*)", "Bash(reckon log --all-envs:*)",
+            "Bash(reckon brief --all-orgs:*)", "Bash(reckon log --all-envs:*)", "Bash(reckon routine:*)",
             # Secret references are read by reckon run, never by the agent.
             "Bash(security:*)", "Bash(/usr/bin/security:*)", "Bash(secret-tool:*)", "Bash(op:*)",
             "Edit(" + log + ")", "Write(" + log + ")",

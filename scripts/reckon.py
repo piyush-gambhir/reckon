@@ -111,6 +111,14 @@ def parser():
     command.add_argument("--to", dest="end", help="optional window end")
 
     sub.add_parser("workflows", parents=[scope], help="workflow recipes: parameters and the checks that make one done")
+    command = sub.add_parser("routine", parents=[scope], help="run a workflow on a schedule with a headless agent (operator only)")
+    command.add_argument("action", choices=("add", "list", "remove", "run", "install"))
+    command.add_argument("name", nargs="?")
+    command.add_argument("--workflow")
+    command.add_argument("--param", action="append", default=[], metavar="KEY=VALUE")
+    command.add_argument("--at", help="daily HH:MM, weekdays HH:MM or mon HH:MM (local time)")
+    command.add_argument("--runtime", default="claude", choices=("claude", "codex"))
+    command.add_argument("--timeout-minutes", type=int, default=45)
     command = sub.add_parser("services", parents=[scope], help="inspect or validate service mappings")
     command.add_argument("action", choices=("list", "show", "validate"))
     command.add_argument("name", nargs="?")
@@ -330,7 +338,7 @@ def execute(args):
     h = orgs.home()
     registry = orgs.providers()
     name = args.command
-    if os.environ.get("RECKON_ORG") and (name in ("use", "connect", "login", "migrate", "open") or name == "org" and args.action == "add"
+    if os.environ.get("RECKON_ORG") and (name in ("use", "connect", "login", "migrate", "open", "routine") or name == "org" and args.action == "add"
                                          or name == "act" and args.action == "apply"):
         # An agent started by reckon open works only inside its pinned org and environment.
         raise ValueError("reckon " + name + " is for the operator's own terminal, not a pinned agent")
@@ -410,6 +418,20 @@ def execute(args):
         activity.record(h, ctx, "act.apply", target=done["connection"], action=done["id"], operation=done["operation"], status=done["status"])
         return done
 
+    if name == "routine" and args.action != "add":
+        # The routine names its environment; only the org is needed here.
+        from reckonlib import routines
+        org = args.org or orgs.context(h, registry=registry)["org"]
+        orgs.load(h, org, registry)
+        if args.action == "list":
+            return [dict(r, routine=n) for n, r in sorted(routines.load(h, org).items())]
+        if not args.name:
+            raise ValueError("usage: reckon routine " + args.action + " <name>")
+        if args.action == "remove":
+            return routines.remove(h, org, args.name)
+        if args.action == "install":
+            return routines.install(h, org, args.name)
+        return routines.run(h, org, args.name, registry)
     if name == "brief" and args.all_orgs:
         from reckonlib.brief import all_orgs, render_all
         if not 1 <= args.days <= 365:
@@ -501,6 +523,11 @@ def execute(args):
         report = work.report(root, data["id"])
         return {"session": data["id"], "org": ctx["org"], "environment": ctx["env"], "path": str(path), "report": str(report),
                 "planned_operations": len(tasks), "gaps": gaps, "collection": collection, "next": "reckon resume " + data["id"]}
+    if name == "routine" and args.action == "add":
+        from reckonlib import routines
+        if not args.name or not args.workflow or not args.at:
+            raise ValueError("reckon routine add <name> --workflow <id> --at <when> [--param k=v]")
+        return routines.add(h, ctx, args.name, args.workflow, parse_params(args.param), args.at, args.runtime, args.timeout_minutes)
     if name == "workflows":
         from reckonlib import workflows
         return [{"workflow": r["id"], "title": r["title"], "area": r.get("area"), "budget": r.get("budget"),
@@ -510,13 +537,7 @@ def execute(args):
         recipe = playbook = None
         if args.workflow:
             from reckonlib import workflows
-            given = {}
-            for item in args.param:
-                key, sep, value = item.partition("=")
-                if not sep or key in given:
-                    raise ValueError("--param takes KEY=VALUE, once per key")
-                given[key] = value
-            text, area, budget, recipe, playbook = workflows.start(root, args.workflow, given)
+            text, area, budget, recipe, playbook = workflows.start(root, args.workflow, parse_params(args.param))
             args.question = args.question or text
             args.area = args.area or area
             args.budget = args.budget if args.budget is not None else budget
@@ -573,7 +594,9 @@ def execute(args):
     if name == "resume":
         return work.resume(root, args.session)
     if name == "check":
-        return work.check(root, args.session, available(h, ctx, registry))
+        # Checks are judged in the session's own environment, never another one where tools look unavailable.
+        work.matching(session_path(root, args.session)[1], ctx)
+        return work.check(root, args.session, available(h, ctx, registry), registry)
     if name == "report":
         return {"report": str(work.report(root, args.session))}
     if name == "note":
@@ -624,13 +647,27 @@ def execute(args):
             if args.outcome == "diagnosed" and not any(n["kind"] == "finding" for n in data["notes"]):
                 raise ValueError("record an evidence-backed finding before marking the investigation diagnosed")
             if args.outcome == "done" and data.get("workflow"):
-                todo = work.check(root, args.session, available(h, ctx, registry))["workflow"]["todo"]
+                work.matching(data, ctx)
+                checked = work.check(root, args.session, available(h, ctx, registry), registry)
+                if "workflow" not in checked:
+                    raise ValueError("cannot close as done: " + "; ".join(checked["problems"]))
+                todo = checked["workflow"]["todo"]
                 if todo:
                     raise ValueError("workflow checks still to do: " + ", ".join(todo) + "; read them, or record why with reckon note " +
                                      args.session + " --kind question --text \"skip <check>: <reason>\"")
             data["status"] = args.outcome
             write_json(path / "session.json", data)
         return {"session": args.session, "status": args.outcome}
+
+
+def parse_params(items):
+    given = {}
+    for item in items:
+        key, sep, value = item.partition("=")
+        if not sep or key in given:
+            raise ValueError("--param takes KEY=VALUE, once per key")
+        given[key] = value
+    return given
 
 
 def available(h, ctx, registry):

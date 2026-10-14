@@ -228,8 +228,8 @@ stale knowledge, saved to `briefs/` for a cron or launchd job.
 - `reckon brief`: a stateless daily or weekly summary per org built from the
   workflows, never from accumulated chat memory (OpenSRE moved to stateless loops
   after memory caused problems).
-- Optional local scheduling through launchd or cron, producing saved sessions;
-  delivery to email or chat only when the operator asks.
+- Done 2026-10-14: local scheduling through launchd or cron (`reckon routine`), producing
+  saved sessions; delivery to email or chat only when the operator asks.
 
 ### Features found in comparable projects
 
@@ -242,7 +242,7 @@ and ToolHive (2026-10-14), ranked by value for one person running several busine
 | Done 2026-10-14: cross-org brief (`reckon brief --all-orgs`), one morning view of every business | Steampipe aggregators, Paperclip | S |
 | Done 2026-10-14: activity log of every run, refusal, prepare and apply (`reckon log`) | Paperclip, Agent Vault | S |
 | Done 2026-10-14: secret references (`keychain:`, `op://`) resolved only inside `reckon run` | ToolHive | S |
-| Saved routines: launchd or cron runs a headless agent on a workflow, with skip and catch-up policies | Paperclip, HolmesGPT, Goose | M |
+| Done 2026-10-14: routines (`reckon routine add/install/run`): launchd or cron runs a pinned headless agent on a workflow; overlapping runs skip | Paperclip, HolmesGPT, Goose | M |
 | Done 2026-10-14: workflow recipes with parameters and required checks (report schema still to do) | Goose recipes | M |
 | Large output spilled to the session, with a preview and the path | HolmesGPT | S |
 | Agent spend per org from Claude Code and Codex transcripts | Paperclip | M |
