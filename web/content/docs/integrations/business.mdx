@@ -100,7 +100,7 @@ Read commands: `issue list`, `issue query`, `issue view`, `issue comment list`, 
 
 ## Resend
 
-Sent emails and their status, domains, contacts, segments and broadcasts. CLI: [resend](https://github.com/resend/resend-cli). Resend has no read-only key type, so this list is the only write guard; `logs get` is excluded because request bodies can contain new API keys.
+Sent emails and their status, domains, contacts, segments and broadcasts. CLI: [resend](https://github.com/resend/resend-cli). Resend has no read-only key type, so this list is the only write guard; `logs get` is excluded because request bodies can contain new API keys, and `emails get` because email bodies hold password-reset links and one-time codes.
 
 ```bash
 reckon connect resend --org acme --provider resend   # then set RESEND_API_KEY in the secrets file
@@ -110,7 +110,7 @@ reckon run resend -- emails list ...
 
 Settings: `RESEND_API_KEY`.
 
-Read commands: `emails list`, `emails get`, `emails metrics`, `domains list`, `domains get`, `contacts list`, `contacts get`, `contacts segments`, `segments list`, `segments get`, `segments contacts`, `broadcasts list`, `broadcasts get`, `logs list`, `whoami`.
+Read commands: `emails list`, `emails metrics`, `domains list`, `domains get`, `contacts list`, `contacts get`, `contacts segments`, `segments list`, `segments get`, `segments contacts`, `broadcasts list`, `broadcasts get`, `logs list`, `whoami`.
 
 ## Shopify
 
