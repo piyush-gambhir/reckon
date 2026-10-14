@@ -378,6 +378,28 @@ def remember(h, ctx, key, result, values):
                       "stderr": orgs.redact(result["stderr"].decode("utf-8", "replace"), values)})
 
 
+def resolved(spec, env, args):
+    """Ask a CLI that implements the agent contract what these arguments would run.
+
+    Returns None when the installed version has no resolver (the registry checks
+    still apply); refuses anything that is not a plain read."""
+    import json
+    probe = bounded([spec["binary"]] + spec["resolver"] + list(args), env=env, cwd=env["TMPDIR"], timeout=10, max_bytes=262144)
+    try:
+        answer = json.loads(probe["stdout"].decode() or probe["stderr"].decode() or "{}")
+    except ValueError:
+        answer = {}
+    if probe["status"] != "ok":
+        if "unknown command" in json.dumps(answer) and "resolve" in json.dumps(answer):
+            return None  # an older release without the resolver
+        raise ValueError(spec["binary"] + " could not resolve these arguments: " + str(answer.get("error", probe["status"])))
+    if answer.get("secret_output"):
+        raise ValueError(answer.get("command", "this command") + " prints a credential and is not allowed through reckon run")
+    if answer.get("effect") != "read":
+        raise ValueError(answer.get("command", "this command") + " has effect " + str(answer.get("effect")) + "; reckon run only reads")
+    return answer
+
+
 def run(h, ctx, target, args, registry, timeout=60, max_bytes=8 * 1048576, stdin=None, cache_seconds=0):
     cname, conn, spec, env, values = prepare(h, ctx, target, registry)
     if not orgs.configured(h, ctx["org"], cname, spec, values):
@@ -385,6 +407,8 @@ def run(h, ctx, target, args, registry, timeout=60, max_bytes=8 * 1048576, stdin
                          (" or run reckon login " + cname + " in your own terminal" if spec.get("login") else ""))
     label = conn.get("env_labels", {}).get(ctx["env"])
     check(conn["provider"], spec, args)
+    if spec.get("resolver"):
+        resolved(spec, env, args)
     bind(spec, args, conn, values)
     args = scope(spec, args, label, conn.get("env_labels", {}).values())
     argv = command(h, ctx, cname, conn, spec, values, args)

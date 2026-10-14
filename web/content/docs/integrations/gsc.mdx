@@ -51,6 +51,13 @@ also refuses `--access-token`, `--credentials`, `--profile`, `--config`,
 `auth use`, `config`, `sites use`, `update` and `export` commands. The agent
 picks a property per command with `--site`.
 
+## Contract check
+
+With gsc 0.1.8 or later, `reckon run` first asks `gsc commands resolve -- <args>`
+what the arguments would run. Anything that is not a plain read, or that prints a
+credential, is refused, whatever flags surround it. Older releases fall back to
+Reckon's own argument checks.
+
 ## Key commands
 
 ```bash

@@ -90,6 +90,11 @@ instead of a hand-written registry:
   and a `plan_hash`, and `--expect-plan <hash>` refuses a different plan.
 - One JSON envelope on stdout, errors with a `kind`, completeness metadata.
 
+Started 2026-10-14: gsc v0.1.8 ships `commands resolve -- <args>` (the real parser
+reports command, effect and credential output), and `reckon run` consults it before
+running gsc, refusing anything that is not a plain read; older releases fall back
+to the registry checks.
+
 Rollout: gsc (reference), bwt, clarity, jira, jenkins, grafana, nginxpm, es,
 cubeapm. Reckon keeps its own checks for a CLI until that CLI passes conformance
 tests (catalog complete, resolver agrees with execution, false flags resisted,

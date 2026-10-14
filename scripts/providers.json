@@ -125,7 +125,8 @@
       "login": ["auth", "login"],
       "short_values": "os",
       "agent_scrub": ["GOOGLE_APPLICATION_CREDENTIALS"],
-      "resources": {"site": {"flags": ["--site", "-s"], "default_env": ["GSC_SITE"], "positional": "^(sc-domain:|https?://)", "refuse_commands": [["sites", "list"]]}}
+      "resources": {"site": {"flags": ["--site", "-s"], "default_env": ["GSC_SITE"], "positional": "^(sc-domain:|https?://)", "refuse_commands": [["sites", "list"]]}},
+      "resolver": ["commands", "resolve", "--"]
     },
     "bing": {
       "title": "Bing Webmaster Tools",

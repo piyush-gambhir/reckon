@@ -5,6 +5,6 @@ cubeapm,github.com/piyush-gambhir/cubeapm-cli/cli-go,v0.2.11,v0.2.11,cmd
 es,github.com/piyush-gambhir/es-cli/cli-go,v0.1.11,v0.1.11,internal/build
 jira,github.com/piyush-gambhir/jira-cli/cli-go,v0.1.12,v0.1.12,internal/version
 nginxpm,github.com/piyush-gambhir/nginxpm-cli/cli-go,v0.1.12,v0.1.12,internal/build
-gsc,github.com/piyush-gambhir/gsc-cli/cli-go,ca4ecf209a4572e3fd5d776e3051122053e3fc03,v0.1.6,internal/build
+gsc,github.com/piyush-gambhir/gsc-cli/cli-go,1da4dc3454261f5310a6fca0ab4b761bffef4798,v0.1.8,internal/build
 bwt,github.com/piyush-gambhir/bing-webmaster-cli/cli-go,37d740eb38946d7342711639407a5846fec4ae66,v0.1.6,internal/build
 clarity,github.com/piyush-gambhir/clarity-cli/cli-go,54f990e620be7836ea2e30109f5ea9fa515fce57,v0.1.4,internal/build
