@@ -72,28 +72,40 @@ def brief(h, ctx, registry, days=7, envs=None):
             "reviews": sorted(series.values(), key=lambda r: (r["last_done"] or "", r["workflow"]))}
 
 
+def when(value):
+    """A stored time as an aware datetime, or None when it cannot be read (a hand-edited file)."""
+    try:
+        moment = parse(str(value))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
 def review(series, data, envs):
     """Fold one session into the review series it belongs to: when one last finished, and any run still open."""
     flow = data.get("workflow")
-    if not isinstance(flow, dict) or not isinstance(flow.get("params"), dict) or data.get("environment") not in envs:
+    if (not isinstance(flow, dict) or not isinstance(flow.get("id"), str) or not isinstance(flow.get("params"), dict)
+            or not isinstance(flow.get("series", []), list) or not all(isinstance(k, str) for k in flow.get("series", []))
+            or data.get("environment") not in envs):
         return
-    keys = [k for k in flow.get("series", []) if isinstance(k, str)]
-    name = " ".join(k + "=" + str(flow["params"].get(k)) for k in keys)
-    row = series.setdefault((flow.get("id"), data["environment"], name), {
-        "workflow": str(flow.get("id")), "environment": data["environment"], "series": name, "last_done": None, "session": None, "open": []})
+    keys = sorted(set(flow.get("series", [])))
+    # The values themselves identify a series; the text is only for display.
+    identity = (flow["id"], data["environment"], tuple((k, json.dumps(flow["params"].get(k), sort_keys=True)) for k in keys))
+    row = series.setdefault(identity, {"workflow": flow["id"], "environment": data["environment"],
+                                       "series": " ".join(k + "=" + str(flow["params"].get(k)) for k in keys),
+                                       "last_done": None, "session": None, "open": []})
     if data.get("status") == "done":
-        done = str(data.get("closed_at") or data.get("created_at") or "")
-        if done > (row["last_done"] or ""):
-            row.update(last_done=done, session=data.get("id"))
+        done = when(data.get("closed_at") or data.get("created_at"))
+        if done and (row["last_done"] is None or done > when(row["last_done"])):
+            row.update(last_done=done.isoformat().replace("+00:00", "Z"), session=data.get("id"))
     elif data.get("status") == "open":
-        row["open"].append(data.get("id"))
+        row["open"].append(str(data.get("id")))
 
 
 def review_line(r):
     where = "[" + r["environment"] + "] " + r["workflow"] + (" " + r["series"] if r["series"] else "") + ": "
     if r["last_done"]:
-        age = (datetime.now(timezone.utc) - parse(r["last_done"])).days
-        where += "last done " + r["last_done"][:10] + " (" + str(age) + " days ago, " + str(r["session"]) + ")"
+        where += "last done " + r["last_done"][:10] + " (" + str((datetime.now(timezone.utc) - when(r["last_done"])).days) + " days ago, " + str(r["session"]) + ")"
     else:
         where += "never finished"
     return where + ("; open: " + ", ".join(r["open"]) if r["open"] else "")

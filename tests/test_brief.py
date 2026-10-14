@@ -50,8 +50,19 @@ class BriefTests(OrgCase):
         write_json(self.root / "actions" / "a-j" / "action.json", {"id": "a-j", "status": "prepared", "operation": "jira.issue.create",
                                                                    "connection": "jira", "environment": "staging",
                                                                    "params": {"project": "ABC", "summary": "Fix titles"}})
-        out = json.loads(self.cli("brief", "--org", "acme", "--env", "staging", "--json").stdout)
-        rows = {r["series"]: r for r in out["reviews"]}
+        # Hand-edited workflow data is passed over, dates that cannot be read count as no date, and
+        # values that print alike stay separate series.
+        for odd in ({"workflow": dict(flow, series=None)}, {"workflow": dict(flow, series="site")}, {"workflow": dict(flow, id=["x"])},
+                    {"closed_at": "not-a-date"}, {"closed_at": "2026-10-13"},
+                    {"workflow": {"id": "custom", "series": ["a", "b"], "params": {"a": "x b=y", "b": "z"}}},
+                    {"workflow": {"id": "custom", "series": ["b", "a"], "params": {"a": "x", "b": "y b=z"}}}):
+            _, data = create(self.root, "acme", "staging", "odd", "task", workflow=flow)
+            write_json(self.root / "sessions" / data["id"] / "session.json", dict(dict(data, status="done", closed_at="2026-10-01T00:00:00Z"), **odd))
+        result = self.cli("brief", "--org", "acme", "--env", "staging", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = json.loads(result.stdout)
+        self.assertEqual(sum(r["workflow"] == "custom" for r in out["reviews"]), 2)
+        rows = {r["series"]: r for r in out["reviews"] if r["workflow"] == "growth-review"}
         self.assertEqual(rows["site=sc-domain:acme.com"]["last_done"], "2026-10-13T09:00:00Z")
         self.assertEqual(len(rows["site=sc-domain:acme.com"]["open"]), 1)
         self.assertEqual(rows["site=sc-domain:other.com"]["last_done"], "2026-10-14T09:00:00Z")
