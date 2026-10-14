@@ -59,6 +59,8 @@ def parser():
     command.add_argument("--allow", action="append", default=[], metavar="KIND=PATTERN",
                          help="limit the connection to resources, e.g. repo=acme/* or site=sc-domain:acme.com (repeatable)")
     command.add_argument("--allow-any", action="store_true", help="remove the connection's resource limits")
+    command.add_argument("--account", help="the login, email or account id this connection must use, checked by reckon verify "
+                                           "and before every write (a * pattern is allowed; '' removes it)")
     command.add_argument("--remove", action="store_true", help="remove the connection; its secrets file is kept for you to delete")
 
     command = sub.add_parser("login", parents=[scope], help="interactive login for a connection's CLI (run it yourself)")
@@ -245,13 +247,21 @@ def connect(h, args, registry):
         conn.setdefault("resources", {}).setdefault(kind, [])
         if pattern not in conn["resources"][kind]:
             conn["resources"][kind].append(pattern)
+    if args.account is not None:
+        if not args.account:
+            conn.pop("account", None)
+        elif not registry[conn["provider"]].get("identity"):
+            raise ValueError(conn["provider"] + " does not report which account it uses, so --account cannot be checked")
+        else:
+            conn["account"] = args.account
     data["connections"][args.name] = conn
     orgs.save(h, data, registry)
     workspace.ensure(h, ctx, registry)
     path, created = connectors.template(h, ctx["org"], args.name, registry[conn["provider"]])
     spec = registry[conn["provider"]]
     return {"org": ctx["org"], "connection": args.name, "provider": conn["provider"], "environment": conn.get("env") or "all",
-            "env_labels": conn.get("env_labels", {}), "resources": conn.get("resources", {}), "secrets": str(path), "secrets_created": created,
+            "env_labels": conn.get("env_labels", {}), "resources": conn.get("resources", {}), "account": conn.get("account"),
+            "secrets": str(path), "secrets_created": created,
             "next": "edit " + str(path) + (" or run: reckon login " + args.name if spec.get("login") else "") +
                     ", then: reckon verify " + args.name}
 
@@ -815,7 +825,8 @@ def display(command, result):
         for row in result["connections"]:
             if command == "status":
                 where = "" if row["applies"] else "  [" + row["scope"] + " only]"
-                print("  " + row["connection"].ljust(22) + row["provider"].ljust(14) + row["state"] + (" label=" + row["label"] if row.get("label") else "") + where)
+                print("  " + row["connection"].ljust(22) + row["provider"].ljust(14) + row["state"] + (" label=" + row["label"] if row.get("label") else "") +
+                      (" account=" + row["account"] if row.get("account") else "") + where)
             else:
                 print("  " + row["connection"].ljust(22) + row["provider"].ljust(14) + row["state"] + (" label=" + row["label"] if row.get("label") else ""))
         if not result["connections"]:

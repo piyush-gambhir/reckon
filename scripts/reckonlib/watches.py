@@ -13,7 +13,7 @@ import shutil
 
 from . import actions, activity, connectors, orgs
 from .goals import PATH
-from .store import local_path, lock, now, read_json, write_json
+from .store import local_path, lock, now, pick, read_json, write_json
 
 SEEN_LIMIT = 5000
 
@@ -25,17 +25,6 @@ def path(h, org):
 def load(h, org):
     target = path(h, org)
     return read_json(target) if target.is_file() else {}
-
-
-def pick(data, where):
-    for part in where.split(".") if where else []:
-        if isinstance(data, list) and part.isdigit() and int(part) < len(data):
-            data = data[int(part)]
-        elif isinstance(data, dict):
-            data = data.get(part)
-        else:
-            return None
-    return data
 
 
 def add(h, ctx, name, target, args, items, key, title=None, registry=None, production=False):

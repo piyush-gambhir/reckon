@@ -1,6 +1,7 @@
 """Run one CLI for one connection: its credentials, its target, read-only forced."""
 from datetime import datetime, timezone
 from fnmatch import fnmatchcase
+import json
 import os
 import re
 from pathlib import Path
@@ -10,7 +11,7 @@ import sys
 
 from . import orgs
 from .process import run as bounded
-from .store import local_path, lock, read_json, write_json
+from .store import local_path, lock, pick, read_json, write_json
 
 
 def tokens(args, spec=None):
@@ -352,7 +353,6 @@ def command(h, ctx, cname, conn, spec, values, args):
 
 def cache_key(ctx, cname, argv, stdin):
     import hashlib
-    import json
     material = json.dumps([ctx["org"], ctx["env"], cname, argv, (stdin or b"").decode("utf-8", "replace")])
     return hashlib.sha256(material.encode()).hexdigest()
 
@@ -384,17 +384,16 @@ def resolved(spec, env, args):
 
     Returns None when the installed version has no resolver (the registry checks
     still apply); refuses anything that is not a plain read."""
-    import json
-    probe = bounded([spec["binary"]] + spec["resolver"] + list(args), env=env, cwd=env["TMPDIR"], timeout=10, max_bytes=262144)
+    asked = bounded([spec["binary"]] + spec["resolver"] + list(args), env=env, cwd=env["TMPDIR"], timeout=10, max_bytes=262144)
     try:
-        answer = json.loads(probe["stdout"].decode() or probe["stderr"].decode() or "{}")
+        answer = json.loads(asked["stdout"].decode() or asked["stderr"].decode() or "{}")
     except ValueError:
         answer = {}
-    text = probe["stdout"].decode(errors="replace") + probe["stderr"].decode(errors="replace")
-    if probe["status"] != "ok":
+    text = asked["stdout"].decode(errors="replace") + asked["stderr"].decode(errors="replace")
+    if asked["status"] != "ok":
         if "unknown command" in text and ("commands" in text or "resolve" in text):
             return None  # an older release without the resolver: the registry checks still apply
-        raise ValueError(spec["binary"] + " could not resolve these arguments: " + str(answer.get("error", probe["status"])))
+        raise ValueError(spec["binary"] + " could not resolve these arguments: " + str(answer.get("error", asked["status"])))
     if not isinstance(answer, dict) or "effect" not in answer:
         return None  # not a resolver answer (an older release printed something else)
     if answer.get("secret_output"):
@@ -464,8 +463,60 @@ def quota(h, ctx, cname, spec, args):
     return cname + ": " + str(left) + " of " + str(rule["per_day"]) + " " + rule["unit"] + " left today (UTC)" if left <= 2 else None
 
 
+def probe(h, ctx, cname, conn, spec, env, values):
+    """The provider's cheap live read (its verify command), in the connection's runtime folder."""
+    argv = command(h, ctx, cname, conn, spec, values, spec["verify"])
+    return bounded(argv, env=env, cwd=str(orgs.org_path(h, ctx["org"]) / "runtime" / cname / "tmp"), timeout=20, max_bytes=262144)
+
+
+def account(spec, result, values):
+    """The account the verify read reports at the provider's identity path, or None."""
+    if not spec.get("identity") or result["status"] != "ok":
+        return None
+    try:
+        data = json.loads(result["stdout"].decode("utf-8", errors="replace"))
+    except ValueError:
+        return None
+    # A list names fallbacks: Jira hides emailAddress for some users, so name or accountId comes next.
+    for path in spec["identity"] if isinstance(spec["identity"], list) else [spec["identity"]]:
+        found = pick(data, path)
+        if not isinstance(found, bool) and isinstance(found, (str, int)) and str(found).strip():
+            return orgs.redact(str(found).strip(), values)[:200]
+    return None
+
+
+def account_problem(cname, conn, seen):
+    """Why the account a tool reports is not the one the connection expects, or None."""
+    expected = conn.get("account")
+    if not expected:
+        return None
+    if seen is None:
+        return cname + " did not report which account it uses, so it cannot be confirmed as " + expected
+    # Logins and emails are case-insensitive; a pattern such as *@acme.com allows any account of a domain.
+    if not fnmatchcase(seen.casefold(), expected.casefold()):
+        return (cname + " is logged in as " + seen + ", not " + expected + " (if " + seen + " is right: reckon connect " + cname +
+                " --account " + seen + ")")
+    return None
+
+
+def whoami(h, ctx, cname, conn, registry):
+    """Confirm a connection still uses its expected account, with one live read; raises otherwise."""
+    spec = registry[conn["provider"]]
+    if not conn.get("account"):
+        return None
+    _, _, _, env, values = prepare(h, ctx, cname, registry)
+    result = probe(h, ctx, cname, conn, spec, env, values)
+    if result["status"] != "ok":
+        raise ValueError("could not confirm " + cname + "'s account (its check read " + result["status"] + "); run reckon verify " + cname)
+    seen = account(spec, result, values)
+    problem = account_problem(cname, conn, seen)
+    if problem:
+        raise ValueError(problem)
+    return seen
+
+
 def verify(h, ctx, registry, names=()):
-    """One cheap read per connection that applies to this environment."""
+    """One cheap read per connection that applies to this environment, and the account it uses."""
     rows = []
     conns = ctx["data"]["connections"]
     for unknown in set(names) - set(conns):
@@ -490,10 +541,20 @@ def verify(h, ctx, registry, names=()):
             except ValueError as exc:
                 rows.append(dict(row, status="skipped", detail=str(exc)))
                 continue
-            argv = command(h, ctx, cname, conn, spec, values, spec["verify"])
-            result = bounded(argv, env=env, cwd=str(orgs.org_path(h, ctx["org"]) / "runtime" / cname / "tmp"), timeout=20, max_bytes=262144)
+            result = probe(h, ctx, cname, conn, spec, env, values)
             detail = "" if result["status"] == "ok" else orgs.redact(result["stderr"].decode(errors="replace"), values).strip()[-400:]
-            rows.append(dict(row, status=result["status"], detail=detail))
+            row.update(status=result["status"], detail=detail)
+            if result["status"] == "ok" and spec.get("identity"):
+                seen = account(spec, result, values)
+                problem = account_problem(cname, conn, seen)
+                row["account"] = seen
+                if problem:
+                    row.update(status="wrong_account", detail=problem)
+                elif seen and not conn.get("account"):
+                    row["detail"] = "account " + seen + " (pin it: reckon connect " + cname + " --account " + seen + ")"
+                elif seen:
+                    row["detail"] = "account " + seen
+            rows.append(row)
     return rows
 
 

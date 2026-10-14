@@ -43,13 +43,15 @@ def overview(h, ctx, registry):
     lines = [MARK, "", "# Reckon org: " + title, "",
              "Environments: " + ", ".join("**" + e + "** (production)" if e in data["production"] else e for e in data["environments"]) + ".",
              "The active environment is pinned when the agent starts: run `reckon preflight` first and state it.", "",
-             "## Connections", "", "| Connection | Tool | Environments | Label per environment | Limited to |", "| --- | --- | --- | --- | --- |"]
+             "## Connections", "", "| Connection | Tool | Environments | Label per environment | Limited to | Account |",
+             "| --- | --- | --- | --- | --- | --- |"]
     for cname, conn in sorted(data["connections"].items()):
         labels = ", ".join(e + "=" + l for e, l in sorted(conn.get("env_labels", {}).items())) or "-"
         limits = "; ".join(k + ": " + ", ".join(v) for k, v in sorted(conn.get("resources", {}).items())) or "-"
-        lines.append("| `" + cname + "` | " + registry[conn["provider"]].get("title", conn["provider"]) + " | " + (conn.get("env") or "all") + " | " + labels + " | " + limits + " |")
+        lines.append("| `" + cname + "` | " + registry[conn["provider"]].get("title", conn["provider"]) + " | " + (conn.get("env") or "all") + " | " + labels +
+                     " | " + limits + " | " + (conn.get("account") or "-").replace("|", "\\|") + " |")
     if not data["connections"]:
-        lines.append("| (none yet) | | | | |")
+        lines.append("| (none yet) | | | | | |")
     lines += ["", "Run tools through Reckon, never directly: `reckon run <connection-or-tool> -- <arguments>`.",
               "Reckon adds the connection's credentials and forces read-only. Credentials are never available to you.",
               "Save work in sessions (`reckon task`, `reckon debug`, `reckon run --session`), and facts in `knowledge/`.", ""]
