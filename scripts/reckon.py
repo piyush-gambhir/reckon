@@ -414,6 +414,8 @@ def execute(args):
     if name == "log":
         if not 1 <= args.days <= 365 or not 1 <= args.limit <= 1000:
             raise ValueError("--days must be 1-365 and --limit 1-1000")
+        if args.all_envs and activity.pinned():
+            raise ValueError("a pinned agent sees only its own environment's activity")
         return activity.read(h, ctx["org"], args.days, None if args.all_envs else ctx["env"], args.event, args.limit)
     if name == "status":
         return {"org": ctx["org"], "name": ctx["data"]["name"], "environment": ctx["env"], "production": ctx["production"],
@@ -428,7 +430,7 @@ def execute(args):
             raise ValueError("usage: reckon run <connection|tool> -- <arguments>")
         if args.label and not args.session:
             raise ValueError("--label needs --session")
-        words = [w[:32] for w in connectors.tokens(command)[:3]]
+        words = activity.words(ctx, args.target, command, registry)
         if args.session:
             spath, sdata = session_path(root, args.session)
             try:
@@ -540,6 +542,8 @@ def execute(args):
         from reckonlib.brief import brief
         if not 1 <= args.days <= 365:
             raise ValueError("--days must be 1-365")
+        if args.all_envs and activity.pinned():
+            raise ValueError("a pinned agent sees only its own environment; run reckon brief --all-envs in your own terminal")
         result = brief(h, ctx, registry, args.days, ctx["data"]["environments"] if args.all_envs else None)
         if args.save:
             from datetime import datetime, timezone

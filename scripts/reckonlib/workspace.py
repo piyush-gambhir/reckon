@@ -68,8 +68,12 @@ def settings(h, ctx, registry):
         (ask if mode == "approval" else allow if mode in ("own", "allowlist") else []).extend(rules)
     # Claude Code reads "//path" as an absolute path.
     secrets = "/" + str(h / "orgs") + "/*/secrets/**"
+    log = "/" + str(h / "orgs") + "/*/activity.jsonl"
     deny = ["Bash(reckon act apply:*)", "Bash(reckon login:*)", "Bash(reckon use:*)", "Bash(reckon connect:*)", "Bash(reckon org:*)", "Bash(reckon migrate:*)",
-            "Bash(security find-generic-password:*)", "Bash(secret-tool:*)", "Bash(op read:*)", "Bash(op item:*)",
+            "Bash(reckon brief --all-orgs:*)", "Bash(reckon log --all-envs:*)",
+            # Secret references are read by reckon run, never by the agent.
+            "Bash(security:*)", "Bash(/usr/bin/security:*)", "Bash(secret-tool:*)", "Bash(op:*)",
+            "Edit(" + log + ")", "Write(" + log + ")",
             "Read(" + secrets + ")", "Edit(" + secrets + ")", "Write(" + secrets + ")"]
     return {"permissions": {"allow": sorted(set(allow) - set(ask)), "ask": sorted(set(ask)), "deny": deny}}
 

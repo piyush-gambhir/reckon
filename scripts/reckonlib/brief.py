@@ -4,7 +4,6 @@ Built only from saved files; it contacts no tool and asks no model, so it is saf
 to run on a schedule and its output is the same for the same state."""
 from datetime import datetime, timedelta, timezone
 import json
-import os
 
 from . import activity, orgs
 from .store import local_path, read_json
@@ -60,7 +59,7 @@ def brief(h, ctx, registry, days=7, envs=None):
 
 def all_orgs(h, registry, days=7):
     """Every org, every environment: the morning view for someone running several businesses."""
-    if os.environ.get("RECKON_ORG"):
+    if activity.pinned():
         raise ValueError("a pinned agent sees only its own org; run reckon brief --all-orgs in your own terminal")
     results = []
     for org in orgs.orgs(h):

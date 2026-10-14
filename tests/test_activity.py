@@ -82,9 +82,35 @@ class ActivityTests(OrgCase):
         self.assertEqual(pinned.returncode, 1)
         self.assertIn("pinned agent", pinned.stderr)
 
+    def test_values_in_leading_arguments_are_never_logged(self):
+        data = orgs.load(self.home, "acme", self.registry)
+        data["connections"].update({"pg": {"provider": "postgres"}, "rd": {"provider": "redis"}})
+        orgs.save(self.home, data, self.registry)
+        self.secret("acme", "pg", ["PGHOST=db.fixture.invalid", "PGUSER=reader", "PGDATABASE=app"])
+        self.secret("acme", "rd", ["REDIS_HOST=cache.fixture.invalid"])
+        self.cli("run", "pg", "--org", "acme", "--env", "staging", "--", "postgresql://admin:Hunter2pw@db/x")
+        self.cli("run", "rd", "--org", "acme", "--env", "staging", "--", "auth", "default", "Hunter3pw")
+        text = activity.path(self.home, "acme").read_text().lower()
+        self.assertEqual(len(text.splitlines()), 2)
+        self.assertNotIn("hunter2pw", text)
+        self.assertNotIn("hunter3pw", text)
+
+    def test_pins_cover_every_widening_view(self):
+        for args in (("log", "--all-envs"), ("brief", "--all-envs")):
+            refused = self.cli(*args, RECKON_ORG="acme", RECKON_ENV="staging")
+            self.assertEqual(refused.returncode, 1, args)
+            self.assertIn("pinned agent", refused.stderr)
+        # Clearing the variables does not unpin.
+        cleared = self.cli("brief", "--all-orgs", RECKON_ORG="", RECKON_ENV="")
+        self.assertEqual(cleared.returncode, 1)
+        self.assertIn("pinned agent", cleared.stderr)
+        self.secret("acme", "jenkins-staging", ["JENKINS_URL=https://ci.fixture.invalid", "JENKINS_USER=tester", "JENKINS_TOKEN=keychain:"])
+        with self.assertRaisesRegex(ValueError, "needs an item name"):
+            orgs.child_env(self.home, self.ctx(), "jenkins-staging", self.ctx()["data"]["connections"]["jenkins-staging"], self.registry["jenkins"])
+
     def test_agents_may_not_read_secret_stores_directly(self):
         deny = workspace.settings(self.home, self.ctx(), self.registry)["permissions"]["deny"]
-        for rule in ("Bash(security find-generic-password:*)", "Bash(op read:*)", "Bash(secret-tool:*)"):
+        for rule in ("Bash(security:*)", "Bash(op:*)", "Bash(secret-tool:*)", "Bash(reckon brief --all-orgs:*)"):
             self.assertIn(rule, deny)
 
 

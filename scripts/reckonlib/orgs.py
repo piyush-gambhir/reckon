@@ -226,8 +226,10 @@ def secrets(h, org, conn, spec):
 def reference(key, value):
     """A value may name a secret kept elsewhere: keychain:<item> (macOS Keychain or
     Linux secret-tool) or op://vault/item/field (1Password). Read only when a run needs it."""
-    if value.startswith("keychain:") and value[9:].strip():
+    if value.startswith("keychain:"):
         item = value[9:].strip()
+        if not item:
+            raise ValueError(key + ": keychain: needs an item name")
         argv = (["security", "find-generic-password", "-s", item, "-w"] if sys.platform == "darwin"
                 else ["secret-tool", "lookup", "service", item])
     elif value.startswith("op://"):
