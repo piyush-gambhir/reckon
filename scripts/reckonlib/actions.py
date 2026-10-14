@@ -89,7 +89,9 @@ def argv(operation, params, action_id):
         return ["gsc", "sitemaps", "submit", params["sitemap"], "--site=" + params["site"], "-o", "json"], None
     if operation == "jira.issue.create":
         text = params.get("description", "").rstrip("\n")
-        args = ["jira", "issue", "create", "--project=" + params["project"], "--type=" + params["type"],
+        # --allow-duplicate: jira-cli would otherwise reuse a recent issue with the same summary, without this
+        # description or marker. Reckon already runs each action once.
+        args = ["jira", "issue", "create", "--allow-duplicate", "--project=" + params["project"], "--type=" + params["type"],
                 "--summary=" + params["summary"], "--description=" + (text + "\n\n" if text else "") + marker(action_id, operation)]
         args += ["--label=" + label for label in params.get("labels", "").split(",") if label]
         if params.get("parent"):
@@ -102,9 +104,33 @@ def argv(operation, params, action_id):
 
 
 def browse(issue):
-    """A Jira issue's web address, from the API address jira-cli prints with it."""
-    host = re.match(r"https?://[^/\s]+", str(issue.get("self", "")))
-    return host.group(0) + "/browse/" + issue["key"] if host and issue.get("key") else None
+    """A Jira issue's web address, from the API address jira-cli prints with it (keeping a
+    Server context path such as /jira)."""
+    api = str(issue.get("self", ""))
+    base = re.match(r"(https?://\S+?)/rest/api/", api) or re.match(r"(https?://[^/\s]+)", api)
+    return base.group(1) + "/browse/" + issue["key"] if base and issue.get("key") else None
+
+
+def plain(description):
+    """A Jira description as text: wiki markup on Server, an ADF document on Cloud (one line per block)."""
+    if isinstance(description, str):
+        return description
+    def walk(node, out):
+        if isinstance(node, dict):
+            out.append(str(node.get("text", "")) if node.get("type") == "text" else "\n" if node.get("type") == "hardBreak" else "")
+            for child in node.get("content") if isinstance(node.get("content"), list) else []:
+                walk(child, out)
+    lines = []
+    for block in description.get("content") if isinstance(description, dict) and isinstance(description.get("content"), list) else []:
+        parts = []
+        walk(block, parts)
+        lines.append("".join(parts))
+    return "\n".join(lines)
+
+
+def last_line(text):
+    """Proof sits on the last line: a note quoting a marker elsewhere does not count."""
+    return str(text or "").rstrip().rsplit("\n", 1)[-1].strip()
 
 
 def console(site):
@@ -339,13 +365,14 @@ def reconcile(h, ctx, root, action_id, registry):
             days = int((datetime.now(timezone.utc) - started).total_seconds() // 86400) + 2
             command = ["jira", "issue", "search", "--jql", 'project = "' + params["project"] + '" AND creator = currentUser() AND created >= -' +
                        str(days) + "d ORDER BY created DESC", "--fields", "summary,description", "--limit", "100", "-o", "json"]
-            find = (lambda items: [browse(i) for i in items if isinstance(i, dict) and tag in json.dumps((i.get("fields") or {}).get("description"))]
+            find = (lambda items: [browse(i) for i in items if isinstance(i, dict) and isinstance(i.get("fields"), dict)
+                                   and i["fields"].get("summary") == params["summary"] and last_line(plain(i["fields"].get("description"))) == tag]
                     if isinstance(items, list) else [])
         else:
             where = params["repo"]
             command = ["gh", "issue", "list", "--repo", params["repo"], "--state", "all", "--limit", "100",
                        "--json", "number,url,body,createdAt"]
-            find = (lambda items: [i.get("url") for i in items if isinstance(i, dict) and tag in str(i.get("body") or "")]
+            find = (lambda items: [i.get("url") for i in items if isinstance(i, dict) and last_line(i.get("body")) == tag]
                     if isinstance(items, list) else [])
         result = bounded(command, env=env, cwd=env["TMPDIR"], timeout=60, max_bytes=8 * 1048576)
         if result["status"] != "ok":

@@ -78,9 +78,8 @@ outcomes.
   created issue), never to `failed`.
 - Done 2026-10-15: non-secret target fingerprint on prepared actions (the connection
   as configured plus settings such as `GH_HOST`); any change means preparing again.
-- Done 2026-10-15: `jira.issue.create` (marker line in the description, reconciled
-  by a bounded JQL search; jira-cli itself reuses an identical issue from the last
-  10 minutes). Done 2026-10-15: `gsc.sitemap.submit` (idempotent; reconciled from
+- Done 2026-10-15: `jira.issue.create` (a marker as the description's last line,
+  reconciled by a bounded JQL search that also matches the summary). Done 2026-10-15: `gsc.sitemap.submit` (idempotent; reconciled from
   the sitemap's `lastSubmitted`; bound by the connection's site limits). Next writes:
   `grafana.annotation.create`, `jenkins.job.build`.
 

@@ -190,9 +190,10 @@ BODY
 
 `jira.issue.create` takes `project` (a key such as `ABC`), `type` (`Task`, `Bug`,
 `Story`...), a one-line `summary`, and optionally `description`, `labels` (comma
-separated, no spaces) and `parent` (an issue key). The description ends with a
-`Reckon action: <id>` line, which reconcile looks for, and jira-cli reuses an
-identical issue you created in the last 10 minutes instead of making a second one.
+separated, no spaces) and `parent` (an issue key). The description's last line is
+`Reckon action: <id>`, which reconcile looks for. It needs jira-cli 0.1.10 or later
+(`--allow-duplicate`: Reckon runs each action once, so jira-cli must not reuse a
+recent issue that has the same summary but not this description).
 
 `gsc.sitemap.submit` takes `site` (a property: `sc-domain:example.com` or
 `https://www.example.com/`) and `sitemap` (its full URL, inside that property).

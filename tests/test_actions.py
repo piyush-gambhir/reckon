@@ -216,7 +216,7 @@ class JiraWriteTests(OrgCase):
         self.assertEqual(done["status"], "applied")
         self.assertEqual(done["receipt"]["url"], "https://acme.atlassian.net/browse/ABC-7")
         ran = json.loads((self.tmp / "args").read_text())
-        self.assertEqual(ran["args"], ["issue", "create", "--project=ABC", "--type=Task", "--summary=-Checkout times out",
+        self.assertEqual(ran["args"], ["issue", "create", "--allow-duplicate", "--project=ABC", "--type=Task", "--summary=-Checkout times out",
                                        "--description=Seen in s-1.\n\n" + actions.marker(record["id"], "jira.issue.create"),
                                        "--label=growth", "--label=checkout", "--parent=ABC-1", "-o", "json"])
         # The write runs without read-only mode and never waits for input.
@@ -230,10 +230,18 @@ class JiraWriteTests(OrgCase):
         other = {"key": "ABC-6", "self": "https://acme.atlassian.net/rest/api/3/issue/10000", "fields": {"summary": JIRA_PARAMS["summary"]}}
         (self.tmp / "listing").write_text(json.dumps([other]))
         self.assertEqual(actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)["status"], "unknown")
+        tag = actions.marker(record["id"], "jira.issue.create")
+        doc = {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Seen in s-1."}]},
+                                          {"type": "paragraph", "content": [{"type": "text", "text": tag}]}]}
+        # Quoting the marker in another issue, or a different summary, proves nothing.
+        quoting = {"key": "ABC-8", "self": other["self"], "fields": {"summary": JIRA_PARAMS["summary"],
+                                                                     "description": "Why did " + tag + " time out?\nStill checking."}}
+        renamed = {"key": "ABC-9", "self": other["self"], "fields": {"summary": "Something else", "description": doc}}
+        (self.tmp / "listing").write_text(json.dumps([other, quoting, renamed]))
+        self.assertEqual(actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)["status"], "unknown")
         mine = {"key": "ABC-7", "self": "https://acme.atlassian.net/rest/api/3/issue/10001",
-                "fields": {"description": {"type": "doc", "content": [{"type": "paragraph", "content": [
-                    {"type": "text", "text": actions.marker(record["id"], "jira.issue.create")}]}]}}}
-        (self.tmp / "listing").write_text(json.dumps([other, mine]))
+                "fields": {"summary": JIRA_PARAMS["summary"], "description": doc}}
+        (self.tmp / "listing").write_text(json.dumps([other, quoting, mine]))
         done = actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)
         self.assertEqual((done["status"], done["receipt"]["url"]), ("applied", "https://acme.atlassian.net/browse/ABC-7"))
 
@@ -245,6 +253,19 @@ FAKE_GSC = ("import json, os, sys\n"
             "open(tmp + '/args', 'w').write(json.dumps({'args': args, 'read_only': os.environ.get('GSC_READ_ONLY')}))\n"
             "print(json.dumps({'site': 'sc-domain:acme.com', 'sitemap': args[2], 'submitted': True}))\n")
 SITEMAP = {"site": "sc-domain:acme.com", "sitemap": "https://www.acme.com/sitemap.xml"}
+
+
+class JiraLinkTests(unittest.TestCase):
+    def test_links_keep_a_server_context_path(self):
+        self.assertEqual(actions.browse({"key": "ABC-1", "self": "https://jira.example.invalid/jira/rest/api/2/issue/10001"}),
+                         "https://jira.example.invalid/jira/browse/ABC-1")
+        self.assertEqual(actions.browse({"key": "ABC-1", "self": "https://acme.atlassian.net/rest/api/3/issue/1"}),
+                         "https://acme.atlassian.net/browse/ABC-1")
+        self.assertIsNone(actions.browse({"key": "ABC-1", "self": "not a url"}))
+        # A Server (wiki markup) description and a Cloud (ADF) one read the same.
+        doc = {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "a"}, {"type": "hardBreak"},
+                                                                             {"type": "text", "text": "b"}]}]}
+        self.assertEqual((actions.plain(doc), actions.plain("a\nb"), actions.plain(None)), ("a\nb", "a\nb", ""))
 
 
 class SitemapWriteTests(OrgCase):
