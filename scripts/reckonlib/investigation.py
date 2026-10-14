@@ -256,9 +256,9 @@ def note(root, sid, kind, text, references, next_check=""):
         known = {e["id"]: e for e in evidence(path)}
         if any(ref not in known for ref in references):
             raise ValueError("evidence reference does not belong to this session")
-        if kind in ("finding", "rejected"):
+        if kind in ("finding", "rejected", "action"):
             if not references or any(known[r]["status"] != "ok" for r in references):
-                raise ValueError("findings/rejected hypotheses require successful evidence from this session")
+                raise ValueError("findings, rejected hypotheses and actions require successful evidence from this session")
         item = {"id": "n-" + uuid.uuid4().hex[:10], "kind": kind, "text": text, "evidence": references,
                 "next_check": next_check, "recorded_at": now()}
         data["notes"].append(item)
@@ -332,8 +332,8 @@ def _write_report(root, sid):
     lines += ["**Status:** " + data["status"] + " · **Session:** " + sid, "",
               "Evidence below is historical, observed at the recorded times." +
               (" This briefing does not automatically establish a root cause." if investigation else ""), ""]
-    for kind, title in (("finding", "Findings recorded by the investigator"), ("hypothesis", "Hypotheses to test"),
-                        ("rejected", "Rejected explanations"), ("question", "Open questions")):
+    for kind, title in (("finding", "Findings recorded by the investigator"), ("action", "Recommended actions"),
+                        ("hypothesis", "Hypotheses to test"), ("rejected", "Rejected explanations"), ("question", "Open questions")):
         lines += ["## " + title, ""]
         notes = [n for n in data["notes"] if n["kind"] == kind]
         if not notes:
@@ -422,7 +422,7 @@ def check(root, sid, available=None, registry=None):
         return {"session": sid, "ok": False, "problems": ["evidence integrity: " + str(exc)], "warnings": []}
     findings = [n for n in data["notes"] if n["kind"] == "finding"]
     for note in data["notes"]:
-        if note["kind"] in ("finding", "rejected"):
+        if note["kind"] in ("finding", "rejected", "action"):
             if not note["evidence"]:
                 problems.append(note["kind"] + " without evidence: " + note["text"][:80])
             for ref in note["evidence"]:

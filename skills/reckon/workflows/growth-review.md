@@ -35,9 +35,10 @@ Save every read below with `--session <id>`.
 
 ## Output
 
-Record each finding with `reckon note <id> --kind finding --evidence <ids>`, then
-`reckon report <id>`. End with at most five actions, each with its page or query,
-the evidence, and the expected effect. Writes (sitemaps, page edits, issues) are
+Record each finding with `reckon note <id> --kind finding --evidence <ids>`, and
+each recommended action with `reckon note <id> --kind action --evidence <ids>`
+(its page or query and the expected effect in the text), then `reckon report <id>`.
+At most five actions; `reckon check` counts them. Writes (sitemaps, page edits, issues) are
 for the operator.
 
 ## Done when

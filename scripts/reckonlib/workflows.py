@@ -40,6 +40,10 @@ def validate(data, name):
     checks = data.get("checks")
     if not isinstance(checks, list) or not checks:
         fail("needs at least one check")
+    report = data.get("report", {})
+    if not isinstance(report, dict) or any(k not in ("min_actions", "max_actions") or not isinstance(v, int) or isinstance(v, bool) or v < 0
+                                           for k, v in report.items()) or report.get("min_actions", 0) > report.get("max_actions", 10 ** 6):
+        fail("report takes min_actions and max_actions, whole numbers with min <= max")
     ids = set()
     for check in checks:
         if not isinstance(check, dict) or not orgs.NAME.fullmatch(str(check.get("id", ""))) or check["id"] in ids or not check.get("text"):
@@ -85,7 +89,7 @@ def start(root, recipe_id, given):
         raise ValueError(recipe_id + " has no parameter " + ", ".join(sorted(given)) + "; it takes: " + ", ".join(recipe.get("params", {})))
     # One pass, so a value containing {other} is kept as written.
     question = re.sub(r"\{([a-z0-9][a-z0-9-]*)\}", lambda m: params.get(m.group(1), m.group(0)), recipe["question"])
-    snapshot = {k: recipe[k] for k in ("id", "title", "checks", "source") if k in recipe}
+    snapshot = {k: recipe[k] for k in ("id", "title", "checks", "report", "source") if k in recipe}
     snapshot["params"] = params
     playbook = recipe.get("playbook")
     return question, recipe.get("area"), recipe.get("budget"), snapshot, playbook
@@ -133,6 +137,13 @@ def progress(session, records, available, registry=None):
             else:
                 row["status"] = "todo"
         rows.append(row)
+    rule = recipe.get("report", {})
+    if rule:
+        count = sum(n["kind"] == "action" for n in session.get("notes", []))
+        low, high = rule.get("min_actions", 0), rule.get("max_actions")
+        text = "Actions recorded with evidence: " + str(low) + (" to " + str(high) if high is not None else " or more")
+        fits = count >= low and (high is None or count <= high)
+        rows.append({"id": "report-actions", "text": text + " (now " + str(count) + ")", "status": "met" if fits else "todo"})
     known = {c["id"] for c in recipe["checks"]}
     return {"workflow": recipe["id"], "params": recipe.get("params", {}), "checks": rows, "source": recipe.get("source", ""),
             "todo": [r["id"] for r in rows if r["status"] == "todo"], "unknown_skips": sorted(set(skipped) - known)}

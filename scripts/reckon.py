@@ -151,9 +151,9 @@ def parser():
     for name in ("resume", "report"):
         command = sub.add_parser(name, parents=[scope])
         command.add_argument("session")
-    command = sub.add_parser("note", parents=[scope], help="record findings, hypotheses, rejected ideas and questions")
+    command = sub.add_parser("note", parents=[scope], help="record findings, actions, hypotheses, rejected ideas and questions")
     command.add_argument("session")
-    command.add_argument("--kind", choices=("finding", "hypothesis", "rejected", "question"), required=True)
+    command.add_argument("--kind", choices=("finding", "action", "hypothesis", "rejected", "question"), required=True)
     command.add_argument("--text", required=True)
     command.add_argument("--evidence", nargs="*", default=[])
     command.add_argument("--next-check", default="")

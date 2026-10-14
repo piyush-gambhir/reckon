@@ -52,8 +52,20 @@ class WorkflowTests(OrgCase):
             self.cli("note", sid, "--kind", "question", "--text", "skip " + check + ": property is two days old", *self.scope)
         evidence = rows["gsc-totals"]["evidence"][0]
         self.cli("note", sid, "--kind", "finding", "--text", "Clicks steady", "--evidence", evidence, *self.scope)
+        # Actions must cite evidence, and the recipe caps how many a review ends with.
+        self.assertEqual(self.cli("note", sid, "--kind", "action", "--text", "Rewrite titles", *self.scope).returncode, 1)
+        for n in range(6):
+            self.cli("note", sid, "--kind", "action", "--text", "Fix page " + str(n), "--evidence", evidence, *self.scope)
+        too_many = self.cli("close", sid, "--outcome", "done", *self.scope)
+        self.assertIn("report-actions", too_many.stderr)
+        session = orgs.workspace(self.home, "acme") / "sessions" / sid / "session.json"
+        data = json.loads(session.read_text())
+        data["notes"] = [n for n in data["notes"] if n["text"] != "Fix page 5"]
+        write_json(session, data)
         closed = self.cli("close", sid, "--outcome", "done", *self.scope)
         self.assertEqual(closed.returncode, 0, closed.stderr)
+        report = json.loads(self.cli("report", sid, *self.scope, "--json").stdout)["report"]
+        self.assertIn("Fix page 0", open(report).read().split("## Recommended actions")[1])
         self.assertTrue(self.check(sid)["ok"])
 
     def test_review_fixes(self):

@@ -244,7 +244,7 @@ and ToolHive (2026-10-14), ranked by value for one person running several busine
 | Done 2026-10-14: activity log of every run, refusal, prepare and apply (`reckon log`) | Paperclip, Agent Vault | S |
 | Done 2026-10-14: secret references (`keychain:`, `op://`) resolved only inside `reckon run` | ToolHive | S |
 | Done 2026-10-14: routines (`reckon routine add/install/run`): launchd or cron runs a pinned headless agent on a workflow; overlapping runs skip | Paperclip, HolmesGPT, Goose | M |
-| Done 2026-10-14: workflow recipes with parameters and required checks (report schema still to do) | Goose recipes | M |
+| Done 2026-10-14: workflow recipes with parameters, required checks and report rules (evidence-backed `action` notes, a cap per review) | Goose recipes | M |
 | Large output spilled to the session, with a preview and the path | HolmesGPT | S |
 | Done 2026-10-14: agent spend per org from Claude Code and Codex session files (`reckon spend`; prices from `~/.reckon/prices.json`), with a per-org token budget warned in `reckon open` and the brief | Paperclip | M |
 | Done 2026-10-14: goals per org (`knowledge/*/goals.json`) bound to reads, reported in briefs from the newest saved evidence | Paperclip | M |

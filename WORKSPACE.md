@@ -127,7 +127,9 @@ the `reckon` skill, under `workflows/`:
 - `growth-review`: weekly search and on-site behaviour (Search Console, Bing, Clarity).
 - `release-review`: what shipped to an environment and whether it is healthy (Jenkins, GitHub, CubeAPM or Grafana).
 
-Start one with `reckon task --workflow growth-review --param site=sc-domain:acme.com`,
+Record recommended follow-ups as `reckon note <id> --kind action --evidence <ids>`;
+like findings, they must cite evidence, and a recipe can cap how many a review ends
+with. Start one with `reckon task --workflow growth-review --param site=sc-domain:acme.com`,
 follow its playbook, and save every read with `--session`. `reckon check <id>`
 shows which checks the saved evidence meets; the session can be closed as done
 only when none is left to do (skip one with
