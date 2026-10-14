@@ -646,7 +646,7 @@ def execute(args):
         result = {"session": data["id"], "org": ctx["org"], "environment": ctx["env"], "path": str(path), "report": str(report),
                   "next": "reckon run <connection> --session " + data["id"] + " -- <arguments>"}
         if last:
-            result["previous"] = work.summary(root, last["session"])
+            result["previous"] = work.summary(root, last)
             result["start_with"] = ("the last review's actions: for each, record what happened with reckon note " + data["id"] +
                                     " --kind finding --follows <action-note-id> --evidence <ids>")
         if recipe:

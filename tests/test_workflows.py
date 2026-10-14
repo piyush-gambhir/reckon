@@ -151,6 +151,47 @@ class WorkflowTests(OrgCase):
         self.assertEqual((third["previous"]["session"], third["previous"]["actions"]), (sid, []))
         self.assertNotIn("follow-up: each action from the last review", third["checks"])
 
+    def test_the_chain_survives_damage_and_follows_the_copy(self):
+        first = self.start("site=sc-domain:acme.com")["session"]
+        _, ids = self.finish(first)
+        self.cli("close", first, "--outcome", "done", *self.scope)
+        sessions = orgs.workspace(self.home, "acme") / "sessions"
+        # Malformed sessions and action records are passed over, not fatal.
+        broken = sessions / "20990101T000000Z-broken0000"
+        broken.mkdir()
+        write_json(broken / "session.json", {"schema_version": 1, "id": broken.name, "environment": "staging", "workflow": "x"})
+        (orgs.workspace(self.home, "acme") / "actions" / "junk").mkdir(parents=True)
+        write_json(orgs.workspace(self.home, "acme") / "actions" / "junk" / "action.json", [])
+        second = self.start("site=sc-domain:acme.com")
+        self.assertEqual(second["previous"]["session"], first)
+        sid = second["session"]
+        # An action added to the last run afterwards is not one this run must follow up, and is not shown as one.
+        path = sessions / first / "session.json"
+        data = json.loads(path.read_text())
+        data["notes"].append(dict(data["notes"][-1], id="n-latecomer", text="Added later"))
+        write_json(path, data)
+        resumed = json.loads(self.cli("resume", sid, *self.scope, "--json").stdout)
+        self.assertEqual([a["id"] for a in resumed["previous"]["actions"]], ids)
+        # A deleted last run leaves this run readable, from the copy taken when it started.
+        import shutil
+        shutil.rmtree(sessions / first)
+        resumed = self.cli("resume", sid, *self.scope, "--json")
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        self.assertEqual(json.loads(resumed.stdout)["previous"]["status"], "unavailable")
+        self.assertEqual(self.cli("report", sid, *self.scope).returncode, 0)
+
+    def test_runs_in_the_same_second_order_by_creation_time(self):
+        root = orgs.workspace(self.home, "acme")
+        for suffix, created, note in (("ffff", "2026-10-01T00:00:00.000001Z", "older"), ("0000", "2026-10-01T00:00:00.000002Z", "newer")):
+            folder = root / "sessions" / ("20261001T000000Z-" + suffix + "000000")
+            folder.mkdir(parents=True)
+            write_json(folder / "session.json", {
+                "schema_version": 1, "id": folder.name, "environment": "staging", "status": "done", "created_at": created,
+                "workflow": {"id": "growth-review", "params": {"site": "sc-domain:acme.com"}},
+                "notes": [{"id": "n-" + note, "kind": "action", "text": note}]})
+        found = workflows.previous(root, "staging", {"id": "growth-review", "series": ["site"], "params": {"site": "sc-domain:acme.com"}})
+        self.assertEqual(found["actions"][0]["text"], "newer")
+
     def test_bad_org_recipes_fail_with_a_reason(self):
         base = {"id": "mine", "title": "x", "question": "y"}
         for broken, message in ((dict(base, checks=["text"]), "unique id"),

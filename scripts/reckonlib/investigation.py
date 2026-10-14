@@ -299,13 +299,16 @@ def note(root, sid, kind, text, references, next_check="", follows=()):
 def history(root, env=None, service=None, query=None, limit=20):
     matches = []
     for p in sorted(local_path(root, "sessions").glob("*/session.json"), reverse=True):
-        _, data = session_path(root, p.parent.name)
-        if env and data["environment"] != env or service and data["service"] != service:
+        try:
+            _, data = session_path(root, p.parent.name)
+        except ValueError:
+            continue  # one unreadable session never hides the others
+        if env and data["environment"] != env or service and data.get("service") != service:
             continue
         if query and query.casefold() not in json.dumps(data).casefold():
             continue
-        matches.append({"id": data["id"], "environment": data["environment"], "service": data["service"],
-                        "question": data["question"], "status": data["status"], "created_at": data["created_at"], "path": str(p.parent)})
+        matches.append({"id": data["id"], "environment": data["environment"], "service": data.get("service"),
+                        "question": data.get("question"), "status": data.get("status"), "created_at": data.get("created_at"), "path": str(p.parent)})
         if len(matches) >= limit:
             return matches
     # Legacy RCAs have no reliable machine-readable environment. Label unknown;
@@ -325,23 +328,28 @@ def history(root, env=None, service=None, query=None, limit=20):
     return matches
 
 
-def summary(root, sid):
-    """What a finished run left for the next one: its findings and actions, and the
-    writes prepared from it with their receipts (reckon act prepare --session)."""
-    _, data = session_path(root, sid)
-    notes = live(data["notes"])
-    writes = []
+def summary(root, previous):
+    """What the last run left for this one: its findings, the actions copied when this
+    run started (the ones to follow up), and the writes prepared from it with their
+    receipts now (reckon act prepare --session). Survives a deleted or damaged run."""
+    sid = previous["session"]
+    result = {"session": sid, "actions": previous.get("actions", []), "findings": [], "writes": []}
+    try:
+        _, data = session_path(root, sid)
+        result.update(question=data["question"], status=data["status"], closed_at=data.get("closed_at"),
+                      findings=[n["text"] for n in live(data["notes"]) if n.get("kind") == "finding"])
+    except (ValueError, KeyError, TypeError, AttributeError, OSError):
+        result.update(status="unavailable", note="the last run's session can no longer be read; its actions were copied when this run started")
     for path in sorted(local_path(root, "actions").glob("*/action.json")) if local_path(root, "actions").is_dir() else []:
         try:
             record = read_json(path)
-        except ValueError:
+        except (ValueError, OSError):
             continue
-        if record.get("session") == sid:
-            writes.append({"action": record.get("id"), "operation": record.get("operation"), "status": record.get("status"),
-                           "url": (record.get("receipt") or {}).get("url")})
-    return {"session": sid, "question": data["question"], "status": data["status"], "closed_at": data.get("closed_at"),
-            "findings": [n["text"] for n in notes if n["kind"] == "finding"],
-            "actions": [{"id": n["id"], "text": n["text"]} for n in notes if n["kind"] == "action"], "writes": writes}
+        if isinstance(record, dict) and record.get("session") == sid:
+            receipt = record.get("receipt") if isinstance(record.get("receipt"), dict) else {}
+            result["writes"].append({"action": record.get("id"), "operation": record.get("operation"), "status": record.get("status"),
+                                     "url": receipt.get("url")})
+    return result
 
 
 def resume(root, sid):
@@ -349,7 +357,7 @@ def resume(root, sid):
     tasks, gaps = plan(data)
     records = evidence(path)
     # Do not mutate a live collection. A running record is explicitly incomplete.
-    previous = summary(root, data["previous"]["session"]) if data.get("previous") else None
+    previous = summary(root, data["previous"]) if data.get("previous") else None
     return {"session": data, "evidence": records, "plan": tasks, "gaps": gaps, "knowledge_changes": knowledge_changes(root, data),
             "previous": previous,
             "related_sessions": [h for h in history(root, data["environment"], data["service"]) if h["id"] != sid],

@@ -111,17 +111,22 @@ def previous(root, env, snapshot):
     from .investigation import live
     series = {k: snapshot["params"].get(k) for k in snapshot.get("series", [])}
     base = local_path(root, "sessions")
-    # Session ids start with their UTC creation time, so names sort oldest first.
-    for folder in sorted(base.iterdir(), reverse=True) if base.is_dir() else []:
+    best = None
+    for folder in base.iterdir() if base.is_dir() else []:
         try:
             _, data = session_path(root, folder.name)
-        except ValueError:
-            continue
-        flow = data.get("workflow") or {}
-        if (data["environment"] == env and data["status"] == "done" and flow.get("id") == snapshot["id"]
-                and all(flow.get("params", {}).get(k) == v for k, v in series.items())):
-            return {"session": data["id"], "actions": [{"id": n["id"], "text": n["text"]} for n in live(data["notes"]) if n["kind"] == "action"]}
-    return None
+            flow, notes = data.get("workflow"), data.get("notes")
+            if (not isinstance(flow, dict) or not isinstance(flow.get("params"), dict) or not isinstance(notes, list)
+                    or data["environment"] != env or data.get("status") != "done" or flow.get("id") != snapshot["id"]
+                    or any(flow["params"].get(k) != v for k, v in series.items())):
+                continue
+            actions = [{"id": n["id"], "text": n["text"]} for n in live(notes) if n.get("kind") == "action"]
+        except (ValueError, KeyError, TypeError, AttributeError):
+            continue  # unreadable or malformed sessions never stop a new run
+        # Creation time to the microsecond: two runs started in the same second still order correctly.
+        if best is None or str(data.get("created_at", "")) > best[0]:
+            best = (str(data.get("created_at", "")), {"session": data["id"], "actions": actions})
+    return best[1] if best else None
 
 
 def met(way, record, registry=None):
