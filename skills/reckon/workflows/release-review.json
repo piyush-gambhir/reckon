@@ -6,14 +6,118 @@
   "budget": 60,
   "playbook": "release-review.md",
   "params": {
-    "date": {"help": "last day of the window", "default": "today", "pattern": "\\d{4}-\\d{2}-\\d{2}"}
+    "date": {
+      "help": "last day of the window",
+      "default": "today",
+      "pattern": "\\d{4}-\\d{2}-\\d{2}"
+    }
   },
   "checks": [
-    {"id": "deploys", "text": "Deploy runs in the window", "any": [{"provider": "jenkins", "command": ["build", "list"]}, {"provider": "github", "command": ["run", "list"]}]},
-    {"id": "revisions", "text": "Each deploy's revision from build evidence", "any": [{"provider": "jenkins", "command": ["build", "get"]}, {"provider": "github", "command": ["run", "view"]}]},
-    {"id": "contents", "text": "Pull requests merged in the window", "any": [{"provider": "github", "command": ["pr", "list"]}]},
-    {"id": "failures", "text": "Failed deploys with their logs", "any": [{"provider": "jenkins", "command": ["job", "list"]}, {"provider": "jenkins", "command": ["build", "log"]}, {"provider": "github", "command": ["run", "view"]}]},
-    {"id": "health", "text": "Health before and after each deploy", "any": [{"provider": "cubeapm", "command": ["metrics"]}, {"provider": "grafana", "command": ["datasource", "query"]}]},
-    {"id": "findings", "text": "Deploy table and findings recorded with evidence", "findings": 1}
+    {
+      "id": "deploys",
+      "text": "Deploy runs in the window",
+      "any": [
+        {
+          "provider": "jenkins",
+          "command": [
+            "build",
+            "list"
+          ]
+        },
+        {
+          "provider": "github",
+          "command": [
+            "run",
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "revisions",
+      "text": "Each deploy's revision from build evidence",
+      "any": [
+        {
+          "provider": "jenkins",
+          "command": [
+            "build",
+            "get"
+          ]
+        },
+        {
+          "provider": "github",
+          "command": [
+            "run",
+            "view"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "contents",
+      "text": "Pull requests merged in the window",
+      "any": [
+        {
+          "provider": "github",
+          "command": [
+            "pr",
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "failures",
+      "text": "Logs of failed deploys (or a skip note: none failed)",
+      "any": [
+        {
+          "provider": "jenkins",
+          "command": [
+            "build",
+            "log"
+          ]
+        },
+        {
+          "provider": "github",
+          "command": [
+            "run",
+            "view"
+          ],
+          "flag": "--log-failed"
+        }
+      ]
+    },
+    {
+      "id": "health",
+      "text": "Health before and after each deploy",
+      "any": [
+        {
+          "provider": "cubeapm",
+          "command": [
+            "metrics",
+            "query-range"
+          ]
+        },
+        {
+          "provider": "cubeapm",
+          "command": [
+            "metrics",
+            "query"
+          ]
+        },
+        {
+          "provider": "grafana",
+          "command": [
+            "datasource",
+            "query"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "findings",
+      "text": "Deploy table and findings recorded with evidence",
+      "findings": 1
+    }
   ]
 }

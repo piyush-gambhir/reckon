@@ -38,7 +38,7 @@ class WorkflowTests(OrgCase):
         sid = self.start("site=sc-domain:acme.com")["session"]
         rows = {r["id"]: r["status"] for r in self.check(sid)["workflow"]["checks"]}
         # No bing or clarity connection in this org: those checks cannot be done here.
-        self.assertEqual((rows["gsc-totals"], rows["bing"], rows["behaviour"]), ("todo", "unavailable", "unavailable"))
+        self.assertEqual((rows["gsc-totals"], rows["bing-summary"], rows["behaviour"]), ("todo", "unavailable", "unavailable"))
         run = self.cli("run", "gsc", "--session", sid, *self.scope, "--", "performance", "--site", "sc-domain:acme.com", "-o", "json")
         self.assertEqual(run.returncode, 0, run.stderr)
         result = self.check(sid)
@@ -55,6 +55,39 @@ class WorkflowTests(OrgCase):
         closed = self.cli("close", sid, "--outcome", "done", *self.scope)
         self.assertEqual(closed.returncode, 0, closed.stderr)
         self.assertTrue(self.check(sid)["ok"])
+
+    def test_review_fixes(self):
+        sid = self.start("site=sc-domain:acme.com")["session"]
+        # Another environment, where gsc looks unavailable, can neither judge nor close the session.
+        for args in (("check", sid), ("close", sid, "--outcome", "done")):
+            other = self.cli(*args, "--org", "acme", "--env", "uat")
+            self.assertEqual(other.returncode, 1, args)
+            self.assertIn("session belongs to acme/staging", other.stderr)
+        # A help page or a parent command does not meet a check.
+        self.cli("run", "gsc", "--session", sid, *self.scope, "--", "performance", "--help")
+        self.cli("run", "gsc", "--session", sid, *self.scope, "--", "insights", "-o", "json")
+        rows = {r["id"]: r["status"] for r in self.check(sid)["workflow"]["checks"]}
+        self.assertEqual((rows["gsc-totals"], rows["opportunities"]), ("todo", "todo"))
+        # Findings cannot be skipped; an unknown skip id is reported.
+        self.cli("note", sid, "--kind", "question", "--text", "skip findings: nothing to say", *self.scope)
+        self.cli("note", sid, "--kind", "question", "--text", "skip gsc-totalz: typo", *self.scope)
+        result = self.check(sid)
+        self.assertEqual({r["id"]: r["status"] for r in result["workflow"]["checks"]}["findings"], "todo")
+        self.assertIn("gsc-totalz", " ".join(result["warnings"]))
+        # A value is substituted once, as written.
+        question = workflows.start(orgs.workspace(self.home, "acme"), "growth-review", {"site": "sc-domain:{week}", "week": "2026-01-05"})[0]
+        self.assertEqual(question, "Growth review for sc-domain:{week}, week of 2026-01-05")
+
+    def test_bad_org_recipes_fail_with_a_reason(self):
+        base = {"id": "mine", "title": "x", "question": "y"}
+        for broken, message in ((dict(base, checks=["text"]), "unique id"),
+                                (dict(base, params={"a": {"pattern": "("}}, checks=[{"id": "f", "text": "t", "findings": 1}]), "pattern"),
+                                (dict(base, checks=[{"id": "f", "text": "t", "findings": "1"}]), "whole number"),
+                                (dict(base, checks=[{"id": "f", "text": "t", "findings": 0}]), "at least 1"),
+                                (dict(base, checks=[{"id": "c", "text": "t", "any": [{"provider": "gsc", "command": []}]}]), "needs any"),
+                                (dict(base, budget="5", checks=[{"id": "f", "text": "t", "findings": 1}]), "budget")):
+            with self.assertRaisesRegex(ValueError, message):
+                workflows.validate(broken, "mine.json")
 
     def test_an_org_can_replace_a_recipe(self):
         root = orgs.workspace(self.home, "acme")

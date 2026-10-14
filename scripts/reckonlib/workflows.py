@@ -24,20 +24,36 @@ def validate(data, name):
     for key in ("title", "question"):
         if not isinstance(data.get(key), str) or not data[key].strip():
             fail("needs a " + key)
+    if data.get("budget") is not None and (not isinstance(data["budget"], int) or not 1 <= data["budget"] <= 1000):
+        fail("budget must be a whole number 1-1000")
+    if not isinstance(data.get("params", {}), dict):
+        fail("params must be an object")
     for key, spec in data.get("params", {}).items():
         if not orgs.NAME.fullmatch(key) or not isinstance(spec, dict):
             fail("parameter " + repr(key) + " is not valid")
+        if any(not isinstance(spec.get(k, ""), str) for k in ("default", "pattern", "help")):
+            fail("parameter " + key + ": default, pattern and help are strings")
+        try:
+            re.compile(spec.get("pattern", ""))
+        except re.error as exc:
+            fail("parameter " + key + " pattern: " + str(exc))
+    checks = data.get("checks")
+    if not isinstance(checks, list) or not checks:
+        fail("needs at least one check")
     ids = set()
-    for check in data.get("checks", []):
-        if not orgs.NAME.fullmatch(str(check.get("id", ""))) or check["id"] in ids or not check.get("text"):
+    for check in checks:
+        if not isinstance(check, dict) or not orgs.NAME.fullmatch(str(check.get("id", ""))) or check["id"] in ids or not check.get("text"):
             fail("each check needs a unique id and a text")
         ids.add(check["id"])
+        if "findings" in check:
+            if not isinstance(check["findings"], int) or isinstance(check["findings"], bool) or check["findings"] < 1:
+                fail("check " + check["id"] + ": findings must be a whole number of at least 1")
+            continue
         ways = check.get("any")
-        if check.get("findings") is None and not (isinstance(ways, list) and ways and all(
-                isinstance(w, dict) and isinstance(w.get("provider"), str) and isinstance(w.get("command"), list) for w in ways)):
-            fail("check " + check["id"] + " needs any: [{provider, command}] or findings: N")
-    if not data.get("checks"):
-        fail("needs at least one check")
+        if not (isinstance(ways, list) and ways and all(
+                isinstance(w, dict) and isinstance(w.get("provider"), str) and isinstance(w.get("command"), list) and w["command"]
+                and all(isinstance(c, str) and c for c in w["command"]) and isinstance(w.get("flag", ""), str) for w in ways)):
+            fail("check " + check["id"] + " needs any: [{provider, command: [words], flag?}] or findings: N")
 
 
 def recipes(root):
@@ -67,22 +83,28 @@ def start(root, recipe_id, given):
         params[key] = value
     if given:
         raise ValueError(recipe_id + " has no parameter " + ", ".join(sorted(given)) + "; it takes: " + ", ".join(recipe.get("params", {})))
-    question = recipe["question"]
-    for key, value in params.items():
-        question = question.replace("{" + key + "}", value)
+    # One pass, so a value containing {other} is kept as written.
+    question = re.sub(r"\{([a-z0-9][a-z0-9-]*)\}", lambda m: params.get(m.group(1), m.group(0)), recipe["question"])
     snapshot = {k: recipe[k] for k in ("id", "title", "checks", "source") if k in recipe}
     snapshot["params"] = params
     playbook = recipe.get("playbook")
     return question, recipe.get("area"), recipe.get("budget"), snapshot, playbook
 
 
-def met(way, record):
+def met(way, record, registry=None):
+    """An ok read by the way's provider whose command words start with the way's
+    (aliases resolved) and that carries its flag; a help page never counts."""
     if record.get("status") != "ok" or record.get("provider") != way["provider"]:
         return False
-    return connectors.matches(way["command"], connectors.tokens(record.get("command", [])[1:]))
+    args = record.get("command", [])[1:]
+    if any(a in ("-h", "--help", "help") for a in args):
+        return False
+    if way.get("flag") and not any(a == way["flag"] or a.startswith(way["flag"] + "=") for a in args):
+        return False
+    return connectors.matches(way["command"], connectors.tokens(args, (registry or {}).get(way["provider"])))
 
 
-def progress(session, records, available):
+def progress(session, records, available, registry=None):
     """Each check: met (evidence ids), skipped (a noted reason), unavailable (no such
     connection here) or todo. available is the set of providers this env can reach."""
     recipe = session.get("workflow")
@@ -98,9 +120,10 @@ def progress(session, records, available):
     for check in recipe["checks"]:
         row = {"id": check["id"], "text": check["text"]}
         if check.get("findings") is not None:
-            row["status"] = "met" if findings >= check["findings"] else "skipped" if check["id"] in skipped else "todo"
+            # Findings cannot be skipped: a review that found nothing records that as a finding.
+            row["status"] = "met" if findings >= check["findings"] else "todo"
         else:
-            hits = [r["id"] for r in records if any(met(w, r) for w in check["any"])]
+            hits = [r["id"] for r in records if any(met(w, r, registry) for w in check["any"])]
             if hits:
                 row.update(status="met", evidence=hits)
             elif check["id"] in skipped:
@@ -110,5 +133,6 @@ def progress(session, records, available):
             else:
                 row["status"] = "todo"
         rows.append(row)
-    return {"workflow": recipe["id"], "params": recipe.get("params", {}), "checks": rows,
-            "todo": [r["id"] for r in rows if r["status"] == "todo"]}
+    known = {c["id"] for c in recipe["checks"]}
+    return {"workflow": recipe["id"], "params": recipe.get("params", {}), "checks": rows, "source": recipe.get("source", ""),
+            "todo": [r["id"] for r in rows if r["status"] == "todo"], "unknown_skips": sorted(set(skipped) - known)}

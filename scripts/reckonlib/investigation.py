@@ -410,7 +410,7 @@ def knowledge_changes(root, data):
 
 
 
-def check(root, sid, available=None):
+def check(root, sid, available=None, registry=None):
     """Deterministic quality checks on one saved session; the base of workflow evaluations.
 
     Problems mean the session should not be trusted as is; warnings are worth a look."""
@@ -445,10 +445,14 @@ def check(root, sid, available=None):
     changes = knowledge_changes(root, data)
     if any(changes.values()):
         warnings.append("knowledge changed since the session started: " + ", ".join(changes["changed"] + changes["added"] + changes["removed"]))
-    from .workflows import progress
-    flow = progress(data, list(records.values()), available or set())
+    from .workflows import BUILTIN, progress
+    flow = progress(data, list(records.values()), available or set(), registry)
     if flow and flow["todo"]:
         (problems if data["status"] == "done" else warnings).append("workflow checks still to do: " + ", ".join(flow["todo"]))
+    if flow and flow["unknown_skips"]:
+        warnings.append("skip notes name no check of this workflow: " + ", ".join(flow["unknown_skips"]))
+    if flow and not flow["source"].startswith(str(BUILTIN)):
+        warnings.append("this session uses the org's own recipe: " + flow["source"])
     result = {"session": sid, "ok": not problems, "problems": problems, "warnings": warnings,
               "counts": {"evidence": len(records), "findings": len(findings), "notes": len(data["notes"])}}
     if flow:

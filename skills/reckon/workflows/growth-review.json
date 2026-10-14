@@ -6,17 +6,136 @@
   "budget": 40,
   "playbook": "growth-review.md",
   "params": {
-    "site": {"help": "Search Console property, e.g. sc-domain:acme.com", "pattern": "(sc-domain:|https?://)\\S+"},
-    "week": {"help": "any date in the week", "default": "today", "pattern": "\\d{4}-\\d{2}-\\d{2}"}
+    "site": {
+      "help": "Search Console property, e.g. sc-domain:acme.com",
+      "pattern": "(sc-domain:|https?://)\\S+"
+    },
+    "week": {
+      "help": "any date in the week",
+      "default": "today",
+      "pattern": "\\d{4}-\\d{2}-\\d{2}"
+    }
   },
   "checks": [
-    {"id": "gsc-totals", "text": "Search Console totals against the previous period", "any": [{"provider": "gsc", "command": ["performance"]}]},
-    {"id": "gsc-trend", "text": "Search Console weekly trend", "any": [{"provider": "gsc", "command": ["trend"]}]},
-    {"id": "top-queries", "text": "Top queries for 7 and 28 days", "any": [{"provider": "gsc", "command": ["top", "queries"]}]},
-    {"id": "top-pages", "text": "Top pages for 7 and 28 days", "any": [{"provider": "gsc", "command": ["top", "pages"]}]},
-    {"id": "opportunities", "text": "Striking-distance and low-CTR opportunities", "any": [{"provider": "gsc", "command": ["insights"]}]},
-    {"id": "bing", "text": "Bing summary and crawl issues", "any": [{"provider": "bing", "command": ["stats"]}, {"provider": "bing", "command": ["crawl"]}]},
-    {"id": "behaviour", "text": "On-site behaviour for pages that moved", "any": [{"provider": "clarity", "command": ["export"]}, {"provider": "clarity", "command": ["recordings"]}]},
-    {"id": "findings", "text": "At least one finding backed by evidence", "findings": 1}
+    {
+      "id": "gsc-totals",
+      "text": "Search Console totals against the previous period",
+      "any": [
+        {
+          "provider": "gsc",
+          "command": [
+            "performance"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gsc-trend",
+      "text": "Search Console weekly trend",
+      "any": [
+        {
+          "provider": "gsc",
+          "command": [
+            "trend"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "top-queries",
+      "text": "Top queries (7 and 28 days)",
+      "any": [
+        {
+          "provider": "gsc",
+          "command": [
+            "top",
+            "queries"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "top-pages",
+      "text": "Top pages (7 and 28 days)",
+      "any": [
+        {
+          "provider": "gsc",
+          "command": [
+            "top",
+            "pages"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "opportunities",
+      "text": "Striking-distance or low-CTR opportunities",
+      "any": [
+        {
+          "provider": "gsc",
+          "command": [
+            "insights",
+            "striking-distance"
+          ]
+        },
+        {
+          "provider": "gsc",
+          "command": [
+            "insights",
+            "low-ctr"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bing-summary",
+      "text": "Bing summary against the previous period",
+      "any": [
+        {
+          "provider": "bing",
+          "command": [
+            "stats",
+            "summary"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bing-crawl",
+      "text": "Bing crawl issues",
+      "any": [
+        {
+          "provider": "bing",
+          "command": [
+            "crawl",
+            "issues"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "behaviour",
+      "text": "On-site behaviour for pages that moved",
+      "any": [
+        {
+          "provider": "clarity",
+          "command": [
+            "export"
+          ]
+        },
+        {
+          "provider": "clarity",
+          "command": [
+            "recordings",
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "findings",
+      "text": "At least one finding backed by evidence",
+      "findings": 1
+    }
   ]
 }
