@@ -35,8 +35,9 @@ def parser():
     add = actions.add_parser("add", help="create an org")
     add.add_argument("org")
     add.add_argument("--name", help="display name")
-    add.add_argument("--envs", default="prod,uat,dev", help="comma-separated environments (default prod,uat,dev)")
+    add.add_argument("--envs", help="comma-separated environments (default prod,uat,dev, or the --like org's)")
     add.add_argument("--production", help="comma-separated production environments (default: prod or production)")
+    add.add_argument("--like", metavar="ORG", help="copy another org's environments and connection layout, without secrets or resource limits")
     add.add_argument("--json", action="store_true")
     for action in ("list", "show"):
         item = actions.add_parser(action)
@@ -332,14 +333,26 @@ def execute(args):
         raise ValueError("reckon " + name + " is for the operator's own terminal, not a pinned agent")
     if name == "org":
         if args.action == "add":
-            envs = [e.strip() for e in args.envs.split(",") if e.strip()]
-            production = [e.strip() for e in args.production.split(",")] if args.production else None
+            source = orgs.load(h, args.like, registry) if args.like else None
+            envs = [e.strip() for e in args.envs.split(",") if e.strip()] if args.envs else source["environments"] if source else ["prod", "uat", "dev"]
+            production = [e.strip() for e in args.production.split(",")] if args.production else source["production"] if source and not args.envs else None
             data = orgs.create(h, args.org, args.name, envs, production, registry)
+            templates = []
+            if source:
+                # Same tools, new accounts: the layout carries over, credentials and resource limits never do.
+                for cname, conn in source["connections"].items():
+                    copied = {k: conn[k] for k in ("provider", "env", "env_labels") if k in conn}
+                    if copied.get("env", envs[0]) in envs and all(e in envs for e in copied.get("env_labels", {})):
+                        data["connections"][cname] = copied
+                orgs.save(h, data, registry)
+                templates = [str(connectors.template(h, args.org, c, registry[v["provider"]])[0]) for c, v in sorted(data["connections"].items())]
             workspace.ensure(h, {"org": args.org, "data": data}, registry)
             if not (h / "context").exists():
                 orgs.set_context(h, args.org, envs[0], registry)
             return {"org": data["id"], "environments": data["environments"], "production": data["production"],
-                    "next": "reckon connect <name> --org " + args.org + " --provider <tool> [--for-env <env>]"}
+                    "connections": sorted(data["connections"]), "fill_in": templates,
+                    "next": "fill in each credentials file, then reckon verify --org " + args.org + " --env " + envs[0] if templates else
+                            "reckon connect <name> --org " + args.org + " --provider <tool> [--for-env <env>]"}
         if args.action == "list":
             return [{"org": o, "name": orgs.load(h, o, registry)["name"], "environments": orgs.load(h, o, registry)["environments"]} for o in orgs.orgs(h)]
         org = args.org or orgs.context(h, registry=registry)["org"]

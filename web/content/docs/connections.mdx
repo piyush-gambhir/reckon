@@ -18,6 +18,17 @@ are marked production; use `--production` to mark others. Org, environment and
 connection names use lowercase letters, digits and hyphens. The first org you
 add becomes the default context.
 
+A second business on the same stack can start from the first:
+
+```bash
+reckon org add beta --like acme
+```
+
+This copies acme's environments and connections (provider, environment, CubeAPM
+labels) and writes an empty credentials file for each. Secrets, resource limits,
+knowledge and sessions are never copied. With `--envs`, connections tied to an
+environment the new org lacks are left out.
+
 ## The context
 
 The context is the org and environment a command works in. Set the default for

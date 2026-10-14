@@ -247,7 +247,7 @@ and ToolHive (2026-10-14), ranked by value for one person running several busine
 | Goals and KPIs per org, bound to reads, reported in briefs | Paperclip | M |
 | Per-connection circuit breaker and quota ledger | ContextForge | S |
 | Polled watches and an inbox (new dispute, new Sentry issue, failed deploy) | Composio triggers | M |
-| Org export and import without secrets, to start a new business from an old one | Paperclip companies spec | S |
+| Done 2026-10-14 as `reckon org add <new> --like <org>`: environments and connection layout, never secrets or resource limits | Paperclip companies spec | S |
 
 Rejected for now: an HTTP credential proxy (Agent Vault, OneCLI) needs a TLS
 intercepting CA and a separate machine to mean anything.

@@ -1096,5 +1096,28 @@ class MigrationTests(OrgCase):
         self.assertFalse((self.home / "orgs").exists())
 
 
+class LikeTests(OrgCase):
+    def test_a_new_org_copies_the_layout_never_the_secrets(self):
+        self.org(envs=("prod", "uat"), production=["prod"],
+                 connections={"jenkins-prod": {"provider": "jenkins", "env": "prod"},
+                              "cubeapm": {"provider": "cubeapm", "env_labels": {"prod": "PROD", "uat": "UAT"}},
+                              "github": {"provider": "github", "resources": {"repo": ["acme/*"]}}},
+                 secrets={"jenkins-prod": JENKINS})
+        result = self.cli("org", "add", "beta", "--like", "acme", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = json.loads(result.stdout)
+        self.assertEqual(out["connections"], ["cubeapm", "github", "jenkins-prod"])
+        data = orgs.load(self.home, "beta", self.registry)
+        self.assertEqual((data["environments"], data["production"]), (["prod", "uat"], ["prod"]))
+        self.assertEqual(data["connections"]["cubeapm"]["env_labels"], {"prod": "PROD", "uat": "UAT"})
+        self.assertNotIn("resources", data["connections"]["github"])
+        secret = orgs.secrets_path(self.home, "beta", "jenkins-prod").read_text()
+        self.assertNotIn("jenkins-token-123", secret)
+        self.assertEqual(set(orgs.secrets(self.home, "beta", "jenkins-prod", self.registry["jenkins"]).values()), {""})
+        # Connections tied to environments the new org lacks are left out.
+        narrow = json.loads(self.cli("org", "add", "gamma", "--like", "acme", "--envs", "uat", "--json").stdout)
+        self.assertEqual(narrow["connections"], ["github"])
+
+
 if __name__ == "__main__":
     unittest.main()
