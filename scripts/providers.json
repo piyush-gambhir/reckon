@@ -16,7 +16,8 @@
       "deny_commands": [["login"], ["config"], ["update"]],
       "verify": ["org", "current", "-o", "json"],
       "login": ["login"],
-      "short_values": "o"
+      "short_values": "o",
+      "resolver": ["commands", "resolve", "--"]
     },
     "jenkins": {
       "title": "Jenkins",
@@ -33,7 +34,8 @@
       "verify": ["whoami", "-o", "json"],
       "login": ["login"],
       "short_values": "o",
-      "command_short_values": {"job list": "f"}
+      "command_short_values": {"job list": "f"},
+      "resolver": ["commands", "resolve", "--"]
     },
     "cubeapm": {
       "title": "CubeAPM",
@@ -57,7 +59,8 @@
       "ndjson_commands": [["logs", "query"]],
       "aliases": {"metric": "metrics", "trace": "traces", "log": "logs", "range": "query-range", "svc": "services"},
       "env_label_families": ["metrics", "logs", "traces"],
-      "env_label_keys": ["env", "environment", "cube.environment", "deployment.environment"]
+      "env_label_keys": ["env", "environment", "cube.environment", "deployment.environment"],
+      "resolver": ["commands", "resolve", "--"]
     },
     "elasticsearch": {
       "title": "Elasticsearch",
@@ -73,7 +76,8 @@
       "deny_commands": [["login"], ["config"], ["update"]],
       "verify": ["cluster", "health", "-o", "json"],
       "login": ["login"],
-      "short_values": "of"
+      "short_values": "of",
+      "resolver": ["commands", "resolve", "--"]
     },
     "jira": {
       "title": "Jira",
@@ -90,7 +94,8 @@
       "verify": ["whoami", "-o", "json"],
       "login": ["auth", "login"],
       "short_values": "o",
-      "command_short_values": {"issue search": "j"}
+      "command_short_values": {"issue search": "j"},
+      "resolver": ["commands", "resolve", "--"]
     },
     "nginxpm": {
       "title": "Nginx Proxy Manager",
@@ -106,7 +111,8 @@
       "deny_commands": [["login"], ["config"], ["update"]],
       "verify": ["user", "current", "-o", "json"],
       "login": ["login"],
-      "short_values": "o"
+      "short_values": "o",
+      "resolver": ["commands", "resolve", "--"]
     },
     "gsc": {
       "title": "Google Search Console",

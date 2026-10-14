@@ -68,3 +68,22 @@ class RealResolverTests(unittest.TestCase):
             self.assertEqual(connectors.resolved(spec, env, read)["effect"], "read")
             with self.assertRaises(ValueError):
                 connectors.resolved(spec, env, write)
+
+
+class AllCLIResolverTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get("RECKON_REAL_DEV_DIR"), "set RECKON_REAL_DEV_DIR to a folder of <binary>-dev builds")
+    def test_every_cli_resolver_allows_a_read_and_refuses_a_write(self):
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        env = {"PATH": os.environ["PATH"], "TMPDIR": tmp, "HOME": tmp, "NO_UPDATE_NOTIFIER": "1"}
+        cases = {"elasticsearch": ("es", ["cluster", "health"], ["-o", "json", "index", "delete", "x"]),
+                 "jenkins": ("jenkins", ["job", "list"], ["-o", "json", "job", "build", "x"]),
+                 "jira": ("jira", ["issue", "search", "--jql", "x"], ["-o", "json", "issue", "create"]),
+                 "grafana": ("grafana", ["dashboard", "list"], ["-o", "json", "dashboard", "delete", "x"]),
+                 "nginxpm": ("nginxpm", ["proxy", "list"], ["-o", "json", "proxy", "delete", "1"]),
+                 "cubeapm": ("cubeapm", ["traces", "search", "--service", "x"], ["-o", "json", "logs", "delete", "run"])}
+        for name, (binary, read, write) in cases.items():
+            spec = dict(REGISTRY[name], binary=os.path.join(os.environ["RECKON_REAL_DEV_DIR"], binary + "-dev"))
+            self.assertEqual(connectors.resolved(spec, env, read)["effect"], "read", name)
+            with self.assertRaises(ValueError, msg=name):
+                connectors.resolved(spec, env, write)

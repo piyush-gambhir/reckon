@@ -93,8 +93,11 @@ instead of a hand-written registry:
 Started 2026-10-14: gsc v0.1.8 ships `commands resolve -- <args>` (the real parser
 reports command, effect and credential output), and `reckon run` consults it before
 running gsc, refusing anything that is not a plain read; older releases fall back
-to the registry checks. bwt and clarity gained the same resolver (bing-webmaster-cli#25,
-clarity-cli#16), and Reckon uses it for them once released.
+to the registry checks. All nine CLIs now have the resolver (gsc released; PRs bing-webmaster-cli#25,
+clarity-cli#16, es-cli#51, jenkins-cli#43, jira-cli#52, grafana-cli#43,
+nginxpm-cli#46, cubeapm-cli#43), and Reckon consults it for each. Next: complete
+local-write annotations (login, config, downloads) so the resolver alone is enough,
+then flag roles, so `deny_args` can be generated.
 
 Rollout: gsc (reference), bwt, clarity, jira, jenkins, grafana, nginxpm, es,
 cubeapm. Reckon keeps its own checks for a CLI until that CLI passes conformance
