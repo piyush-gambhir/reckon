@@ -43,6 +43,9 @@ reckon run jenkins-uat -- whoami -o json
   read-only and no-prompt modes, and refuses arguments that change the target or
   turn safety off (`--server`, `--profile`, `--read-only=false`, `login`, ...).
 - Put the command before its flags (`kubectl get pods -n x`, not `kubectl -n x get pods`).
+- `--cache 15m` reuses an identical successful read from the last 15 minutes (any
+  `s`, `m`, `h`, `d` age) and says when it was observed. Use it for quota-limited
+  tools (Clarity allows 10 exports a day) and repeated reviews; drop it for fresh data.
 - `--stdin` passes standard input through (for example an Elasticsearch query body
   with `-f -`).
 - Always ask for JSON (`-o json`, `--json`, `--output json`) when you will parse output.

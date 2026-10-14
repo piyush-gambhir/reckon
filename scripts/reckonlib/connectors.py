@@ -349,7 +349,36 @@ def command(h, ctx, cname, conn, spec, values, args):
     return argv
 
 
-def run(h, ctx, target, args, registry, timeout=60, max_bytes=8 * 1048576, stdin=None):
+def cache_key(ctx, cname, argv, stdin):
+    import hashlib
+    import json
+    material = json.dumps([ctx["org"], ctx["env"], cname, argv, (stdin or b"").decode("utf-8", "replace")])
+    return hashlib.sha256(material.encode()).hexdigest()
+
+
+def cached(h, ctx, key, max_age):
+    """A successful identical read from the last max_age seconds, or None."""
+    from datetime import datetime, timezone
+    from .store import read_json
+    path = local_path(orgs.org_path(h, ctx["org"]), "cache", key + ".json")
+    if max_age <= 0 or not path.is_file():
+        return None
+    entry = read_json(path)
+    age = (datetime.now(timezone.utc) - datetime.fromisoformat(entry["observed_at"].replace("Z", "+00:00"))).total_seconds()
+    return entry if 0 <= age <= max_age else None
+
+
+def remember(h, ctx, key, result, values):
+    from .store import now, write_json
+    path = local_path(orgs.org_path(h, ctx["org"]), "cache", key + ".json")
+    orgs.private_dir(path.parent)
+    # Stored redacted, like evidence: no injected secret is ever written to disk.
+    write_json(path, {"observed_at": now(), "exit_code": result["exit_code"], "duration_ms": result.get("duration_ms", 0),
+                      "stdout": orgs.redact(result["stdout"].decode("utf-8", "replace"), values),
+                      "stderr": orgs.redact(result["stderr"].decode("utf-8", "replace"), values)})
+
+
+def run(h, ctx, target, args, registry, timeout=60, max_bytes=8 * 1048576, stdin=None, cache_seconds=0):
     cname, conn, spec, env, values = prepare(h, ctx, target, registry)
     if not orgs.configured(h, ctx["org"], cname, spec, values):
         raise ValueError(cname + " has no credentials yet: edit " + str(orgs.secrets_path(h, ctx["org"], cname)) +
@@ -359,9 +388,18 @@ def run(h, ctx, target, args, registry, timeout=60, max_bytes=8 * 1048576, stdin
     bind(spec, args, conn, values)
     args = scope(spec, args, label, conn.get("env_labels", {}).values())
     argv = command(h, ctx, cname, conn, spec, values, args)
+    key = cache_key(ctx, cname, argv, stdin)
+    hit = cached(h, ctx, key, cache_seconds)
+    if hit:
+        result = {"status": "ok", "exit_code": hit["exit_code"], "duration_ms": hit["duration_ms"],
+                  "stdout": hit["stdout"].encode(), "stderr": hit["stderr"].encode()}
+        return {"connection": cname, "provider": conn["provider"], "argv": argv, "values": values, "result": result, "spec": spec,
+                "cached_at": hit["observed_at"]}
     # Some CLIs pick a target from the working directory (gh: the git remote); give them none.
     cwd = env["TMPDIR"] if spec.get("isolated_cwd") else os.getcwd()
     result = bounded(argv, env=env, cwd=cwd, timeout=timeout, max_bytes=max_bytes, stdin=stdin)
+    if result["status"] == "ok":
+        remember(h, ctx, key, result, values)
     return {"connection": cname, "provider": conn["provider"], "argv": argv, "values": values, "result": result, "spec": spec}
 
 

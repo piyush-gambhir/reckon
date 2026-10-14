@@ -215,7 +215,8 @@ def record_run(root, sid, ctx, outcome, label=None, timeout=60, max_bytes=838860
         private_dir(target)
         argv = outcome["argv"]
         command = [orgs.redact(a, outcome["values"]) for a in argv]
-        observed = now()
+        # A cached read keeps the time it was really observed.
+        observed = outcome.get("cached_at") or now()
         record = {"schema_version": 1, "id": eid, "session": sid, "org": ctx["org"], "environment": ctx["env"],
                   "connection": outcome["connection"], "operation": "run:" + outcome["provider"],
                   "label": orgs.redact(label or " ".join(command[1:]), outcome["values"])[:200], "provider": outcome["provider"], "capability": "run",

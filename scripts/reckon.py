@@ -90,6 +90,7 @@ def parser():
     command.add_argument("--timeout", type=float, default=60, help="seconds, at most 120")
     command.add_argument("--max-bytes", type=int, default=8 * 1048576)
     command.add_argument("--stdin", action="store_true", help="pass this command's standard input to the CLI")
+    command.add_argument("--cache", metavar="AGE", help="reuse an identical successful read younger than AGE (e.g. 15m, 2h, 1d)")
 
     for name in INVESTIGATIONS:
         command = sub.add_parser(name, parents=[scope], help="start an investigation session for a mapped service")
@@ -375,7 +376,15 @@ def execute(args):
         stdin = sys.stdin.buffer.read(1048577) if args.stdin else None
         if stdin is not None and len(stdin) > 1048576:
             raise ValueError("standard input over 1 MiB; pass a file argument instead")
-        outcome = connectors.run(h, ctx, args.target, command, registry, args.timeout, args.max_bytes, stdin)
+        cache_seconds = 0
+        if args.cache:
+            unit = {"s": 1, "m": 60, "h": 3600, "d": 86400}.get(args.cache[-1:])
+            if not unit or not args.cache[:-1].isdigit():
+                raise ValueError("--cache takes a number and s, m, h or d, e.g. 15m")
+            cache_seconds = int(args.cache[:-1]) * unit
+        outcome = connectors.run(h, ctx, args.target, command, registry, args.timeout, args.max_bytes, stdin, cache_seconds)
+        if outcome.get("cached_at"):
+            print("reckon: cached result observed at " + outcome["cached_at"] + "; drop --cache for a fresh read", file=sys.stderr)
         result = outcome["result"]
         sys.stdout.write(orgs.redact(result["stdout"].decode("utf-8", errors="replace"), outcome["values"]))
         sys.stderr.write(orgs.redact(result["stderr"].decode("utf-8", errors="replace"), outcome["values"]))

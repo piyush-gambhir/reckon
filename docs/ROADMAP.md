@@ -56,8 +56,9 @@ outcomes.
   failed checks, and completion judged from collected evidence, not closing prose.
 - A saved review links observation, finding, proposed action and the action's
   receipt, so next week's review starts from last week's.
-- Read budgets per workflow, a cache keyed by org/env/connection/query with
-  observation times, and quota warnings (Clarity allows 10 exports a day).
+- Done 2026-10-14: `reckon run --cache AGE`, keyed by org/env/connection/exact
+  command, stored redacted, evidence keeps the original observation time.
+- Read budgets per workflow and quota warnings (Clarity allows 10 exports a day).
 - Data-quality fields in evidence records for the commands the two reviews use.
 - Dogfood on two real businesses for two weeks.
 

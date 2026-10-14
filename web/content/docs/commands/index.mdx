@@ -82,6 +82,14 @@ For operations work, the agent narrows from broad to specific:
   [integration page](/docs/integrations) links the CLI's own documentation.
 </Callout>
 
+## Reusing recent reads
+
+`reckon run <tool> --cache 15m -- <args>` returns an identical successful read from
+the last 15 minutes instead of calling the tool again, and says when it was
+observed. The cache is per org, environment and connection, stored without
+secrets in `~/.reckon/orgs/<org>/cache/`. Evidence saved from a cached read keeps
+its original observation time.
+
 ## Daily brief
 
 ```bash
