@@ -140,6 +140,9 @@ def apply(h, ctx, root, action_id, registry, confirm=None):
         cname, conn = record["connection"], ctx["data"]["connections"].get(record["connection"])
         if not conn or conn["provider"] != WRITES[record["operation"]][0] or not orgs.applies(conn, ctx["env"]):
             raise ValueError("connection " + cname + " changed or no longer serves " + ctx["env"] + "; prepare the action again")
+        repos = conn.get("resources", {}).get("repo")
+        if repos and not any(fnmatchcase(record["params"]["repo"], p) for p in repos):
+            raise ValueError("repo " + record["params"]["repo"] + " is now outside " + cname + "; prepare the action again")
         live = is_live(ctx, conn)
         print(preview(record, live, full=True), file=sys.stderr)
         expected = ctx["org"] if live else "yes"

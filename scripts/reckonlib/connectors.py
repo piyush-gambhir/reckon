@@ -246,20 +246,52 @@ def scope(spec, args, label, others):
     return list(args)
 
 
+def site_allowed(value, pattern):
+    """A Search Console or Bing target: the property itself, or a page URL inside it."""
+    if fnmatchcase(value, pattern):
+        return True
+    host = re.sub(r"^https?://", "", value).split("/", 1)[0].lower()
+    if pattern.startswith("sc-domain:"):
+        domain = pattern[len("sc-domain:"):].lower()
+        return host == domain or host.endswith("." + domain)
+    return pattern.startswith("http") and value.startswith(pattern.rstrip("*"))
+
+
 def bind(spec, args, conn, values):
-    """Keep a bound connection on its allowed resources (repositories, sites, namespaces)."""
+    """Keep a bound connection on its allowed resources (repositories, sites, namespaces, regions).
+
+    Fails closed: every target source the CLI could use must be allowed, and commands
+    whose target cannot be established (search, raw API, account-wide listings) are refused."""
+    words = tokens(args, spec)
     for kind, allowed in conn.get("resources", {}).items():
         rule = spec["resources"][kind]
-        flags = rule["flags"]
-        pairs, _ = operands(args, spec, tuple(f for f in flags if f.startswith("--")))
-        chosen = [v for f, v in pairs if f in flags and v is not None]
-        if not chosen:
-            default = values.get(rule.get("default_env", ""), "")
-            if not default:
-                raise ValueError("this connection is limited to " + kind + " " + ", ".join(allowed) + "; name it with " + flags[0])
-            chosen = [default]
-        for value in chosen:
-            if not any(fnmatchcase(value, pattern) for pattern in allowed):
+        for pattern in rule.get("refuse_commands", []):
+            if matches(pattern, words):
+                raise ValueError("'" + " ".join(pattern) + "' cannot be limited to " + kind + " " + ", ".join(allowed) + " on this connection")
+        for text in rule.get("refuse_text", []):
+            if any(text in arg for arg in args):
+                raise ValueError("'" + text + "' can select another " + kind + "; name the " + kind + " with " + rule["flags"][0])
+        for flag in rule.get("refuse_flags", []):
+            if any(arg == flag or arg.startswith(flag + "=") or (len(flag) == 2 and flag[1] in cluster(arg, spec)[0])
+                   for arg in args if arg.startswith("-") and (len(flag) == 2) == (not arg.startswith("--"))):
+                raise ValueError(flag + " reaches beyond " + kind + " " + ", ".join(allowed))
+        pairs, positional = operands(args, spec, tuple(f for f in rule["flags"] if f.startswith("--")))
+        chosen = [part.strip() for f, v in pairs if f in rule["flags"] and v is not None for part in v.split(",")]
+        defaults = [values[e] for e in rule.get("default_env", []) if values.get(e)]
+        if rule.get("positional"):
+            chosen += [p for p in positional if re.search(rule["positional"], p)]
+        kinds = rule.get("refuse_kinds")
+        if kinds:
+            for word in positional[1:]:
+                for part in word.split(","):
+                    if part.split("/", 1)[0].lower().split(".", 1)[0] in kinds:
+                        raise ValueError(part + " is cluster-wide and cannot be limited to " + kind + " " + ", ".join(allowed))
+        if not chosen and not defaults:
+            raise ValueError("this connection is limited to " + kind + " " + ", ".join(allowed) + "; name it with " + rule["flags"][0])
+        test = site_allowed if kind == "site" else fnmatchcase
+        # Defaults count too: the CLI may use them whatever the command line says.
+        for value in chosen + defaults:
+            if not any(test(value, pattern) for pattern in allowed):
                 raise ValueError(kind + " " + value + " is outside this connection (allowed: " + ", ".join(allowed) + ")")
 
 
@@ -327,7 +359,9 @@ def run(h, ctx, target, args, registry, timeout=60, max_bytes=8 * 1048576, stdin
     bind(spec, args, conn, values)
     args = scope(spec, args, label, conn.get("env_labels", {}).values())
     argv = command(h, ctx, cname, conn, spec, values, args)
-    result = bounded(argv, env=env, cwd=os.getcwd(), timeout=timeout, max_bytes=max_bytes, stdin=stdin)
+    # Some CLIs pick a target from the working directory (gh: the git remote); give them none.
+    cwd = env["TMPDIR"] if spec.get("isolated_cwd") else os.getcwd()
+    result = bounded(argv, env=env, cwd=cwd, timeout=timeout, max_bytes=max_bytes, stdin=stdin)
     return {"connection": cname, "provider": conn["provider"], "argv": argv, "values": values, "result": result, "spec": spec}
 
 

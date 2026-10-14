@@ -125,7 +125,7 @@
       "login": ["auth", "login"],
       "short_values": "os",
       "agent_scrub": ["GOOGLE_APPLICATION_CREDENTIALS"],
-      "resources": {"site": {"flags": ["--site", "-s"], "default_env": "GSC_SITE"}}
+      "resources": {"site": {"flags": ["--site", "-s"], "default_env": ["GSC_SITE"], "positional": "^(sc-domain:|https?://)", "refuse_commands": [["sites", "list"]]}}
     },
     "bing": {
       "title": "Bing Webmaster Tools",
@@ -143,7 +143,7 @@
       "verify": ["auth", "status", "--verify", "-o", "json"],
       "login": ["auth", "login"],
       "short_values": "os",
-      "resources": {"site": {"flags": ["--site", "-s"], "default_env": "BWT_SITE"}}
+      "resources": {"site": {"flags": ["--site", "-s"], "default_env": ["BWT_SITE"], "positional": "^https?://", "refuse_commands": [["sites", "list"], ["api"]]}}
     },
     "clarity": {
       "title": "Microsoft Clarity",
@@ -175,7 +175,8 @@
       "verify": ["auth", "status"],
       "login": ["auth", "login", "--insecure-storage"],
       "short_values": "RLqtsAlBHSajp",
-      "resources": {"repo": {"flags": ["--repo", "-R"]}}
+      "resources": {"repo": {"flags": ["--repo", "-R"], "default_env": ["GH_REPO"], "positional": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", "refuse_commands": [["search"], ["api"]], "refuse_text": ["github.com/", "repo:"]}},
+      "isolated_cwd": true
     },
     "aws": {
       "abbreviations": true,
@@ -193,7 +194,7 @@
       "verify": ["sts", "get-caller-identity", "--output", "json"],
       "login": ["configure"],
       "_note": "Explicit read list: broad get-* patterns also matched credential-returning and file-writing operations.",
-      "resources": {"region": {"flags": ["--region"], "default_env": "AWS_REGION"}}
+      "resources": {"region": {"flags": ["--region"], "default_env": ["AWS_REGION", "AWS_DEFAULT_REGION"], "refuse_commands": [["s3"], ["s3api"]]}}
     },
     "kubernetes": {
       "title": "Kubernetes",
@@ -207,7 +208,7 @@
       "deny_args": ["--kubeconfig", "--context", "--cluster", "--user", "--token", "--server", "-s", "--as", "--as-group", "--username", "--password", "--insecure-skip-tls-verify", "--raw", "-f", "--filename", "-k", "--kustomize", "-R", "--recursive", "--client-certificate", "--client-key", "--certificate-authority", "--tls-server-name", "--as-uid"],
       "verify": ["get", "ns", "-o", "name", "--request-timeout=15s"],
       "short_values": "onlcL",
-      "resources": {"namespace": {"flags": ["--namespace", "-n"]}}
+      "resources": {"namespace": {"flags": ["--namespace", "-n"], "refuse_flags": ["-A", "--all-namespaces"], "refuse_kinds": ["namespace", "namespaces", "ns", "node", "nodes", "no", "persistentvolume", "persistentvolumes", "pv", "clusterrole", "clusterroles", "clusterrolebinding", "clusterrolebindings", "storageclass", "storageclasses", "sc", "customresourcedefinition", "customresourcedefinitions", "crd", "crds", "apiservice", "apiservices", "all"]}}
     },
     "postgres": {
       "abbreviations": true,
