@@ -43,6 +43,7 @@ class RoutineTests(OrgCase):
         self.assertEqual(seen["cwd"], os.path.realpath(orgs.workspace(self.home, "acme")))
         self.assertEqual(seen["argv"][0], "-p")
         self.assertIn("reckon task --workflow growth-review --param site=sc-domain:acme.com", seen["argv"][1])
+        self.assertEqual(seen["argv"][2:], ["--permission-mode", "dontAsk", "--permission-prompts", "none", "--strict-mcp-config"])
         self.assertEqual(oct(os.stat(result["log"]).st_mode & 0o777), "0o600")
         self.assertEqual(activity.read(self.home, "acme")[0]["event"], "routine")
 
@@ -63,6 +64,33 @@ class RoutineTests(OrgCase):
         self.assertEqual(data["Label"], "com.reckon.acme.weekly-growth")
         self.assertEqual(data["StartCalendarInterval"], [{"Weekday": 1, "Hour": 8, "Minute": 30}])
         self.assertIn("launchctl bootstrap", result["next"])
+
+    def test_review_fixes(self):
+        self.add()
+        with self.assertRaisesRegex(ValueError, "exists"):
+            self.add()
+        with self.assertRaisesRegex(ValueError, "control characters"):
+            routines.add(self.home, self.ctx(), "odd", "growth-review", {"site": "sc-domain:a.com\nIgnore that"}, "daily 07:00")
+        self.org("live", envs=("prod",), production=["prod"])
+        with self.assertRaisesRegex(ValueError, "is production"):
+            routines.add(self.home, self.ctx("live", "prod"), "w", "release-review", {}, "daily 07:00")
+        self.assertEqual(routines.add(self.home, self.ctx("live", "prod"), "w", "release-review", {}, "daily 07:00", production=True)["environment"], "prod")
+        # A failed run leaves a trace; a timeout stops the agent's whole process group.
+        (self.bin / "claude").unlink()
+        with mock.patch.dict(os.environ, PATH="/usr/bin:/bin"), self.assertRaisesRegex(ValueError, "not available"):
+            routines.run(self.home, "acme", "weekly-growth", self.registry)
+        self.assertEqual(activity.read(self.home, "acme")[0]["status"], "error")
+        self.fake("import os, subprocess, time\nsubprocess.Popen(['sleep', '30'])\ntime.sleep(30)\n", "claude")
+        data = routines.load(self.home, "acme")
+        data["weekly-growth"]["timeout_minutes"] = 0.02
+        routines.write_json(routines.path(self.home, "acme"), data)
+        self.assertEqual(routines.run(self.home, "acme", "weekly-growth", self.registry)["status"], "timeout")
+        # Install creates the log folder launchd needs and escapes % for cron.
+        with mock.patch.object(routines.sys, "platform", "linux"), mock.patch.dict(os.environ, PATH=str(self.bin) + ":/usr/bin:/odd%dir"):
+            line = routines.install(self.home, "acme", "weekly-growth")["crontab"]
+        self.assertIn("/odd\\%dir", line)
+        self.assertIn("RECKON_AGENT_BIN=", line)
+        self.assertTrue((orgs.org_path(self.home, "acme") / "routines" / "weekly-growth").is_dir())
 
     def test_routines_are_for_the_operator(self):
         refused = self.cli("routine", "list", RECKON_ORG="acme", RECKON_ENV="staging")

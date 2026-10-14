@@ -117,7 +117,7 @@ def parser():
     command.add_argument("--workflow")
     command.add_argument("--param", action="append", default=[], metavar="KEY=VALUE")
     command.add_argument("--at", help="daily HH:MM, weekdays HH:MM or mon HH:MM (local time)")
-    command.add_argument("--runtime", default="claude", choices=("claude", "codex"))
+    command.add_argument("--production", action="store_true", help="confirm a routine in a production environment")
     command.add_argument("--timeout-minutes", type=int, default=45)
     command = sub.add_parser("services", parents=[scope], help="inspect or validate service mappings")
     command.add_argument("action", choices=("list", "show", "validate"))
@@ -527,7 +527,7 @@ def execute(args):
         from reckonlib import routines
         if not args.name or not args.workflow or not args.at:
             raise ValueError("reckon routine add <name> --workflow <id> --at <when> [--param k=v]")
-        return routines.add(h, ctx, args.name, args.workflow, parse_params(args.param), args.at, args.runtime, args.timeout_minutes)
+        return routines.add(h, ctx, args.name, args.workflow, parse_params(args.param), args.at, args.timeout_minutes, args.production)
     if name == "workflows":
         from reckonlib import workflows
         return [{"workflow": r["id"], "title": r["title"], "area": r.get("area"), "budget": r.get("budget"),

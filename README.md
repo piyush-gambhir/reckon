@@ -64,8 +64,8 @@ reckon brief --all-orgs    # one morning digest across every business
 
 Repeatable work comes as workflow recipes with required checks (`reckon workflows`,
 `reckon task --workflow growth-review --param site=sc-domain:acme.com`), and
-`reckon routine add ... --at "mon 08:30"` runs one on a schedule with a headless,
-pinned agent.
+`reckon routine add ... --at "mon 08:30"` runs one on a schedule with headless
+Claude Code, pinned and limited to the workspace's allow rules.
 
 Sessions keep every read with its command, connection, time and hashes. Incident
 investigations (`reckon debug`) add mapped services, typed collection, hypotheses

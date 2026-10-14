@@ -2,14 +2,18 @@
 
 A routine is saved in the org folder (outside the agent's workspace) and run by
 launchd or cron through `reckon routine run`. Each run starts Claude Code
-(`claude -p`) or Codex (`codex exec`) in the org's workspace with the same pinned,
-credential-free environment as `reckon open`, so it reads through reckon run and can
-prepare writes but never apply them. A run still going makes the next one skip."""
+(`claude -p`) in the org's workspace with the same pinned, credential-free
+environment as `reckon open`, in dontAsk mode with no MCP servers: only the
+workspace's allow rules run, so it reads through reckon run and can prepare writes
+but never apply them. A run still going makes the next one skip. Codex is not
+offered: its sandboxes have no deny list, and unattended it could read secrets files."""
 from datetime import datetime, timezone
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
+import signal
 import subprocess
 import sys
 
@@ -38,16 +42,20 @@ def schedule(text):
     return {"at": text.strip().lower(), "days": days, "hour": hour, "minute": minute}
 
 
-def add(h, ctx, name, recipe_id, params, at, runtime="claude", timeout_minutes=45):
+def add(h, ctx, name, recipe_id, params, at, timeout_minutes=45, production=False):
     orgs.name(name, "routine")
-    if runtime not in ("claude", "codex"):
-        raise ValueError("--runtime is claude or codex")
+    if ctx["production"] and not production:
+        raise ValueError(ctx["org"] + "/" + ctx["env"] + " is production; a routine there runs unattended, so pass --production to confirm")
+    if any(not v.isprintable() for v in params.values()):
+        raise ValueError("--param values cannot contain control characters")
     if not 5 <= timeout_minutes <= 240:
         raise ValueError("--timeout-minutes must be 5-240")
     # Fail now, not at 8 in the morning: the recipe and its parameters must start a session.
     workflows.start(orgs.workspace(h, ctx["org"]), recipe_id, params)
     routines = load(h, ctx["org"])
-    routines[name] = {"environment": ctx["env"], "workflow": recipe_id, "params": params, "runtime": runtime,
+    if name in routines:
+        raise ValueError("routine " + name + " exists; remove it (and its installed job) first")
+    routines[name] = {"environment": ctx["env"], "workflow": recipe_id, "params": params, "runtime": "claude",
                       "schedule": schedule(at), "timeout_minutes": timeout_minutes}
     write_json(path(h, ctx["org"]), routines)
     return dict(routines[name], routine=name, org=ctx["org"])
@@ -59,11 +67,17 @@ def remove(h, org, name):
         raise ValueError("unknown routine: " + name)
     del routines[name]
     write_json(path(h, org), routines)
-    return {"org": org, "removed": name, "note": "remove its launchd job or crontab line too (reckon routine install shows where)"}
+    label = "com.reckon." + org + "." + name
+    if sys.platform == "darwin":
+        job = Path.home() / "Library" / "LaunchAgents" / (label + ".plist")
+        note = "unload and delete its job: launchctl bootout gui/" + str(os.getuid()) + "/" + label + " && rm " + quote(str(job))
+    else:
+        note = "delete its line from your crontab (crontab -e)"
+    return {"org": org, "removed": name, "note": note}
 
 
 def prompt(routine):
-    params = " ".join("--param " + k + "=" + v for k, v in sorted(routine["params"].items()))
+    params = " ".join("--param " + shlex.quote(k + "=" + v) for k, v in sorted(routine["params"].items()))
     return ("Scheduled routine. Run the " + routine["workflow"] + " workflow for this org and environment.\n"
             "1. Start it: reckon task --workflow " + routine["workflow"] + (" " + params if params else "") + "\n"
             "2. Follow its playbook in the reckon skill (workflows/" + routine["workflow"] + ".md). Save every read with "
@@ -74,9 +88,10 @@ def prompt(routine):
             "Nobody is watching: do not ask questions, and stop rather than guess.")
 
 
-def argv(routine):
-    text = prompt(routine)
-    return ["claude", "-p", text] if routine["runtime"] == "claude" else ["codex", "exec", text]
+def argv(routine, binary="claude"):
+    # dontAsk: anything not in the workspace's allow rules is refused, even if the
+    # settings file were ignored; no prompts, and no user-level MCP servers.
+    return [binary, "-p", prompt(routine), "--permission-mode", "dontAsk", "--permission-prompts", "none", "--strict-mcp-config"]
 
 
 def run(h, org, name, registry):
@@ -86,26 +101,41 @@ def run(h, org, name, registry):
     routine = routines[name]
     ctx = orgs.context(h, org, routine["environment"], registry)
     folder = local_path(orgs.org_path(h, org), "routines", name)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     try:
-        with lock(folder):
-            root = workspace.ensure(h, ctx, registry)
-            command = argv(routine)
-            if not shutil.which(command[0]):
-                raise ValueError(command[0] + " is not on PATH for scheduled runs; reinstall with reckon routine install")
-            log = folder / (stamp + ".log")
-            with open(os.open(str(log), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w", encoding="utf-8") as out:
-                try:
-                    code = subprocess.run(command, cwd=str(root), env=workspace.agent_env(h, ctx, registry), stdin=subprocess.DEVNULL,
-                                          stdout=out, stderr=subprocess.STDOUT, timeout=routine["timeout_minutes"] * 60).returncode
-                    status = "ok" if code == 0 else "failed"
-                except subprocess.TimeoutExpired:
-                    code, status = None, "timeout"
+        held = lock(folder)
+        held.__enter__()
     except BlockingIOError:
         activity.record(h, ctx, "routine", target=name, status="skipped", detail="the previous run is still going")
         return {"routine": name, "status": "skipped", "detail": "the previous run is still going"}
-    activity.record(h, ctx, "routine", target=name, status=status, exit_code=code)
-    return {"routine": name, "org": org, "environment": ctx["env"], "status": status, "exit_code": code, "log": str(log)}
+    try:
+        result = attempt(h, ctx, folder, name, routine, registry)
+    except (ValueError, OSError) as exc:
+        activity.record(h, ctx, "routine", target=name, status="error", detail=exc)
+        raise
+    finally:
+        held.__exit__(None, None, None)
+    activity.record(h, ctx, "routine", target=name, status=result["status"], exit_code=result["exit_code"])
+    return result
+
+
+def attempt(h, ctx, folder, name, routine, registry):
+    root = workspace.ensure(h, ctx, registry)
+    binary = os.environ.get("RECKON_AGENT_BIN") or shutil.which("claude")
+    if not binary or not os.access(binary, os.X_OK):
+        raise ValueError("claude is not available to scheduled runs; reinstall with reckon routine install")
+    log = folder / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ") + ".log")
+    with open(os.open(str(log), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w", encoding="utf-8") as out:
+        # Its own process group, so a timeout stops the agent and everything it started.
+        child = subprocess.Popen(argv(routine, binary), cwd=str(root), env=workspace.agent_env(h, ctx, registry),
+                                 stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
+        try:
+            code = child.wait(timeout=routine["timeout_minutes"] * 60)
+            status = "ok" if code == 0 else "failed"
+        except subprocess.TimeoutExpired:
+            os.killpg(child.pid, signal.SIGKILL)
+            child.wait()
+            code, status = None, "timeout"
+    return {"routine": name, "org": ctx["org"], "environment": ctx["env"], "status": status, "exit_code": code, "log": str(log)}
 
 
 def install(h, org, name, routines=None):
@@ -116,8 +146,13 @@ def install(h, org, name, routines=None):
         raise ValueError("unknown routine: " + name)
     reckon = str(h / "bin" / "reckon") if (h / "bin" / "reckon").exists() else str(Path(sys.argv[0]).resolve())
     command = [reckon, "routine", "run", name, "--org", org]
-    # Schedulers start with a bare PATH; keep the one claude, codex and the CLIs were found on.
-    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "RECKON_HOME": str(h)}
+    agent = shutil.which("claude")
+    if not agent:
+        raise ValueError("claude is not on PATH; install Claude Code first")
+    # Schedulers start with a bare PATH; keep the one the CLIs were found on, and pin
+    # the agent binary itself (shell functions and session shims do not exist there).
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "RECKON_HOME": str(h), "RECKON_AGENT_BIN": os.path.realpath(agent)}
+    orgs.private_dir(local_path(orgs.org_path(h, org), "routines", name))  # launchd does not create its log folder
     label = "com.reckon." + org + "." + name
     sched = routine["schedule"]
     if sys.platform == "darwin":
@@ -136,7 +171,8 @@ def install(h, org, name, routines=None):
 
 
 def quote(value):
-    return "'" + value.replace("'", "'\\''") + "'"
+    # cron reads an unescaped % as a newline, even inside quotes.
+    return "'" + value.replace("'", "'\\''").replace("%", "\\%") + "'"
 
 
 def plist(label, command, env, sched, folder):

@@ -102,9 +102,12 @@ its original observation time.
 
 ## Routines
 
-A routine runs a workflow on a schedule with a headless agent (`claude -p` or
-`codex exec`), pinned to one org and environment like `reckon open`: it reads
-through `reckon run`, saves a session, may prepare writes and never applies them.
+A routine runs a workflow on a schedule with headless Claude Code (`claude -p`),
+pinned to one org and environment like `reckon open`: it reads through
+`reckon run`, saves a session, may prepare writes and never applies them. It runs
+in `dontAsk` permission mode with no MCP servers, so only the workspace's allow
+rules can run, whatever your default mode is. Codex is not offered for routines:
+its sandboxes have no deny list, and unattended it could read secrets files.
 
 ```bash
 reckon routine add weekly-growth --org acme --env prod --workflow growth-review \
@@ -115,7 +118,7 @@ reckon routine list --org acme
 ```
 
 `--at` takes `daily HH:MM`, `weekdays HH:MM` or a day such as `mon HH:MM`, in
-local time. A run still going makes the next one skip; launchd runs a missed job
+local time. A routine in a production environment needs `--production`. A run still going makes the next one skip; launchd runs a missed job
 once after the Mac wakes. Each run's output is kept in
 `~/.reckon/orgs/<org>/routines/<name>/`, and the activity log records its result.
 Routines spend model usage without anyone watching, so start with one a week.
