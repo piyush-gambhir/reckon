@@ -3,6 +3,7 @@
 RECKON_ADOPTED_BIN=<dir with stripe, linear, supabase, shopify...> also checks each
 allowed read command against the real binary's --help (no account needed)."""
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -67,6 +68,7 @@ class RealBinaryTests(unittest.TestCase):
                 done = subprocess.run([binary] + words + ["--help"], env=env, capture_output=True, text=True, timeout=60)
                 # Some CLIs print the parent's help for an unknown verb, so the full path must appear.
                 text = " ".join((done.stdout + done.stderr).split()).lower()
+                text = re.sub(r" \([a-z0-9, -]+\)", "", text)  # gog prints aliases inline: "gog drive (drv) ls"
                 self.assertTrue(done.returncode == 0 and " ".join([spec["binary"]] + words).lower() in text, (name, words))
                 checked += 1
         self.assertGreater(checked, 0)
