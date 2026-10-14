@@ -107,7 +107,8 @@ Fix first, in the CLIs themselves:
 ### M5 Connectors: adopt, then build
 
 **Adopt next** (each as a provider entry with an exact read list and scoped
-credentials):
+credentials). Done 2026-10-14 from source, pending live tests: Stripe, Razorpay,
+gog, Sentry, Cloudflare. HubSpot waits for its CLI source to be published.
 
 | Tool | CLI | Why |
 | --- | --- | --- |

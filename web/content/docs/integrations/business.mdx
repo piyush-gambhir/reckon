@@ -1,0 +1,86 @@
+---
+title: Business tools
+description: Stripe, Razorpay, Google Workspace (gog), Sentry and Cloudflare through fixed read-only command lists.
+---
+
+These CLIs are maintained by their vendors or communities, and Reckon adopts them
+rather than building its own. Each runs as an allowlist: only the read commands
+listed here run through `reckon run`, credentials come from the connection's
+secrets file, and flags that pick another account or turn safety off are refused.
+
+<Callout type="warn">
+  These entries were derived from each CLI's source in October 2026 and have not
+  yet been exercised against live accounts. Run `reckon verify` after connecting,
+  and expect small adjustments.
+</Callout>
+
+## Stripe
+
+Revenue, charges, subscriptions, disputes, payouts and refunds. CLI: [stripe](https://github.com/stripe/stripe-cli). Use a restricted read-only key.
+
+```bash
+reckon connect stripe --org acme --provider stripe   # then set STRIPE_API_KEY in the secrets file
+reckon verify stripe   # runs: stripe balance retrieve
+reckon run stripe -- balance retrieve ...
+```
+
+Settings: `STRIPE_API_KEY`.
+
+Read commands: `balance retrieve`, `balance_transactions list`, `balance_transactions retrieve`, `charges list`, `charges retrieve`, `customers list`, `customers retrieve`, `disputes list`, `disputes retrieve`, `invoices list`, `invoices retrieve`, `payment_links list`, `payment_links retrieve`, `payouts list`, `payouts retrieve`, `prices list`, `prices retrieve`, `products list`, `products retrieve`, `refunds list`, `refunds retrieve`, `subscriptions list`, `subscriptions retrieve`.
+
+## Razorpay
+
+Indian payments, orders, settlements, refunds and subscriptions. CLI: [razorpay](https://github.com/razorpay/razorpay-cli). Use a key pair for the account you want; Reckon pins the API base URL.
+
+```bash
+reckon connect razorpay --org acme --provider razorpay   # then set RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET in the secrets file
+reckon verify razorpay   # runs: razorpay payments list --count 1
+reckon run razorpay -- payments list ...
+```
+
+Settings: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`.
+
+Read commands: `payments list`, `orders list`, `customers list`, `refunds list`, `settlements list`, `disputes list`, `invoices list`, `payment-links list`, `qr-codes list`, `subscriptions list`, `payments downtime list`, `settlements instant-list`, `settlements recon`, `invoices items list`, `subscriptions plans list`.
+
+## Google Workspace, GA4 and YouTube (gog)
+
+Gmail, Calendar, Drive, Sheets, Docs, Contacts, Tasks, GA4 reports, Search Console and YouTube. CLI: [gog](https://github.com/openclaw/gogcli). Reckon forces gog's read-only mode and blocks sending, uploads and downloads.
+
+```bash
+reckon connect gog --org acme --provider gog   # then set GOG_ACCESS_TOKEN in the secrets file
+reckon verify gog   # runs: gog drive ls --max 1 --json
+reckon run gog -- drive ls ...
+```
+
+Settings: `GOG_ACCESS_TOKEN`.
+
+Read commands: `drive ls`, `drive search`, `drive get`, `gmail search`, `gmail messages search`, `gmail get`, `gmail thread get`, `calendar calendars`, `calendar events`, `calendar event`, `calendar search`, `calendar freebusy`, `contacts list`, `contacts search`, `contacts get`, `people me`, `people get`, `sheets get`, `sheets metadata`, `docs info`, `docs cat`, `tasks lists list`, `tasks list`, `tasks get`, `analytics accounts`, `analytics report`, `searchconsole sites list`, `searchconsole query`, `youtube activities list`, `youtube videos list`, `youtube playlists list`, `youtube playlists items list`, `youtube comments list`, `youtube channels list`, `youtube search list`, `youtube subscriptions list`.
+
+## Sentry
+
+Issues, events, traces, logs and release health. CLI: [sentry](https://github.com/getsentry/toolkit). Use a token scoped to read; Reckon disables telemetry and update checks.
+
+```bash
+reckon connect sentry --org acme --provider sentry   # then set SENTRY_AUTH_TOKEN in the secrets file
+reckon verify sentry   # runs: sentry org list --limit 1 --json --fresh
+reckon run sentry -- auth whoami ...
+```
+
+Settings: `SENTRY_AUTH_TOKEN` or `SENTRY_TOKEN`.
+
+Read commands: `auth whoami`, `org list`, `org view`, `project list`, `issue list`, `issue view`, `issue events`, `event list`, `event view`, `log list`, `log view`, `trace list`, `trace view`, `trace logs`, `span list`, `span view`, `release list`, `release view`, `release deploys`, `repo list`, `team list`, `monitor list`, `dashboard list`, `dashboard view`, `dashboard revisions`.
+
+## Cloudflare (cf)
+
+Accounts, zones, DNS records, Workers, D1, KV, R2, queues and rulesets. CLI: [cf](https://github.com/cloudflare/cf). `cf` is in beta: pin the version you install. Use an API token with read permissions.
+
+```bash
+reckon connect cloudflare --org acme --provider cloudflare   # then set CLOUDFLARE_API_TOKEN in the secrets file
+reckon verify cloudflare   # runs: cf user tokens verify
+reckon run cloudflare -- user tokens verify ...
+```
+
+Settings: `CLOUDFLARE_API_TOKEN`.
+
+Read commands: `user tokens verify`, `accounts tokens verify`, `accounts list`, `zones list`, `zones get`, `dns records list`, `dns records get`, `dns dnssec get`, `workers list`, `d1 list`, `kv namespaces list`, `r2 buckets list`, `queues list`, `rulesets list`.
+

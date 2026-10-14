@@ -196,6 +196,20 @@ Search Console dates are inclusive Pacific-time days and the last two or three d
 are preliminary. Bing filters dates locally after fetching its own top rows, so its
 numbers are not complete history.
 
+### Revenue, Google Workspace, Sentry and Cloudflare
+
+| Need | Command |
+| --- | --- |
+| Recent charges and disputes | `stripe -- charges list --limit 20`, `disputes list` |
+| Subscriptions | `stripe -- subscriptions list --limit 50` |
+| Razorpay payments and settlements | `razorpay -- payments list --count 20`, `settlements list` |
+| GA4 report | `gog -- analytics report ...` (see `gog analytics report --help`) |
+| Calendar, Drive, Gmail search | `gog -- calendar events`, `drive search <query>`, `gmail search <query>` |
+| Sentry issues and releases | `sentry -- issue list --limit 25`, `release list` |
+| DNS records | `cloudflare -- dns records list ...` |
+
+These CLIs run as allowlists; `reckon run <tool> -- --help` shows each one's flags.
+
 ### Operations and incidents
 
 Use the `reckon` skill and its modes (investigate, monitor, analyze) for incident
