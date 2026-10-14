@@ -11,7 +11,7 @@ args = sys.argv[1:]
 if args[:2] == ["commands", "resolve"]:
     rest = args[3:]
     if os.environ.get("OLD"):
-        print(json.dumps({"error": 'unknown command "resolve" for "gsc commands"', "kind": "usage"}), file=sys.stderr); sys.exit(1)
+        print('Error: unknown command "commands" for "gsc"', file=sys.stderr); sys.exit(1)
     table = {"token": ("gsc auth token", "read", True), "add": ("gsc sites add", "remote_write", False)}
     hit = next((v for k, v in table.items() if k in rest), ("gsc top queries", "read", False))
     print(json.dumps({"command": hit[0], "effect": hit[1], "secret_output": hit[2], "flags": {}, "args": []}))

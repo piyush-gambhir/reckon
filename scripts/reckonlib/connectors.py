@@ -389,10 +389,13 @@ def resolved(spec, env, args):
         answer = json.loads(probe["stdout"].decode() or probe["stderr"].decode() or "{}")
     except ValueError:
         answer = {}
+    text = probe["stdout"].decode(errors="replace") + probe["stderr"].decode(errors="replace")
     if probe["status"] != "ok":
-        if "unknown command" in json.dumps(answer) and "resolve" in json.dumps(answer):
-            return None  # an older release without the resolver
+        if "unknown command" in text and ("commands" in text or "resolve" in text):
+            return None  # an older release without the resolver: the registry checks still apply
         raise ValueError(spec["binary"] + " could not resolve these arguments: " + str(answer.get("error", probe["status"])))
+    if not isinstance(answer, dict) or "effect" not in answer:
+        return None  # not a resolver answer (an older release printed something else)
     if answer.get("secret_output"):
         raise ValueError(answer.get("command", "this command") + " prints a credential and is not allowed through reckon run")
     if answer.get("effect") != "read":

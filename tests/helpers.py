@@ -37,7 +37,11 @@ class OrgCase(unittest.TestCase):
 
     def fake(self, source, binary="cubeapm"):
         path = self.bin / binary
-        path.write_text("#!" + sys.executable + "\n" + source)
+        # Fakes behave like releases without the agent-contract resolver unless a test
+        # implements "commands resolve" itself.
+        guard = ("import sys as _sys\nif _sys.argv[1:3] == ['commands', 'resolve'] and 'resolve' not in " + repr(source) +
+                 ":\n    _sys.stderr.write('Error: unknown command \"commands\"\\n'); _sys.exit(1)\n")
+        path.write_text("#!" + sys.executable + "\n" + guard + source)
         path.chmod(0o700)
         return path
 
