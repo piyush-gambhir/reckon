@@ -15,6 +15,7 @@ inside an org is [WORKSPACE.md](WORKSPACE.md); the plan is
 | `scripts/reckonlib/connectors.py` | `reckon run`, `verify`, `login`: argument checks, provider-specific arguments |
 | `scripts/reckonlib/workspace.py` | Each org's agent folder, its generated files and permissions, `reckon open` |
 | `scripts/reckonlib/migrate.py` | Copies a pre-org checkout's layout into an org |
+| `scripts/reckonlib/{activity,brief,actions}.py` | The per-org activity log, briefs (one org or all), approved writes |
 | `scripts/reckonlib/{store,investigation,operations,process}.py` | Sessions, evidence, typed operations, bounded subprocesses |
 | `scripts/providers.json` | Every supported tool: binary, setting prefixes, required settings, safety switches, denied arguments, read commands, live check, login |
 | `skills/reckon/` | The ops method (investigate, monitor, analyze) and knowledge templates |

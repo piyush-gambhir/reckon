@@ -33,6 +33,8 @@ reckon run gsc -- top queries --site sc-domain:acme.com --last 28d -o json
 
 - **The agent never holds credentials.** `reckon run` loads one connection's settings
   into one command. `reckon open` strips tool credentials from the agent's environment.
+  Settings can point at the macOS Keychain or 1Password (`keychain:<item>`, `op://...`)
+  instead of holding the secret.
 - **Reads are read-only.** Reckon forces each CLI's read-only and no-prompt modes and
   refuses arguments that would change the target or switch safety off.
 - **Writes are yours to apply.** The agent prepares one (`reckon act prepare
@@ -56,6 +58,8 @@ reckon run gsc --session <id> -- insights striking-distance --site sc-domain:acm
 reckon note <id> --kind finding --text "..." --evidence <evidence-id>
 reckon report <id>
 reckon history
+reckon log                 # every run and refusal, with or without a session
+reckon brief --all-orgs    # one morning digest across every business
 ```
 
 Sessions keep every read with its command, connection, time and hashes. Incident

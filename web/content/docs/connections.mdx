@@ -129,6 +129,16 @@ Fill it in with your editor. Never paste credentials into the agent's chat.
 - The file must not be readable by other users. Reckon refuses it otherwise;
   fix it with `chmod 600`.
 - Values like `replace_me`, `example.com` or `<...>` count as not configured.
+- A value can point at a secret store instead of holding the secret:
+  `keychain:<item>` (macOS Keychain, or `secret-tool` on Linux) or
+  `op://vault/item/field` (1Password CLI). Reckon reads it only when a run needs
+  it, and the agent's settings deny calling `security`, `secret-tool` or `op read`
+  directly.
+
+```bash
+security add-generic-password -s acme-jenkins-prod -a "$USER" -w   # prompts for the token
+# then, in ~/.reckon/orgs/acme/secrets/jenkins-prod.env:  JENKINS_TOKEN=keychain:acme-jenkins-prod
+```
 
 Credentials exported in your shell are never used, and neither are global CLI
 logins such as `~/.config/...` or `~/.aws`. A missing credential fails; it never

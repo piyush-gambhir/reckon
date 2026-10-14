@@ -236,9 +236,9 @@ and ToolHive (2026-10-14), ranked by value for one person running several busine
 
 | Feature | Seen in | Effort |
 | --- | --- | --- |
-| Cross-org brief (`reckon brief --all-orgs`): one morning view of every business | Steampipe aggregators, Paperclip | S |
-| Activity log of every run, refusal, prepare and apply, with or without a session | Paperclip, Agent Vault | S |
-| Secret references (`keychain:`, `op://`) resolved only inside `reckon run` | ToolHive | S |
+| Done 2026-10-14: cross-org brief (`reckon brief --all-orgs`), one morning view of every business | Steampipe aggregators, Paperclip | S |
+| Done 2026-10-14: activity log of every run, refusal, prepare and apply (`reckon log`) | Paperclip, Agent Vault | S |
+| Done 2026-10-14: secret references (`keychain:`, `op://`) resolved only inside `reckon run` | ToolHive | S |
 | Saved routines: launchd or cron runs a headless agent on a workflow, with skip and catch-up policies | Paperclip, HolmesGPT, Goose | M |
 | Workflow recipes: typed parameters, required checks and a report schema | Goose recipes | M |
 | Large output spilled to the session, with a preview and the path | HolmesGPT | S |

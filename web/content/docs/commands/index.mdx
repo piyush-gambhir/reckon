@@ -98,16 +98,32 @@ observed. The cache is per org, environment and connection, stored without
 secrets in `~/.reckon/orgs/<org>/cache/`. Evidence saved from a cached read keeps
 its original observation time.
 
+## Activity log
+
+Every `reckon run`, every refusal (wrong environment, denied command, spent
+budget) and every `act prepare`, `apply` and `reconcile` is appended to
+`~/.reckon/orgs/<org>/activity.jsonl`, with or without a session. Entries keep the
+command words and a hash of the arguments, never their values.
+
+```bash
+reckon log                    # last 7 days, this environment
+reckon log --event refused --all-envs --days 30
+```
+
 ## Daily brief
 
 ```bash
 reckon brief                 # last 7 days, this org and environment
 reckon brief --days 30 --save  # also writes briefs/<date>-<env>.md in the org folder
+reckon brief --all-envs      # every environment of this org
+reckon brief --all-orgs --save  # every business in one digest, saved to ~/.reckon/briefs/
 ```
 
 The brief is built from saved files only: open sessions, recent findings, writes
-waiting for `reckon act apply` or with an `unknown` outcome, connections that are
-not ready, and knowledge untouched for 90 days. It contacts no tool, so it is safe
+waiting for `reckon act apply` or with an `unknown` outcome, refused runs,
+connections that are not ready, and knowledge untouched for 90 days. `--all-orgs`
+starts with one table row per org and runs only in your own terminal, never in a
+pinned agent. It contacts no tool, so it is safe
 to run from cron or launchd, for example
 `0 8 * * 1-5 RECKON_HOME=~/.reckon ~/.reckon/bin/reckon brief --org acme --env prod --save`.
 

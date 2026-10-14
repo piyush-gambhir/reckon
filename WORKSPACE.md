@@ -8,7 +8,9 @@ connections. This guide applies to every org.
 ## Start every task
 
 0. For a new day or week, `reckon brief` shows open sessions, recent findings,
-   writes waiting for approval or with unknown outcomes, and connection gaps.
+   writes waiting for approval or with unknown outcomes, refused runs and
+   connection gaps. `reckon log` lists what ran in this org and environment,
+   including refusals.
 1. Run `reckon preflight`. It prints the org, the environment this agent is pinned
    to, which connections are ready, knowledge counts, open sessions and warnings,
    without contacting any tool.

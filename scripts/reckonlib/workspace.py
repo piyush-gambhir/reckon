@@ -69,6 +69,7 @@ def settings(h, ctx, registry):
     # Claude Code reads "//path" as an absolute path.
     secrets = "/" + str(h / "orgs") + "/*/secrets/**"
     deny = ["Bash(reckon act apply:*)", "Bash(reckon login:*)", "Bash(reckon use:*)", "Bash(reckon connect:*)", "Bash(reckon org:*)", "Bash(reckon migrate:*)",
+            "Bash(security find-generic-password:*)", "Bash(secret-tool:*)", "Bash(op read:*)", "Bash(op item:*)",
             "Read(" + secrets + ")", "Edit(" + secrets + ")", "Write(" + secrets + ")"]
     return {"permissions": {"allow": sorted(set(allow) - set(ask)), "ask": sorted(set(ask)), "deny": deny}}
 

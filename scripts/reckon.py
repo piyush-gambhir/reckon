@@ -13,7 +13,7 @@ import shutil
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reckonlib import connectors, orgs, workspace  # noqa: E402
+from reckonlib import activity, connectors, orgs, workspace  # noqa: E402
 from reckonlib import investigation as work  # noqa: E402
 from reckonlib.operations import OPERATIONS, build, plan  # noqa: E402
 from reckonlib.store import create, local_path, lock, resolve_service, services, session_path, window, write_json  # noqa: E402
@@ -148,6 +148,13 @@ def parser():
     command = sub.add_parser("brief", parents=[scope], help="local digest: open work, findings, writes waiting, gaps (no network)")
     command.add_argument("--days", type=int, default=7)
     command.add_argument("--save", action="store_true", help="also write it to the org folder's briefs/<date>-<env>.md")
+    command.add_argument("--all-envs", action="store_true", help="every environment of the org")
+    command.add_argument("--all-orgs", action="store_true", help="every org and environment, one digest (operator only)")
+    command = sub.add_parser("log", parents=[scope], help="this org's activity: runs, refusals and write steps")
+    command.add_argument("--days", type=int, default=7)
+    command.add_argument("--event", choices=("run", "refused", "act.prepare", "act.apply", "act.reconcile"))
+    command.add_argument("--all-envs", action="store_true")
+    command.add_argument("--limit", type=int, default=50)
     command = sub.add_parser("demo", help="synthetic investigation in a throwaway org; no network")
     command.add_argument("--json", action="store_true")
     return p
@@ -383,10 +390,31 @@ def execute(args):
             raise ValueError("unknown action: " + args.target)
         record = actions.load(orgs.workspace(h, owner), args.target)[1]
         ctx = orgs.context(h, owner, record["environment"], registry)
-        return actions.apply(h, ctx, orgs.workspace(h, owner), args.target, registry)
+        done = actions.apply(h, ctx, orgs.workspace(h, owner), args.target, registry)
+        activity.record(h, ctx, "act.apply", target=done["connection"], action=done["id"], operation=done["operation"], status=done["status"])
+        return done
+
+    if name == "brief" and args.all_orgs:
+        from reckonlib.brief import all_orgs, render_all
+        if not 1 <= args.days <= 365:
+            raise ValueError("--days must be 1-365")
+        if args.org or args.env:
+            raise ValueError("--all-orgs covers every org; drop --org and --env")
+        result = all_orgs(h, registry, args.days)
+        if args.save:
+            from datetime import datetime, timezone
+            from reckonlib.store import write as save
+            target = local_path(h, "briefs", datetime.now(timezone.utc).strftime("%Y-%m-%d") + "-all.md")
+            save(target, render_all(result) + "\n")
+            result["saved"] = str(target)
+        return result
 
     ctx = context(h, args, registry)
     root = orgs.workspace(h, ctx["org"])
+    if name == "log":
+        if not 1 <= args.days <= 365 or not 1 <= args.limit <= 1000:
+            raise ValueError("--days must be 1-365 and --limit 1-1000")
+        return activity.read(h, ctx["org"], args.days, None if args.all_envs else ctx["env"], args.event, args.limit)
     if name == "status":
         return {"org": ctx["org"], "name": ctx["data"]["name"], "environment": ctx["env"], "production": ctx["production"],
                 "resolved_from": ctx["source"], "workspace": str(root), "connections": orgs.describe(h, ctx, registry)}
@@ -400,10 +428,15 @@ def execute(args):
             raise ValueError("usage: reckon run <connection|tool> -- <arguments>")
         if args.label and not args.session:
             raise ValueError("--label needs --session")
+        words = [w[:32] for w in connectors.tokens(command)[:3]]
         if args.session:
             spath, sdata = session_path(root, args.session)
-            work.matching(sdata, ctx)
-            work.spend(spath, sdata, 1)
+            try:
+                work.matching(sdata, ctx)
+                work.spend(spath, sdata, 1)
+            except ValueError as exc:
+                activity.record(h, ctx, "refused", target=args.target, command=words, args=command, session=args.session, detail=exc)
+                raise
         stdin = sys.stdin.buffer.read(1048577) if args.stdin else None
         if stdin is not None and len(stdin) > 1048576:
             raise ValueError("standard input over 1 MiB; pass a file argument instead")
@@ -413,7 +446,11 @@ def execute(args):
             if not unit or not args.cache[:-1].isdigit():
                 raise ValueError("--cache takes a number and s, m, h or d, e.g. 15m")
             cache_seconds = int(args.cache[:-1]) * unit
-        outcome = connectors.run(h, ctx, args.target, command, registry, args.timeout, args.max_bytes, stdin, cache_seconds)
+        try:
+            outcome = connectors.run(h, ctx, args.target, command, registry, args.timeout, args.max_bytes, stdin, cache_seconds)
+        except ValueError as exc:
+            activity.record(h, ctx, "refused", target=args.target, command=words, args=command, session=args.session, detail=exc)
+            raise
         if outcome.get("cached_at"):
             print("reckon: cached result observed at " + outcome["cached_at"] + "; drop --cache for a fresh read", file=sys.stderr)
         result = outcome["result"]
@@ -424,6 +461,8 @@ def execute(args):
             print("reckon: saved as evidence " + record["id"] + " in " + args.session, file=sys.stderr)
         if result["status"] != "ok":
             print("reckon: " + outcome["connection"] + " " + result["status"], file=sys.stderr)
+        activity.record(h, ctx, "run", target=outcome["connection"], command=words, args=command, session=args.session,
+                        status=result["status"], exit_code=result["exit_code"], cached=bool(outcome.get("cached_at")) or None)
         return {"_exit": result["exit_code"] if result["status"] == "failed" else EXIT.get(result["status"], 0)}
     if name in INVESTIGATIONS:
         service = resolve_service(root, ctx["env"], args.service)
@@ -501,12 +540,12 @@ def execute(args):
         from reckonlib.brief import brief
         if not 1 <= args.days <= 365:
             raise ValueError("--days must be 1-365")
-        result = brief(h, ctx, registry, args.days)
+        result = brief(h, ctx, registry, args.days, ctx["data"]["environments"] if args.all_envs else None)
         if args.save:
             from datetime import datetime, timezone
             from reckonlib.brief import render
             from reckonlib.store import write as save
-            target = local_path(root, "briefs", datetime.now(timezone.utc).strftime("%Y-%m-%d") + "-" + ctx["env"] + ".md")
+            target = local_path(root, "briefs", datetime.now(timezone.utc).strftime("%Y-%m-%d") + "-" + result["environment"] + ".md")
             save(target, render(result) + "\n")
             result["saved"] = str(target)
         return result
@@ -517,11 +556,14 @@ def execute(args):
         if args.action == "show":
             return actions.load(root, args.target or "")[1]
         if args.action == "reconcile":
-            return actions.reconcile(h, ctx, root, args.target or "", registry)
+            done = actions.reconcile(h, ctx, root, args.target or "", registry)
+            activity.record(h, ctx, "act.reconcile", target=done["connection"], action=done["id"], status=done["status"])
+            return done
         params = json.loads(args.params)
         if args.body_stdin:
             params["body"] = sys.stdin.read(65537)
         record, text = actions.prepare(h, ctx, root, args.target or "", params, registry)
+        activity.record(h, ctx, "act.prepare", target=record["connection"], action=record["id"], operation=record["operation"])
         print(text, file=sys.stderr)
         return {"action": record["id"], "status": record["status"],
                 "next": "the operator reviews and runs: reckon act apply " + record["id"]}
@@ -621,10 +663,18 @@ def display(command, result):
         for item in result["warnings"]:
             print("  warning: " + item)
     elif command == "brief":
-        from reckonlib.brief import render
-        print(render(result))
+        from reckonlib.brief import render, render_all
+        print(render_all(result) if "orgs" in result else render(result))
         if result.get("saved"):
             print("Saved: " + result["saved"])
+    elif command == "log":
+        for row in result:
+            what = row.get("operation") or " ".join(row.get("command", []))
+            state = row.get("status") or row.get("detail", "")
+            print(row["at"] + "  " + row["environment"].ljust(6) + " " + row["actor"].ljust(8) + " " + row["event"].ljust(13) +
+                  str(row.get("target") or "").ljust(16) + " " + what + ("  " + state if state else ""))
+        if not result:
+            print("no activity in this period")
     elif command == "verify":
         for row in result:
             print(("ok      " if row["status"] == "ok" else row["status"].ljust(8)) + row["connection"].ljust(22) + row.get("detail", "")[:200])

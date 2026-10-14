@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
+import sys
 
 from .store import local_path, now, private_dir, read_bytes, read_json, write, write_json
 
@@ -221,6 +223,27 @@ def secrets(h, org, conn, spec):
     return values
 
 
+def reference(key, value):
+    """A value may name a secret kept elsewhere: keychain:<item> (macOS Keychain or
+    Linux secret-tool) or op://vault/item/field (1Password). Read only when a run needs it."""
+    if value.startswith("keychain:") and value[9:].strip():
+        item = value[9:].strip()
+        argv = (["security", "find-generic-password", "-s", item, "-w"] if sys.platform == "darwin"
+                else ["secret-tool", "lookup", "service", item])
+    elif value.startswith("op://"):
+        argv = ["op", "read", "--no-newline", value]
+    else:
+        return value
+    try:
+        done = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError(key + ": could not read its secret reference with " + argv[0] + " (" + type(exc).__name__ + ")")
+    secret = done.stdout.decode("utf-8", errors="replace").rstrip("\r\n")
+    if done.returncode != 0 or not secret:
+        raise ValueError(key + ": " + argv[0] + " found nothing for " + value)
+    return secret
+
+
 def placeholder(value):
     return not value or bool(re.search(r"replace_me|example\.com|\.example\.|@example|xxxx|changeme|your-|^<.*>$", value, re.I))
 
@@ -237,7 +260,7 @@ def configured(h, org, conn, spec, values=None):
 def child_env(h, ctx, conn_name, conn, spec, interactive=False):
     """A fresh environment for one CLI: its secrets, private config/home/cache, safety switches."""
     org_dir = org_path(h, ctx["org"])
-    values = secrets(h, ctx["org"], conn_name, spec)
+    values = {k: reference(k, v) for k, v in secrets(h, ctx["org"], conn_name, spec).items()}
     env = {k: v for k, v in os.environ.items() if k in BASE_KEYS}
     env.update(values)
     config = local_path(org_dir, "config", conn_name)

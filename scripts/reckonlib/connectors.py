@@ -476,7 +476,8 @@ def template(h, org, cname, spec):
         return path, False
     orgs.private_dir(path.parent)
     lines = ["# Settings for the " + cname + " connection. One KEY=value per line; no shell syntax.",
-             "# Only " + " / ".join(p + "*" for p in spec["prefixes"]) + " keys are accepted. This file is never shown to the agent."]
+             "# Only " + " / ".join(p + "*" for p in spec["prefixes"]) + " keys are accepted. This file is never shown to the agent.",
+             "# A value may be a reference instead of the secret: keychain:<item> or op://vault/item/field."]
     if spec.get("login"):
         lines.append("# Or leave the keys empty and run: reckon login " + cname)
     for group in spec.get("required", []):
