@@ -56,7 +56,12 @@ class ResourceTests(OrgCase):
                                         ("https://acme.com:0/", "https://acme.com/", False),
                                         ("https://acme.com:8443/page", "https://acme.com/", False),
                                         ("https://evil.invalid#.acme.com/", "sc-domain:acme.com", False),
-                                        ("https://WWW.ACME.COM./page", "sc-domain:acme.com", True)):
+                                        ("https://WWW.ACME.COM./page", "sc-domain:acme.com", True),
+                                        # IDNA2003 would read faß.de as fass.de, another domain.
+                                        ("https://faß.de/", "https://fass.de/", False),
+                                        ("https://faß.de/", "https://faß.de/", False),
+                                        ("sc-domain:faß.de", "sc-domain:fass.de", False),
+                                        ("https://BÜCHER.example/page", "sc-domain:bücher.example", True)):
             self.assertEqual(site_allowed(value, pattern), allowed, (value, pattern))
 
     def test_review_bypasses_are_closed(self):

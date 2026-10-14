@@ -252,11 +252,18 @@ HOST = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])
 
 
 def ascii_host(host):
-    """A host name in its ASCII (punycode) form, lower case, or None if it is not a plain host name."""
-    try:
-        host = host.rstrip(".").encode("idna").decode("ascii").lower()
-    except UnicodeError:
-        return None
+    """A host name in its ASCII (punycode) form, lower case, or None if it is not a plain host name.
+    Python's codec is IDNA2003, which maps some names onto others (faß.de becomes fass.de), so a
+    non-ASCII name counts only when it converts back to exactly itself."""
+    host = host.rstrip(".").lower()
+    if not host.isascii():
+        try:
+            converted = host.encode("idna").decode("ascii")
+            if converted.encode("ascii").decode("idna") != host:
+                return None
+        except UnicodeError:
+            return None
+        host = converted
     return host if HOST.fullmatch(host) else None
 
 
