@@ -174,3 +174,65 @@ class ActionTests(OrgCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+FAKE_JIRA = ("import json, os, sys\n"
+             "args, tmp = sys.argv[1:], os.environ['TMPDIR']\n"
+             "if args[:2] == ['issue', 'search']:\n"
+             "    path = tmp + '/listing'\n"
+             "    print(open(path).read() if os.path.exists(path) else '[]'); sys.exit()\n"
+             "open(tmp + '/args', 'w').write(json.dumps({'args': args, 'read_only': os.environ.get('JIRA_READ_ONLY'),"
+             " 'no_input': os.environ.get('JIRA_NO_INPUT')}))\n"
+             "print(json.dumps({'id': '10001', 'key': 'ABC-7', 'self': 'https://acme.atlassian.net/rest/api/3/issue/10001'}))\n")
+JIRA_PARAMS = {"project": "ABC", "type": "Task", "summary": "-Checkout times out", "description": "Seen in s-1.\n",
+               "labels": "growth,checkout", "parent": "ABC-1"}
+
+
+class JiraWriteTests(OrgCase):
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch.object(actions, "terminal", return_value=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.org(connections={"jira": {"provider": "jira"}},
+                 secrets={"jira": ["JIRA_SITE=acme.atlassian.net", "JIRA_EMAIL=bot@acme.invalid", "JIRA_TOKEN=jira-secret-token"]})
+        self.fake(FAKE_JIRA, "jira")
+        self.root = orgs.workspace(self.home, "acme")
+        self.tmp = self.home / "orgs/acme/runtime/jira/tmp"
+
+    def prepare(self, **changes):
+        return actions.prepare(self.home, self.ctx(), self.root, "jira.issue.create", dict(JIRA_PARAMS, **changes), self.registry)[0]
+
+    def test_parameters_are_checked(self):
+        for bad in ({"project": "abc"}, {"type": "Task; rm"}, {"summary": "two\nlines"}, {"labels": "two words"},
+                    {"parent": "12"}, {"description": "x" * 30001}, {"assignee": "me"}):
+            with self.assertRaises(ValueError, msg=bad):
+                self.prepare(**bad)
+
+    def test_apply_creates_one_issue_and_links_it(self):
+        record = self.prepare()
+        # Org-wide connection: the operator types the org name.
+        done = actions.apply(self.home, self.ctx(), self.root, record["id"], self.registry, confirm=lambda p: "acme")
+        self.assertEqual(done["status"], "applied")
+        self.assertEqual(done["receipt"]["url"], "https://acme.atlassian.net/browse/ABC-7")
+        ran = json.loads((self.tmp / "args").read_text())
+        self.assertEqual(ran["args"], ["issue", "create", "--project=ABC", "--type=Task", "--summary=-Checkout times out",
+                                       "--description=Seen in s-1.\n\n" + actions.marker(record["id"], "jira.issue.create"),
+                                       "--label=growth", "--label=checkout", "--parent=ABC-1", "-o", "json"])
+        # The write runs without read-only mode and never waits for input.
+        self.assertEqual((ran["read_only"], ran["no_input"]), (None, "true"))
+
+    def test_reconcile_finds_the_issue_by_its_marker(self):
+        timeout = {"status": "timeout", "exit_code": None, "stdout": b"", "stderr": b""}
+        record = self.prepare()
+        with mock.patch.object(actions, "bounded", return_value=timeout):
+            self.assertEqual(actions.apply(self.home, self.ctx(), self.root, record["id"], self.registry, confirm=lambda p: "acme")["status"], "unknown")
+        other = {"key": "ABC-6", "self": "https://acme.atlassian.net/rest/api/3/issue/10000", "fields": {"summary": JIRA_PARAMS["summary"]}}
+        (self.tmp / "listing").write_text(json.dumps([other]))
+        self.assertEqual(actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)["status"], "unknown")
+        mine = {"key": "ABC-7", "self": "https://acme.atlassian.net/rest/api/3/issue/10001",
+                "fields": {"description": {"type": "doc", "content": [{"type": "paragraph", "content": [
+                    {"type": "text", "text": actions.marker(record["id"], "jira.issue.create")}]}]}}}
+        (self.tmp / "listing").write_text(json.dumps([other, mine]))
+        done = actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)
+        self.assertEqual((done["status"], done["receipt"]["url"]), ("applied", "https://acme.atlassian.net/browse/ABC-7"))

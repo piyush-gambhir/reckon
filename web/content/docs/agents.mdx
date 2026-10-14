@@ -114,10 +114,16 @@ logged in to another account than the one pinned, shows the same preview, and as
 or the org name for production environments and for accounts shared by every
 environment. It runs the action once and keeps a receipt: `applied`, `failed`,
 `cancelled`, or `unknown` when a timeout leaves the outcome unclear. For `unknown`,
-run `reckon act reconcile <id>`: every applied issue carries a hidden marker with
-the action ID, and reconcile records `applied` only when it finds that marker. Not
+run `reckon act reconcile <id>`: every applied issue carries a marker with the
+action ID (hidden on GitHub), and reconcile records `applied` only when it finds that marker. Not
 finding it leaves the action `unknown` (GitHub listings can lag), so check the
 repository yourself before preparing the write again. Prepared actions expire
 after 24 hours. The agent's Claude Code settings deny `reckon act apply`.
-Supported today: `github.issue.create`.
+Supported today: `github.issue.create` and `jira.issue.create`.
+
+`jira.issue.create` takes `project` (a key such as `ABC`), `type` (`Task`, `Bug`,
+`Story`...), a one-line `summary`, and optionally `description`, `labels` (comma
+separated, no spaces) and `parent` (an issue key). The description ends with a
+`Reckon action: <id>` line, which reconcile looks for, and jira-cli reuses an
+identical issue you created in the last 10 minutes instead of making a second one.
 

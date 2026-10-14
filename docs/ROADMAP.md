@@ -78,8 +78,10 @@ outcomes.
   created issue), never to `failed`.
 - Done 2026-10-15: non-secret target fingerprint on prepared actions (the connection
   as configured plus settings such as `GH_HOST`); any change means preparing again.
-- More writes, in this order: `jira.issue.create`, `gsc.sitemap.submit` (has a
-  native dry run), `grafana.annotation.create`, `jenkins.job.build`.
+- Done 2026-10-15: `jira.issue.create` (marker line in the description, reconciled
+  by a bounded JQL search; jira-cli itself reuses an identical issue from the last
+  10 minutes). Next writes, in this order: `gsc.sitemap.submit` (has a native dry
+  run), `grafana.annotation.create`, `jenkins.job.build`.
 
 ### M4 The agent CLI contract (`agent-cli/v1`)
 
