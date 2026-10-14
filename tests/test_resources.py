@@ -61,7 +61,9 @@ class ResourceTests(OrgCase):
                                         ("https://faß.de/", "https://fass.de/", False),
                                         ("https://faß.de/", "https://faß.de/", False),
                                         ("sc-domain:faß.de", "sc-domain:fass.de", False),
-                                        ("https://BÜCHER.example/page", "sc-domain:bücher.example", True)):
+                                        ("https://BÜCHER.example/page", "sc-domain:bücher.example", True),
+                                        ("https://bücher.xn--p1ai/", "https://xn--bcher-kva.xn--p1ai/", True),
+                                        ("https://evil。acme.com/", "sc-domain:acme.com", False)):
             self.assertEqual(site_allowed(value, pattern), allowed, (value, pattern))
 
     def test_review_bypasses_are_closed(self):
