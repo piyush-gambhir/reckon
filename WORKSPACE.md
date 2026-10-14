@@ -119,10 +119,18 @@ Reckon checkout. `reckon collect <id>` runs the mapped typed reads.
 
 ## Workflows
 
-Repeatable reviews live in the `reckon` skill, under `workflows/`:
+Repeatable reviews are recipes (`reckon workflows` lists them) with a playbook in
+the `reckon` skill, under `workflows/`:
 
-- `growth-review.md`: weekly search and on-site behaviour (Search Console, Bing, Clarity).
-- `release-review.md`: what shipped to an environment and whether it is healthy (Jenkins, GitHub, CubeAPM or Grafana).
+- `growth-review`: weekly search and on-site behaviour (Search Console, Bing, Clarity).
+- `release-review`: what shipped to an environment and whether it is healthy (Jenkins, GitHub, CubeAPM or Grafana).
+
+Start one with `reckon task --workflow growth-review --param site=sc-domain:acme.com`,
+follow its playbook, and save every read with `--session`. `reckon check <id>`
+shows which checks the saved evidence meets; the session can be closed as done
+only when none is left to do (skip one with
+`reckon note <id> --kind question --text "skip <check>: <reason>"`). An org can
+add or replace recipes in its own `workflows/` folder.
 
 Incident work uses the skill's modes (investigate, monitor, analyze).
 

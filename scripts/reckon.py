@@ -102,12 +102,15 @@ def parser():
         command.add_argument("--playbook", choices=("latency", "errors", "workload", "changes"), default="latency")
         command.add_argument("--collect", action="store_true", help="perform the mapped live reads now")
     command = sub.add_parser("task", parents=[scope], help="start a session for any piece of work")
-    command.add_argument("--question", required=True, help="what this work is about")
+    command.add_argument("--question", help="what this work is about (a workflow supplies one)")
+    command.add_argument("--workflow", help="start from a workflow recipe (reckon workflows lists them)")
+    command.add_argument("--param", action="append", default=[], metavar="KEY=VALUE", help="a workflow parameter; repeat for each")
     command.add_argument("--area", help="dev, product, gtm, sales, ops or your own word")
     command.add_argument("--budget", type=int, help="most reads this session may record (protects quotas and production)")
     command.add_argument("--from", dest="start", help="optional window start (ISO time with timezone)")
     command.add_argument("--to", dest="end", help="optional window end")
 
+    sub.add_parser("workflows", parents=[scope], help="workflow recipes: parameters and the checks that make one done")
     command = sub.add_parser("services", parents=[scope], help="inspect or validate service mappings")
     command.add_argument("action", choices=("list", "show", "validate"))
     command.add_argument("name", nargs="?")
@@ -498,7 +501,29 @@ def execute(args):
         report = work.report(root, data["id"])
         return {"session": data["id"], "org": ctx["org"], "environment": ctx["env"], "path": str(path), "report": str(report),
                 "planned_operations": len(tasks), "gaps": gaps, "collection": collection, "next": "reckon resume " + data["id"]}
+    if name == "workflows":
+        from reckonlib import workflows
+        return [{"workflow": r["id"], "title": r["title"], "area": r.get("area"), "budget": r.get("budget"),
+                 "params": {k: v.get("help", "") + (" (default " + v["default"] + ")" if v.get("default") else "") for k, v in r.get("params", {}).items()},
+                 "checks": [c["id"] for c in r["checks"]], "source": r["source"]} for r in workflows.recipes(root).values()]
     if name == "task":
+        recipe = playbook = None
+        if args.workflow:
+            from reckonlib import workflows
+            given = {}
+            for item in args.param:
+                key, sep, value = item.partition("=")
+                if not sep or key in given:
+                    raise ValueError("--param takes KEY=VALUE, once per key")
+                given[key] = value
+            text, area, budget, recipe, playbook = workflows.start(root, args.workflow, given)
+            args.question = args.question or text
+            args.area = args.area or area
+            args.budget = args.budget if args.budget is not None else budget
+        elif args.param:
+            raise ValueError("--param needs --workflow")
+        if args.question is None:
+            raise ValueError("task needs --question or --workflow")
         question(args.question)
         if bool(args.start) != bool(args.end):
             raise ValueError("give both --from and --to, or neither")
@@ -507,10 +532,16 @@ def execute(args):
         bounds = window(args.start, args.end) if args.start else None
         if args.budget is not None and not 1 <= args.budget <= 1000:
             raise ValueError("--budget must be 1-1000")
-        path, data = create(root, ctx["org"], ctx["env"], args.question, "task", bounds=bounds, area=args.area, budget=args.budget)
+        path, data = create(root, ctx["org"], ctx["env"], args.question, "task", bounds=bounds, playbook=playbook, area=args.area,
+                            budget=args.budget, workflow=recipe)
         report = work.report(root, data["id"])
-        return {"session": data["id"], "org": ctx["org"], "environment": ctx["env"], "path": str(path), "report": str(report),
-                "next": "reckon run <connection> --session " + data["id"] + " -- <arguments>"}
+        result = {"session": data["id"], "org": ctx["org"], "environment": ctx["env"], "path": str(path), "report": str(report),
+                  "next": "reckon run <connection> --session " + data["id"] + " -- <arguments>"}
+        if recipe:
+            result["checks"] = [c["id"] + ": " + c["text"] for c in recipe["checks"]]
+            result["done_when"] = "reckon check " + data["id"] + " shows no check left to do; skip one with reckon note " + data["id"] + \
+                " --kind question --text \"skip <check>: <reason>\""
+        return result
     if name == "services":
         if args.action == "show":
             if not args.name:
@@ -542,7 +573,7 @@ def execute(args):
     if name == "resume":
         return work.resume(root, args.session)
     if name == "check":
-        return work.check(root, args.session)
+        return work.check(root, args.session, available(h, ctx, registry))
     if name == "report":
         return {"report": str(work.report(root, args.session))}
     if name == "note":
@@ -592,9 +623,19 @@ def execute(args):
             _, data = session_path(root, args.session)
             if args.outcome == "diagnosed" and not any(n["kind"] == "finding" for n in data["notes"]):
                 raise ValueError("record an evidence-backed finding before marking the investigation diagnosed")
+            if args.outcome == "done" and data.get("workflow"):
+                todo = work.check(root, args.session, available(h, ctx, registry))["workflow"]["todo"]
+                if todo:
+                    raise ValueError("workflow checks still to do: " + ", ".join(todo) + "; read them, or record why with reckon note " +
+                                     args.session + " --kind question --text \"skip <check>: <reason>\"")
             data["status"] = args.outcome
             write_json(path / "session.json", data)
         return {"session": args.session, "status": args.outcome}
+
+
+def available(h, ctx, registry):
+    """Providers this org can reach in this environment, for workflow checks."""
+    return {r["provider"] for r in orgs.describe(h, ctx, registry) if r["applies"]}
 
 
 def question(text):
@@ -681,6 +722,16 @@ def display(command, result):
             print("  problem: " + item)
         for item in result["warnings"]:
             print("  warning: " + item)
+        if result.get("workflow"):
+            print("workflow " + result["workflow"]["workflow"] + ":")
+            for row in result["workflow"]["checks"]:
+                print("  " + row["status"].ljust(12) + row["id"].ljust(16) + row["text"])
+    elif command == "workflows":
+        for row in result:
+            print(row["workflow"].ljust(18) + row["title"])
+            for key, text in row["params"].items():
+                print("  --param " + key + "=  " + text)
+            print("  checks: " + ", ".join(row["checks"]))
     elif command == "brief":
         from reckonlib.brief import render, render_all
         print(render_all(result) if "orgs" in result else render(result))

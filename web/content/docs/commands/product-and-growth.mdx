@@ -7,9 +7,14 @@ These tools usually have no environments, so each is one shared connection.
 Start a session for recurring reviews so the evidence is kept:
 
 ```bash
-reckon task --question "Weekly search review" --area gtm
+reckon task --workflow growth-review --param site=sc-domain:example.com
 reckon run gsc --session <id> --label "top queries 28d" -- top queries --site sc-domain:example.com --last 28d --limit 25 -o json
+reckon check <id>   # which of the review's checks the saved reads meet
 ```
+
+The growth review recipe lists the reads that make a review complete (totals,
+trend, top queries and pages, opportunities, Bing, on-site behaviour, a finding).
+Checks for tools the org has not connected show as unavailable rather than missing.
 
 ## Jira
 

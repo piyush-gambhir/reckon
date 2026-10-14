@@ -7,7 +7,7 @@ health. Run it in the environment being reviewed; another environment needs anot
 ## Start
 
 ```bash
-reckon task --question "Release review <env>, <from> to <to>" --area dev --from <ISO> --to <ISO> --budget 60
+reckon task --workflow release-review --from <ISO> --to <ISO>
 ```
 
 Read `knowledge/<env>/deploy-pipelines.md` for each service's deploy job and branch.
@@ -38,8 +38,11 @@ regression looks like an incident, start `reckon debug` for that service.
 
 ## Done when
 
-Close the session (`reckon close <id> --outcome done`) only when each item is met
-or recorded as skipped with a reason (`reckon note <id> --kind question`):
+`reckon check <id>` shows each check from the recipe (`release-review.json`) as met by
+saved evidence, skipped, unavailable (no such connection) or still to do, and
+`reckon close <id> --outcome done` is refused while any is to do. Skip one with a
+reason: `reckon note <id> --kind question --text "skip <check>: <reason>"`. The
+list below is what each check means:
 
 - [ ] Every deploy job in deploy-pipelines.md read for the window, or the gap noted
 - [ ] Each deploy's revision established from build evidence, not inferred from CI

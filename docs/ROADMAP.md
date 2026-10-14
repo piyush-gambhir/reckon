@@ -52,8 +52,10 @@ outcomes.
 
 ### M2 Workflows that pay (next)
 
-- Growth and release reviews get explicit inputs, required checks, skipped and
-  failed checks, and completion judged from collected evidence, not closing prose.
+- Done 2026-10-14: growth and release reviews are recipes (`skills/reckon/workflows/*.json`,
+  overridable per org) with parameters and required checks; `reckon check` marks each met
+  by evidence, skipped with a reason, unavailable or to do, and `close --outcome done`
+  is refused while any is to do.
 - A saved review links observation, finding, proposed action and the action's
   receipt, so next week's review starts from last week's.
 - Done 2026-10-14: `reckon run --cache AGE`, keyed by org/env/connection/exact
@@ -241,7 +243,7 @@ and ToolHive (2026-10-14), ranked by value for one person running several busine
 | Done 2026-10-14: activity log of every run, refusal, prepare and apply (`reckon log`) | Paperclip, Agent Vault | S |
 | Done 2026-10-14: secret references (`keychain:`, `op://`) resolved only inside `reckon run` | ToolHive | S |
 | Saved routines: launchd or cron runs a headless agent on a workflow, with skip and catch-up policies | Paperclip, HolmesGPT, Goose | M |
-| Workflow recipes: typed parameters, required checks and a report schema | Goose recipes | M |
+| Done 2026-10-14: workflow recipes with parameters and required checks (report schema still to do) | Goose recipes | M |
 | Large output spilled to the session, with a preview and the path | HolmesGPT | S |
 | Agent spend per org from Claude Code and Codex transcripts | Paperclip | M |
 | Goals and KPIs per org, bound to reads, reported in briefs | Paperclip | M |

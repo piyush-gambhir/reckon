@@ -1,0 +1,22 @@
+{
+  "id": "growth-review",
+  "title": "Weekly growth review",
+  "question": "Growth review for {site}, week of {week}",
+  "area": "gtm",
+  "budget": 40,
+  "playbook": "growth-review.md",
+  "params": {
+    "site": {"help": "Search Console property, e.g. sc-domain:acme.com", "pattern": "(sc-domain:|https?://)\\S+"},
+    "week": {"help": "any date in the week", "default": "today", "pattern": "\\d{4}-\\d{2}-\\d{2}"}
+  },
+  "checks": [
+    {"id": "gsc-totals", "text": "Search Console totals against the previous period", "any": [{"provider": "gsc", "command": ["performance"]}]},
+    {"id": "gsc-trend", "text": "Search Console weekly trend", "any": [{"provider": "gsc", "command": ["trend"]}]},
+    {"id": "top-queries", "text": "Top queries for 7 and 28 days", "any": [{"provider": "gsc", "command": ["top", "queries"]}]},
+    {"id": "top-pages", "text": "Top pages for 7 and 28 days", "any": [{"provider": "gsc", "command": ["top", "pages"]}]},
+    {"id": "opportunities", "text": "Striking-distance and low-CTR opportunities", "any": [{"provider": "gsc", "command": ["insights"]}]},
+    {"id": "bing", "text": "Bing summary and crawl issues", "any": [{"provider": "bing", "command": ["stats"]}, {"provider": "bing", "command": ["crawl"]}]},
+    {"id": "behaviour", "text": "On-site behaviour for pages that moved", "any": [{"provider": "clarity", "command": ["export"]}, {"provider": "clarity", "command": ["recordings"]}]},
+    {"id": "findings", "text": "At least one finding backed by evidence", "findings": 1}
+  ]
+}

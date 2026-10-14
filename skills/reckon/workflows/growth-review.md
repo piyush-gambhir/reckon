@@ -7,7 +7,7 @@ org does not have and say so.
 ## Start
 
 ```bash
-reckon task --question "Growth review, week of <date>" --area gtm --budget 40
+reckon task --workflow growth-review --param site=sc-domain:<domain>   # one session per property
 ```
 
 Read `knowledge/_shared/company.md` for the sites, key pages and target queries.
@@ -42,8 +42,11 @@ for the operator.
 
 ## Done when
 
-Close the session (`reckon close <id> --outcome done`) only when each item is met
-or recorded as skipped with a reason (`reckon note <id> --kind question`):
+`reckon check <id>` shows each check from the recipe (`growth-review.json`) as met by
+saved evidence, skipped, unavailable (no such connection) or still to do, and
+`reckon close <id> --outcome done` is refused while any is to do. Skip one with a
+reason: `reckon note <id> --kind question --text "skip <check>: <reason>"`. The
+list below is what each check means:
 
 - [ ] Search Console totals and trend read for every property in the company profile, or the gap noted
 - [ ] Top queries and pages compared for 7 and 28 days
