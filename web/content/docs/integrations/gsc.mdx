@@ -51,6 +51,13 @@ also refuses `--access-token`, `--credentials`, `--profile`, `--config`,
 `auth use`, `config`, `sites use`, `update` and `export` commands. The agent
 picks a property per command with `--site`.
 
+One write is supported: the agent prepares `gsc.sitemap.submit` (a property and a
+sitemap URL inside it) and you apply it with `reckon act apply <id>`, which runs
+`gsc sitemaps submit` once without read-only mode. A connection limited to
+properties (`--allow site=...`) refuses sitemaps of other properties. The
+credential needs write scope (a profile logged in with `--scope readonly` fails
+with a clear error). See [Agents](/docs/agents#writes).
+
 ## Contract check
 
 With gsc 0.1.8 or later, `reckon run` first asks `gsc commands resolve -- <args>`

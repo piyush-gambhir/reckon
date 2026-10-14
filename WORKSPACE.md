@@ -179,7 +179,7 @@ for org-wide accounts), runs it once, and keeps a receipt. If a receipt says `un
 `reckon act reconcile <id>`: it marks the action `applied` only when it finds the
 issue carrying the action's marker; otherwise the outcome stays unknown and you must
 not prepare the same write again until the operator has checked. Prepared actions expire after 24 hours. Supported writes:
-`github.issue.create` and `jira.issue.create`:
+`github.issue.create`, `jira.issue.create` and `gsc.sitemap.submit`:
 
 ```bash
 reckon act prepare jira.issue.create --session <id> --body-stdin \
@@ -194,8 +194,13 @@ separated, no spaces) and `parent` (an issue key). The description ends with a
 `Reckon action: <id>` line, which reconcile looks for, and jira-cli reuses an
 identical issue you created in the last 10 minutes instead of making a second one.
 
-For any other change (rerun a build, edit a dashboard, submit a sitemap), describe
-the exact change and its target for the operator.
+`gsc.sitemap.submit` takes `site` (a property: `sc-domain:example.com` or
+`https://www.example.com/`) and `sitemap` (its full URL, inside that property).
+Submitting is idempotent and asks Google to fetch the sitemap again; the
+connection needs a credential with write scope.
+
+For any other change (rerun a build, edit a dashboard), describe the exact change
+and its target for the operator.
 
 ## Areas and recipes
 

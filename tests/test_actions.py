@@ -236,3 +236,60 @@ class JiraWriteTests(OrgCase):
         (self.tmp / "listing").write_text(json.dumps([other, mine]))
         done = actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)
         self.assertEqual((done["status"], done["receipt"]["url"]), ("applied", "https://acme.atlassian.net/browse/ABC-7"))
+
+
+FAKE_GSC = ("import json, os, sys\n"
+            "args, tmp = sys.argv[1:], os.environ['TMPDIR']\n"
+            "if args[:2] == ['sitemaps', 'get']:\n"
+            "    print(open(tmp + '/sitemap').read()); sys.exit()\n"
+            "open(tmp + '/args', 'w').write(json.dumps({'args': args, 'read_only': os.environ.get('GSC_READ_ONLY')}))\n"
+            "print(json.dumps({'site': 'sc-domain:acme.com', 'sitemap': args[2], 'submitted': True}))\n")
+SITEMAP = {"site": "sc-domain:acme.com", "sitemap": "https://www.acme.com/sitemap.xml"}
+
+
+class SitemapWriteTests(OrgCase):
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch.object(actions, "terminal", return_value=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.org(connections={"gsc": {"provider": "gsc", "resources": {"site": ["sc-domain:acme.com"]}}},
+                 secrets={"gsc": ["GSC_ACCESS_TOKEN=gsc-secret-token"]})
+        self.fake(FAKE_GSC, "gsc")
+        self.root = orgs.workspace(self.home, "acme")
+        self.tmp = self.home / "orgs/acme/runtime/gsc/tmp"
+
+    def prepare(self, **changes):
+        return actions.prepare(self.home, self.ctx(), self.root, "gsc.sitemap.submit", dict(SITEMAP, **changes), self.registry)[0]
+
+    def apply(self, record):
+        return actions.apply(self.home, self.ctx(), self.root, record["id"], self.registry, confirm=lambda p: "acme")
+
+    def test_the_sitemap_must_be_inside_an_allowed_property(self):
+        for bad, message in (({"sitemap": "https://other.com/sitemap.xml"}, "inside the property"),
+                             ({"site": "acme.com"}, "Search Console property"),
+                             ({"sitemap": "https://www.acme.com/*.xml"}, "full URL"),
+                             ({"site": "sc-domain:other.com", "sitemap": "https://other.com/s.xml"}, "outside")):
+            with self.assertRaisesRegex(ValueError, message):
+                self.prepare(**bad)
+        # A URL-prefix property inside the allowed domain is fine.
+        self.prepare(site="https://www.acme.com/", sitemap="https://www.acme.com/news/sitemap.xml")
+
+    def test_apply_submits_once_without_read_only(self):
+        done = self.apply(self.prepare())
+        self.assertEqual(done["status"], "applied")
+        self.assertEqual(done["receipt"]["url"], "https://search.google.com/search-console/sitemaps?resource_id=sc-domain%3Aacme.com")
+        ran = json.loads((self.tmp / "args").read_text())
+        self.assertEqual(ran, {"args": ["sitemaps", "submit", "https://www.acme.com/sitemap.xml", "--site=sc-domain:acme.com", "-o", "json"],
+                               "read_only": None})
+
+    def test_reconcile_needs_a_submission_after_the_apply(self):
+        timeout = {"status": "timeout", "exit_code": None, "stdout": b"", "stderr": b""}
+        record = self.prepare()
+        with mock.patch.object(actions, "bounded", return_value=timeout):
+            self.assertEqual(self.apply(record)["status"], "unknown")
+        (self.tmp / "sitemap").write_text(json.dumps({"path": SITEMAP["sitemap"], "lastSubmitted": "2020-01-01T00:00:00Z"}))
+        self.assertEqual(actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)["status"], "unknown")
+        from reckonlib.store import now
+        (self.tmp / "sitemap").write_text(json.dumps({"path": SITEMAP["sitemap"], "lastSubmitted": now()}))
+        self.assertEqual(actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)["status"], "applied")

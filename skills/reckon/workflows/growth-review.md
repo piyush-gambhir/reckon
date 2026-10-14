@@ -44,8 +44,9 @@ followed up as `follow-up`.
 Record each finding with `reckon note <id> --kind finding --evidence <ids>`, and
 each recommended action with `reckon note <id> --kind action --evidence <ids>`
 (its page or query and the expected effect in the text), then `reckon report <id>`.
-At most five actions; `reckon check` counts them. Writes (sitemaps, page edits, issues) are
-for the operator.
+At most five actions; `reckon check` counts them. A sitemap submit or an issue can be
+prepared for the operator to apply (`reckon act prepare gsc.sitemap.submit|github.issue.create|jira.issue.create
+--session <id>`); page edits are described for the operator.
 
 ## Done when
 

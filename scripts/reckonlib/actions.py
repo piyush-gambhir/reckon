@@ -26,7 +26,9 @@ EXPIRY_HOURS = 24
 WRITES = {
     "github.issue.create": ("github", ("repo", "title", "body"), ("labels",), ("repo", "repo")),
     "jira.issue.create": ("jira", ("project", "type", "summary"), ("description", "labels", "parent"), None),
+    "gsc.sitemap.submit": ("gsc", ("site", "sitemap"), (), ("site", "site")),
 }
+PROPERTY = re.compile(r"sc-domain:[A-Za-z0-9.-]+|https?://[^\s/*?\[\]]+/[^\s*?\[\]]*")
 
 
 def validate(operation, params):
@@ -40,6 +42,12 @@ def validate(operation, params):
             raise ValueError(operation + " requires " + key)
     if any(not isinstance(v, str) or "\x00" in v for v in params.values()):
         raise ValueError("parameters are text without NUL characters")
+    if operation == "gsc.sitemap.submit":
+        if not PROPERTY.fullmatch(params["site"]):
+            raise ValueError("site is a Search Console property: sc-domain:example.com or https://www.example.com/")
+        if not re.fullmatch(r"https?://[^\s*?\[\]]{1,2040}", params["sitemap"]) or not connectors.site_allowed(params["sitemap"], params["site"]):
+            raise ValueError("sitemap is the sitemap's full URL, inside the property " + params["site"])
+        return provider
     if operation == "jira.issue.create":
         if not re.fullmatch(r"[A-Z][A-Z0-9_]{0,49}", params["project"]):
             raise ValueError("project is a Jira project key such as ABC")
@@ -76,6 +84,9 @@ def argv(operation, params, action_id):
     """The exact command. A GitHub body travels on standard input, never in argv; jira-cli
     takes its description only as a flag, given as one --flag=value argument so text that
     starts with a dash stays a value."""
+    if operation == "gsc.sitemap.submit":
+        # Submitting is idempotent (an HTTP PUT); it asks Google to fetch the sitemap again.
+        return ["gsc", "sitemaps", "submit", params["sitemap"], "--site=" + params["site"], "-o", "json"], None
     if operation == "jira.issue.create":
         text = params.get("description", "").rstrip("\n")
         args = ["jira", "issue", "create", "--project=" + params["project"], "--type=" + params["type"],
@@ -96,8 +107,16 @@ def browse(issue):
     return host.group(0) + "/browse/" + issue["key"] if host and issue.get("key") else None
 
 
-def link(operation, out):
+def console(site):
+    """Search Console's sitemaps page for a property."""
+    from urllib.parse import quote
+    return "https://search.google.com/search-console/sitemaps?resource_id=" + quote(site, safe="")
+
+
+def link(operation, out, params=None):
     """The created item's address in a write's output."""
+    if operation == "gsc.sitemap.submit":
+        return console(params["site"]) if params else None
     if operation == "jira.issue.create":
         try:
             created = json.loads(out)
@@ -107,11 +126,26 @@ def link(operation, out):
     return next(iter(re.findall(r"https://\S+", out)), None)
 
 
+def submitted(stamp, started, slack=300):
+    """Whether Google's lastSubmitted time is at or after the apply began, within slack seconds."""
+    try:
+        when = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return (when - started).total_seconds() >= -slack
+
+
 def bound(conn, operation, params):
-    """The write's target and the connection's limit for it, if the connection has one."""
+    """(kind, target, allowed) when the write's target is outside the connection's resource limit, else None."""
     rule = WRITES[operation][3]
     allowed = conn.get("resources", {}).get(rule[1]) if rule else None
-    return (rule[1], params[rule[0]], allowed) if allowed else None
+    if not allowed:
+        return None
+    value = params[rule[0]]
+    test = connectors.site_allowed if rule[1] == "site" else fnmatchcase
+    return None if any(test(value, p) for p in allowed) else (rule[1], value, allowed)
 
 
 # Settings that choose where a write lands (GH_HOST, JIRA_URL); secrets are never part of the fingerprint.
@@ -169,9 +203,9 @@ def is_live(ctx, conn):
 def prepare(h, ctx, root, operation, params, registry, session=None):
     provider = validate(operation, params)
     cname, conn = orgs.resolve(ctx, provider)
-    limit = bound(conn, operation, params)
-    if limit and not any(fnmatchcase(limit[1], p) for p in limit[2]):
-        raise ValueError(limit[0] + " " + limit[1] + " is outside " + cname + " (allowed: " + ", ".join(limit[2]) + ")")
+    outside = bound(conn, operation, params)
+    if outside:
+        raise ValueError(outside[0] + " " + outside[1] + " is outside " + cname + " (allowed: " + ", ".join(outside[2]) + ")")
     action_id = datetime.now(timezone.utc).strftime("a-%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:8]
     record = {"schema_version": 1, "id": action_id, "org": ctx["org"], "environment": ctx["env"], "connection": cname,
               "operation": operation, "params": params, "status": "prepared", "prepared_at": now(), "receipt": None,
@@ -209,9 +243,9 @@ def connection(ctx, record):
         raise ValueError("action belongs to " + record["org"] + "/" + record["environment"] + "; this context is " + ctx["org"] + "/" + ctx["env"])
     if not conn or conn["provider"] != WRITES[record["operation"]][0] or not orgs.applies(conn, ctx["env"]):
         raise ValueError("connection " + cname + " changed or no longer serves " + ctx["env"] + "; prepare the action again")
-    limit = bound(conn, record["operation"], record["params"])
-    if limit and not any(fnmatchcase(limit[1], p) for p in limit[2]):
-        raise ValueError(limit[0] + " " + limit[1] + " is now outside " + cname + "; prepare the action again")
+    outside = bound(conn, record["operation"], record["params"])
+    if outside:
+        raise ValueError(outside[0] + " " + outside[1] + " is now outside " + cname + "; prepare the action again")
     return cname, conn
 
 
@@ -272,7 +306,7 @@ def apply(h, ctx, root, action_id, registry, confirm=None):
             # Timed out or cancelled: the server may have accepted it. Check before retrying.
             status = "unknown"
         record.update(status=status, completed_at=now(), receipt={"exit_code": result["exit_code"], "stdout": out[-2000:], "stderr": err[-2000:],
-                                                                  "url": link(record["operation"], out)})
+                                                                  "url": link(record["operation"], out, record["params"])})
         write_json(path / "action.json", record)
         return record
 
@@ -280,9 +314,10 @@ def apply(h, ctx, root, action_id, registry, confirm=None):
 def reconcile(h, ctx, root, action_id, registry):
     """Find out whether an action with an unknown outcome landed, by reading the target.
 
-    Only proof upgrades the receipt: an issue whose body carries this action's marker.
-    Not finding it is not proof of failure (search and listings lag), so the action
-    stays unknown and must not be prepared again until someone checks by hand."""
+    Only proof upgrades the receipt: an issue whose body carries this action's marker,
+    or a sitemap Google records as submitted after the apply began. Not finding it is
+    not proof of failure (search and listings lag), so the action stays unknown and
+    must not be prepared again until someone checks by hand."""
     path, _ = load(root, action_id)
     with lock(path):
         _, record = load(root, action_id)
@@ -291,34 +326,40 @@ def reconcile(h, ctx, root, action_id, registry):
         cname, conn = connection(ctx, record)
         env, values = orgs.child_env(h, ctx, cname, conn, registry[conn["provider"]])
         params, operation = record["params"], record["operation"]
-        if operation == "jira.issue.create":
+        tag = marker(action_id, operation)
+        started = datetime.fromisoformat(record.get("approved_at", record["prepared_at"]).replace("Z", "+00:00"))
+        if operation == "gsc.sitemap.submit":
+            where = params["sitemap"]
+            command = ["gsc", "sitemaps", "get", params["sitemap"], "--site=" + params["site"], "-o", "json"]
+            # Google's clock and ours may differ a little; a submit within those minutes counts.
+            find = (lambda data: [console(params["site"])] if isinstance(data, dict) and submitted(data.get("lastSubmitted"), started) else [])
+        elif operation == "jira.issue.create":
             where = "project " + params["project"]
             # JQL reads dates in the user's time zone, so look back in whole days, not from a UTC time.
-            started = datetime.fromisoformat(record.get("approved_at", record["prepared_at"]).replace("Z", "+00:00"))
             days = int((datetime.now(timezone.utc) - started).total_seconds() // 86400) + 2
             command = ["jira", "issue", "search", "--jql", 'project = "' + params["project"] + '" AND creator = currentUser() AND created >= -' +
                        str(days) + "d ORDER BY created DESC", "--fields", "summary,description", "--limit", "100", "-o", "json"]
-            body, address = (lambda i: json.dumps((i.get("fields") or {}).get("description"))), browse
+            find = (lambda items: [browse(i) for i in items if isinstance(i, dict) and tag in json.dumps((i.get("fields") or {}).get("description"))]
+                    if isinstance(items, list) else [])
         else:
             where = params["repo"]
             command = ["gh", "issue", "list", "--repo", params["repo"], "--state", "all", "--limit", "100",
                        "--json", "number,url,body,createdAt"]
-            body, address = (lambda i: i.get("body") or ""), (lambda i: i.get("url"))
+            find = (lambda items: [i.get("url") for i in items if isinstance(i, dict) and tag in str(i.get("body") or "")]
+                    if isinstance(items, list) else [])
         result = bounded(command, env=env, cwd=env["TMPDIR"], timeout=60, max_bytes=8 * 1048576)
         if result["status"] != "ok":
             raise ValueError("could not read " + where + " (" + result["status"] + "); the outcome stays unknown")
-        tag = marker(action_id, operation)
         try:
-            items = json.loads(result["stdout"].decode() or "[]")
+            found = find(json.loads(result["stdout"].decode() or "[]"))
         except ValueError:
             raise ValueError("could not read the listing of " + where + "; the outcome stays unknown")
-        found = [i for i in items if isinstance(i, dict) and tag in body(i)] if isinstance(items, list) else []
         if found:
             record.update(status="applied", reconciled_at=now(),
-                          receipt=dict(record.get("receipt") or {}, url=address(found[0]), reconciled=True))
+                          receipt=dict(record.get("receipt") or {}, url=found[0], reconciled=True))
             write_json(path / "action.json", record)
             return record
         record.update(last_reconcile_at=now())
         write_json(path / "action.json", record)
-        return dict(record, note="no issue with this action's marker among the 100 newest in " + where +
+        return dict(record, note="no proof that this action landed in " + where +
                     "; still unknown. Check it yourself before preparing the write again.")

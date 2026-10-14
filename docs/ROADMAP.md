@@ -80,8 +80,9 @@ outcomes.
   as configured plus settings such as `GH_HOST`); any change means preparing again.
 - Done 2026-10-15: `jira.issue.create` (marker line in the description, reconciled
   by a bounded JQL search; jira-cli itself reuses an identical issue from the last
-  10 minutes). Next writes, in this order: `gsc.sitemap.submit` (has a native dry
-  run), `grafana.annotation.create`, `jenkins.job.build`.
+  10 minutes). Done 2026-10-15: `gsc.sitemap.submit` (idempotent; reconciled from
+  the sitemap's `lastSubmitted`; bound by the connection's site limits). Next writes:
+  `grafana.annotation.create`, `jenkins.job.build`.
 
 ### M4 The agent CLI contract (`agent-cli/v1`)
 
