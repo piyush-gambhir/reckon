@@ -218,7 +218,7 @@ def knowledge_snapshot(root, env):
     return files
 
 
-def create(root, org, env, question, mode, service=None, bounds=None, playbook=None, area=None, budget=None, workflow=None):
+def create(root, org, env, question, mode, service=None, bounds=None, playbook=None, area=None, budget=None, workflow=None, previous=None):
     """An investigation (service, window, playbook) or a task in any area."""
     private_dir(local_path(root, "sessions"))
     sid = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:10]
@@ -230,6 +230,8 @@ def create(root, org, env, question, mode, service=None, bounds=None, playbook=N
             "knowledge": knowledge_snapshot(root, env), "budget": budget}
     if workflow:
         data["workflow"] = workflow
+    if previous:
+        data["previous"] = previous
     write_json(path / "session.json", data)
     return path, data
 

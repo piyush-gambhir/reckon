@@ -91,6 +91,66 @@ class WorkflowTests(OrgCase):
         question = workflows.start(orgs.workspace(self.home, "acme"), "growth-review", {"site": "sc-domain:{week}", "week": "2026-01-05"})[0]
         self.assertEqual(question, "Growth review for sc-domain:{week}, week of 2026-01-05")
 
+    def finish(self, sid, actions=("Rewrite the pricing title", "Add FAQ schema")):
+        """Close a growth review as done with one finding and the given actions."""
+        run = self.cli("run", "gsc", "--session", sid, *self.scope, "--", "performance", "--site", "sc-domain:acme.com", "-o", "json")
+        self.assertEqual(run.returncode, 0, run.stderr)
+        evidence = self.check(sid)["workflow"]["checks"][0]["evidence"][0]
+        for check in ("gsc-trend", "top-queries", "top-pages", "opportunities"):
+            self.cli("note", sid, "--kind", "question", "--text", "skip " + check + ": not needed here", *self.scope)
+        self.cli("note", sid, "--kind", "finding", "--text", "Clicks steady", "--evidence", evidence, *self.scope)
+        ids = [json.loads(self.cli("note", sid, "--kind", "action", "--text", text, "--evidence", evidence, *self.scope, "--json").stdout)["id"]
+               for text in actions]
+        return evidence, ids
+
+    def test_the_next_review_starts_from_the_last_one(self):
+        data = orgs.load(self.home, "acme", self.registry)
+        data["connections"]["gh"] = {"provider": "github"}
+        orgs.save(self.home, data, self.registry)
+        self.secret("acme", "gh", ["GH_TOKEN=gh-token-1"])
+        first = self.start("site=sc-domain:acme.com")
+        self.assertNotIn("previous", first)
+        _, ids = self.finish(first["session"])
+        prepared = self.cli("act", "prepare", "github.issue.create", "--session", first["session"], *self.scope,
+                            "--params", json.dumps({"repo": "acme/web", "title": "Add FAQ schema", "body": "From the growth review."}))
+        self.assertEqual(prepared.returncode, 0, prepared.stderr)
+        # An open review is not the last one: the next run waits for a finished review.
+        self.assertNotIn("previous", self.start("site=sc-domain:acme.com"))
+        self.assertEqual(self.cli("close", first["session"], "--outcome", "done", *self.scope).returncode, 0)
+        # Another site is another series.
+        self.assertNotIn("previous", self.start("site=sc-domain:other.com"))
+        second = self.start("site=sc-domain:acme.com")
+        last = second["previous"]
+        self.assertEqual(last["session"], first["session"])
+        self.assertEqual([a["id"] for a in last["actions"]], ids)
+        self.assertEqual([(w["operation"], w["status"]) for w in last["writes"]], [("github.issue.create", "prepared")])
+        self.assertIn("follow-up: each action from the last review", second["checks"])
+        sid = second["session"]
+        evidence, _ = self.finish(sid, actions=())
+        # Only a finding can follow up, and only an action from the last review.
+        for kind, ref, message in (("finding", "n-unknown", "not an action from this session's last review"),
+                                   ("action", ids[0], "a follow-up is a finding")):
+            refused = self.cli("note", sid, "--kind", kind, "--text", "x", "--evidence", evidence, "--follows", ref, *self.scope)
+            self.assertEqual(refused.returncode, 1, kind)
+            self.assertIn(message, refused.stderr)
+        self.cli("note", sid, "--kind", "finding", "--text", "Pricing title rewritten; CTR up", "--evidence", evidence,
+                 "--follows", ids[0], *self.scope)
+        rows = {r["id"]: r for r in self.check(sid)["workflow"]["checks"]}
+        self.assertEqual((rows["follow-up"]["status"], rows["follow-up"]["missing"]), ("todo", [ids[1]]))
+        refused = self.cli("close", sid, "--outcome", "done", *self.scope)
+        self.assertIn("follow-up", refused.stderr)
+        self.cli("note", sid, "--kind", "finding", "--text", "FAQ schema not added yet", "--evidence", evidence, "--follows", ids[1], *self.scope)
+        self.assertEqual(self.cli("close", sid, "--outcome", "done", *self.scope).returncode, 0)
+        report = json.loads(self.cli("report", sid, *self.scope, "--json").stdout)["report"]
+        with open(report) as text:
+            since = text.read().split("## Since the last review")[1].split("## ")[0]
+        self.assertIn("followed up: Pricing title rewritten; CTR up", since)
+        self.assertIn("github.issue.create): prepared", since)
+        # The chain continues: the third review follows the second, which had no actions of its own.
+        third = self.start("site=sc-domain:acme.com")
+        self.assertEqual((third["previous"]["session"], third["previous"]["actions"]), (sid, []))
+        self.assertNotIn("follow-up: each action from the last review", third["checks"])
+
     def test_bad_org_recipes_fail_with_a_reason(self):
         base = {"id": "mine", "title": "x", "question": "y"}
         for broken, message in ((dict(base, checks=["text"]), "unique id"),
@@ -98,7 +158,9 @@ class WorkflowTests(OrgCase):
                                 (dict(base, checks=[{"id": "f", "text": "t", "findings": "1"}]), "whole number"),
                                 (dict(base, checks=[{"id": "f", "text": "t", "findings": 0}]), "at least 1"),
                                 (dict(base, checks=[{"id": "c", "text": "t", "any": [{"provider": "gsc", "command": []}]}]), "needs any"),
-                                (dict(base, budget="5", checks=[{"id": "f", "text": "t", "findings": 1}]), "budget")):
+                                (dict(base, budget="5", checks=[{"id": "f", "text": "t", "findings": 1}]), "budget"),
+                                (dict(base, series=["site"], checks=[{"id": "f", "text": "t", "findings": 1}]), "series"),
+                                (dict(base, checks=[{"id": "follow-up", "text": "t", "findings": 1}]), "reserved")):
             with self.assertRaisesRegex(ValueError, message):
                 workflows.validate(broken, "mine.json")
 

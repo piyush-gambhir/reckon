@@ -112,7 +112,7 @@ def is_live(ctx, conn):
     return ctx["production"] or "env" not in conn
 
 
-def prepare(h, ctx, root, operation, params, registry):
+def prepare(h, ctx, root, operation, params, registry, session=None):
     provider = validate(operation, params)
     cname, conn = orgs.resolve(ctx, provider)
     repos = conn.get("resources", {}).get("repo")
@@ -123,6 +123,9 @@ def prepare(h, ctx, root, operation, params, registry):
               "operation": operation, "params": params, "status": "prepared", "prepared_at": now(), "receipt": None,
               "target_sha256": target(conn, {k: orgs.reference(k, v) for k, v in
                                              orgs.secrets(h, ctx["org"], cname, registry[provider]).items() if targeting(k)})}
+    if session:
+        # The session's next review lists this write and its receipt.
+        record["session"] = identifier(session)
     record["payload_sha256"] = digest(record)
     path = local_path(root, "actions", action_id)
     private_dir(path)
@@ -142,7 +145,7 @@ def listing(root):
     if not base.is_dir():
         return []
     rows = [read_json(p) for p in sorted(base.glob("*/action.json"), reverse=True)]
-    return [{k: r.get(k) for k in ("id", "status", "operation", "connection", "environment", "prepared_at")} for r in rows]
+    return [{k: r.get(k) for k in ("id", "status", "operation", "connection", "environment", "prepared_at", "session")} for r in rows]
 
 
 def connection(ctx, record):

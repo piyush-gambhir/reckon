@@ -12,6 +12,10 @@ reckon task --workflow release-review --from <ISO> --to <ISO>
 
 Read `knowledge/<env>/deploy-pipelines.md` for each service's deploy job and branch.
 
+If the task output shows `previous` (the last finished release review in this
+environment), follow up each of its actions first:
+`reckon note <id> --kind finding --follows <action-note-id> --evidence <ids>`.
+
 ## Reads
 
 1. Deploys: `reckon run jenkins --session <id> -- build list <deploy-job> --limit 25 -o json`

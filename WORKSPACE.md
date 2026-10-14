@@ -137,6 +137,16 @@ only when none is left to do (skip one with
 `reckon note <id> --kind question --text "skip <check>: <reason>"`). An org can
 add or replace recipes in its own `workflows/` folder.
 
+Each review starts from the last one. When an earlier run of the same recipe (for
+growth reviews, the same site) was closed as done, `reckon task --workflow` shows it
+as `previous`: its findings, its actions with their note ids, and the writes
+prepared from it with their receipts. Before anything else, follow up each of its
+actions with this week's evidence:
+`reckon note <id> --kind finding --follows <action-note-id> --evidence <ids> --text "<done or not, and what moved>"`.
+`reckon check` lists any not followed up under `follow-up`, and the review cannot be
+closed as done until each is (or `follow-up` is skipped with a reason). Prepare a
+write with `--session <id>` so the next review sees what happened to it.
+
 Incident work uses the skill's modes (investigate, monitor, analyze).
 
 ## Knowledge
@@ -155,7 +165,7 @@ You never perform a write. You prepare it, and the operator applies it in their 
 terminal after reading exactly what will happen:
 
 ```bash
-reckon act prepare github.issue.create --body-stdin \
+reckon act prepare github.issue.create --session <id> --body-stdin \
   --params '{"repo": "acme/api", "title": "Checkout times out on pricing", "labels": "bug"}' <<'BODY'
 What we saw, with the session and evidence IDs.
 BODY
