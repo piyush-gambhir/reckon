@@ -72,6 +72,18 @@ class SpendTests(OrgCase):
         self.assertEqual(refused.returncode, 1)
         self.assertIn("pinned", refused.stderr)
 
+    def test_a_budget_warns_in_the_brief_and_spend(self):
+        self.claude_session(self.root, [("m1", 0, 5000)])
+        set_ = self.cli("spend", "--org", "acme", "--set-budget", "1000", "--budget-days", "7")
+        self.assertEqual(set_.returncode, 0, set_.stderr)
+        self.assertIn("budget 1,000 tokens per 7 days", set_.stdout)
+        self.assertIn("over its budget of 1,000", spend.over(self.home, "acme"))
+        self.assertIn("over its budget", self.cli("brief", "--all-orgs").stdout)
+        self.assertIsNone(spend.over(self.home, "beta"))
+        self.assertEqual(self.cli("spend", "--org", "acme", "--set-budget", "5", RECKON_ORG="acme", RECKON_ENV="staging").returncode, 1)
+        self.cli("spend", "--org", "acme", "--set-budget", "0")
+        self.assertIsNone(spend.over(self.home, "acme"))
+
     def test_all_orgs_spend_is_for_the_operator(self):
         refused = self.cli("spend", "--all-orgs", RECKON_ORG="acme", RECKON_ENV="staging")
         self.assertEqual(refused.returncode, 1)

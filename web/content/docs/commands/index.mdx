@@ -187,6 +187,14 @@ only for models you list in `~/.reckon/prices.json`, in USD per million tokens:
 
 `reckon brief --all-orgs` shows each org's token total next to its open work.
 
+```bash
+reckon spend --org acme --set-budget 20000000 --budget-days 30   # 0 clears it
+```
+
+With a budget set, `reckon open` and the brief warn once the org has used more
+tokens than that in the window. It warns rather than blocks, and only you can set
+it (a pinned agent is refused).
+
 ## Activity log
 
 Every `reckon run`, every refusal (wrong environment, denied command, spent

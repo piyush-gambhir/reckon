@@ -143,7 +143,8 @@ login role on linked projects, so database inspection goes through a `postgres`
 connection with a read-only role).
 
 **Next wave**, from a GitHub survey on 2026-10-14 (stars, releases and commits
-fetched, not guessed). Adopt in this order, each only when a business uses it:
+fetched, not guessed; ten of the rows were re-checked against the GitHub API the
+same day and matched). Adopt in this order, each only when a business uses it:
 
 | Order | Tool | CLI | Why this one |
 | --- | --- | --- | --- |
@@ -245,7 +246,7 @@ and ToolHive (2026-10-14), ranked by value for one person running several busine
 | Done 2026-10-14: routines (`reckon routine add/install/run`): launchd or cron runs a pinned headless agent on a workflow; overlapping runs skip | Paperclip, HolmesGPT, Goose | M |
 | Done 2026-10-14: workflow recipes with parameters and required checks (report schema still to do) | Goose recipes | M |
 | Large output spilled to the session, with a preview and the path | HolmesGPT | S |
-| Done 2026-10-14: agent spend per org from Claude Code and Codex session files (`reckon spend`; prices from `~/.reckon/prices.json`); budgets still to do | Paperclip | M |
+| Done 2026-10-14: agent spend per org from Claude Code and Codex session files (`reckon spend`; prices from `~/.reckon/prices.json`), with a per-org token budget warned in `reckon open` and the brief | Paperclip | M |
 | Done 2026-10-14: goals per org (`knowledge/*/goals.json`) bound to reads, reported in briefs from the newest saved evidence | Paperclip | M |
 | Per-connection circuit breaker and quota ledger | ContextForge | S |
 | Done 2026-10-14: polled watches and an inbox (`reckon watch`, `reckon inbox`, brief section); first poll is a baseline | Composio triggers | M |

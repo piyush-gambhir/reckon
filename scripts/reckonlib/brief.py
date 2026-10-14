@@ -71,6 +71,9 @@ def all_orgs(h, registry, days=7):
         ctx = orgs.context(h, org, data["environments"][0], registry)
         result = brief(h, ctx, registry, days, data["environments"])
         result["agent_tokens"] = spend.report(h, org, days)["tokens"]
+        warning = spend.over(h, org)
+        if warning:
+            result["connections_needing_attention"].append(warning)
         results.append(result)
     return {"days": days, "orgs": results}
 

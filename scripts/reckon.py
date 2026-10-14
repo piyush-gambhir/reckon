@@ -125,6 +125,8 @@ def parser():
     command = sub.add_parser("spend", parents=[scope], help="agent tokens used in this org's workspace (Claude Code and Codex)")
     command.add_argument("--days", type=int, default=30)
     command.add_argument("--all-orgs", action="store_true", help="every org (operator only)")
+    command.add_argument("--set-budget", type=int, metavar="TOKENS", help="warn when the org passes this many tokens (0 clears it)")
+    command.add_argument("--budget-days", type=int, default=30, help="the budget's window in days (default 30)")
     command = sub.add_parser("routine", parents=[scope], help="run a workflow on a schedule with a headless agent (operator only)")
     command.add_argument("action", choices=("add", "list", "remove", "run", "install"))
     command.add_argument("name", nargs="?")
@@ -413,6 +415,10 @@ def execute(args):
         if org and not env:
             raise ValueError("name the environment too: reckon open " + org + "/<env>")
         ctx = orgs.context(h, org, env, registry) if org else saved_context(h, registry)
+        from reckonlib import spend
+        warning = spend.over(h, ctx["org"])
+        if warning:
+            print("warning: " + warning + " (reckon spend)", file=sys.stderr)
         workspace.launch(h, ctx, registry, args.runtime, args.passthrough)
     if name == "demo":
         from reckonlib.demo import demo
@@ -463,6 +469,12 @@ def execute(args):
         from reckonlib import spend
         if not 1 <= args.days <= 365:
             raise ValueError("--days must be 1-365")
+        if args.set_budget is not None:
+            if activity.pinned():
+                raise ValueError("budgets are for the operator's own terminal, not a pinned agent")
+            if args.set_budget < 0 or not 1 <= args.budget_days <= 365:
+                raise ValueError("--set-budget takes 0 or more tokens and --budget-days 1-365")
+            return spend.set_budget(h, args.org or orgs.context(h, registry=registry)["org"], args.set_budget, args.budget_days)
         if args.all_orgs:
             if activity.pinned():
                 raise ValueError("a pinned agent sees only its own org; run reckon spend --all-orgs in your own terminal")
@@ -826,7 +838,13 @@ def display(command, result):
             print(row["status"].ljust(9) + row["watch"].ljust(20) + (str(row["new"]) + " new of " + str(row["items"]) if "new" in row else row.get("detail", "")))
     elif command == "spend":
         for row in result:
+            if "models" not in row:
+                print(row["org"] + ": budget " + (format(row["agent_token_budget"]["tokens"], ",") + " tokens per " +
+                                                  str(row["agent_token_budget"]["days"]) + " days" if row["agent_token_budget"] else "cleared"))
+                continue
             cost = "  ~$" + format(row["usd"], ".2f") if row["usd"] is not None else ""
+            if row.get("budget"):
+                cost += "  (budget " + format(row["budget"]["tokens"], ",") + " per " + str(row["budget"]["days"]) + " days)"
             print(row["org"].ljust(18) + format(row["tokens"], ",").rjust(16) + " tokens in " + str(row["days"]) + " days" + cost)
             for m in row["models"]:
                 print("  " + (m["runtime"] + " " + m["model"]).ljust(34) + "in " + format(m["input"], ",") + "  out " + format(m["output"], ",") +

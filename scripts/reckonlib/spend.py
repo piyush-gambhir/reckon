@@ -131,6 +131,40 @@ def prices(h):
     return data
 
 
+def budget(h, org):
+    """The org's agent token budget, {"tokens": N, "days": D}, or None."""
+    value = orgs.load(h, org).get("agent_token_budget")
+    if value is None:
+        return None
+    if (not isinstance(value, dict) or not isinstance(value.get("tokens"), int) or value["tokens"] < 1
+            or not isinstance(value.get("days"), int) or not 1 <= value["days"] <= 365):
+        raise ValueError(org + ": agent_token_budget needs whole numbers tokens >= 1 and days 1-365")
+    return value
+
+
+def set_budget(h, org, tokens, days):
+    """Set (or with 0 tokens, clear) the org's budget; returned as a one-row list like reckon spend."""
+    data = orgs.load(h, org)
+    if tokens:
+        data["agent_token_budget"] = {"tokens": tokens, "days": days}
+    else:
+        data.pop("agent_token_budget", None)
+    orgs.save(h, data)
+    return [{"org": org, "agent_token_budget": data.get("agent_token_budget")}]
+
+
+def over(h, org):
+    """A warning when the org has used more than its budget, else None."""
+    limit = budget(h, org)
+    if not limit:
+        return None
+    used = report(h, org, limit["days"])["tokens"]
+    if used <= limit["tokens"]:
+        return None
+    return (org + " has used " + format(used, ",") + " agent tokens in " + str(limit["days"]) + " days, over its budget of " +
+            format(limit["tokens"], ","))
+
+
 def report(h, org, days=30):
     since = datetime.now(timezone.utc) - timedelta(days=days)
     root = orgs.workspace(h, org)
@@ -144,6 +178,6 @@ def report(h, org, days=30):
                 rates.append(model)
     tokens = sum(sum(m[f] for f in FIELDS) for m in models)
     priced = [m["usd"] for m in models if m["usd"] is not None]
-    return {"org": org, "days": days, "tokens": tokens, "models": models,
+    return {"org": org, "days": days, "tokens": tokens, "models": models, "budget": budget(h, org),
             "usd": round(sum(priced), 2) if priced and not rates else None,
             "unpriced_models": sorted(set(rates))}
