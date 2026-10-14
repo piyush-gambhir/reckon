@@ -276,10 +276,12 @@ def configured(h, org, conn, spec, values=None):
     return any((config / p).is_file() and (config / p).stat().st_size > 0 for p in spec.get("config_files", []))
 
 
-def child_env(h, ctx, conn_name, conn, spec, interactive=False):
-    """A fresh environment for one CLI: its secrets, private config/home/cache, safety switches."""
+def child_env(h, ctx, conn_name, conn, spec, interactive=False, values=None):
+    """A fresh environment for one CLI: its secrets, private config/home/cache, safety switches.
+    values: settings already read and resolved, so a check and the run it guards use the same ones."""
     org_dir = org_path(h, ctx["org"])
-    values = {k: reference(k, v) for k, v in secrets(h, ctx["org"], conn_name, spec).items()}
+    if values is None:
+        values = {k: reference(k, v) for k, v in secrets(h, ctx["org"], conn_name, spec).items()}
     env = {k: v for k, v in os.environ.items() if k in BASE_KEYS}
     env.update(values)
     config = local_path(org_dir, "config", conn_name)

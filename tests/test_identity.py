@@ -16,9 +16,11 @@ class IdentityTests(OrgCase):
         self.login = self.dir / "login"
         self.login.write_text("acme-bot")
         # gh api user answers with whatever login the test sets; anything else creates the issue.
-        self.fake("import json, sys\n"
+        self.used = self.dir / "used"
+        self.fake("import json, os, sys\n"
                   "if sys.argv[1:3] == ['api', 'user']: print(json.dumps({'login': open(" + repr(str(self.login)) + ").read()})); sys.exit()\n"
-                  "sys.stdin.read()\nprint('https://github.com/acme/api/issues/7')\n", "gh")
+                  "sys.stdin.read()\nopen(" + repr(str(self.used)) + ", 'w').write(os.environ.get('GH_TOKEN', '') + ' ' + os.environ.get('GH_HOST', ''))\n"
+                  "print('https://github.com/acme/api/issues/7')\n", "gh")
         self.org(connections={"gh": {"provider": "github", "env": "staging", "account": "acme-bot"},
                               "jenkins": {"provider": "jenkins", "env": "staging"}},
                  secrets={"gh": ["GH_TOKEN=gh-secret-token"], "jenkins": JENKINS})
@@ -64,11 +66,24 @@ class IdentityTests(OrgCase):
     def test_identity_fallbacks_and_values(self):
         spec = {"identity": ["emailAddress", "name", "accountId"]}
         ok = {"status": "ok", "stdout": json.dumps({"accountId": "5b10ac", "emailAddress": ""}).encode()}
-        self.assertEqual(connectors.account(spec, ok, {}), "5b10ac")
+        self.assertEqual(connectors.account(spec, ok), "5b10ac")
         for body in (b"[]", b"{\"emailAddress\": true}", b"{\"emailAddress\": {\"x\": 1}}"):
-            self.assertIsNone(connectors.account(spec, dict(ok, stdout=body), {}))
-        self.assertIsNone(connectors.account(spec, dict(ok, status="failed"), {}))
-        self.assertEqual(connectors.account({"identity": "Account"}, dict(ok, stdout=b'{"Account": 123456789012}'), {}), "123456789012")
+            self.assertIsNone(connectors.account(spec, dict(ok, stdout=body)))
+        self.assertIsNone(connectors.account(spec, dict(ok, status="failed")))
+        self.assertEqual(connectors.account({"identity": "Account"}, dict(ok, stdout=b'{"Account": 123456789012}')), "123456789012")
+        # The whole value is compared, not the 200 characters shown.
+        conn = {"account": "a" * 200}
+        self.assertIsNone(connectors.account_problem("c", conn, "a" * 200, {}))
+        self.assertIn("is logged in as", connectors.account_problem("c", conn, "a" * 200 + "-other", {}))
+
+    def test_a_pinned_account_the_tool_cannot_report_is_not_ok(self):
+        data = orgs.load(self.home, "acme", self.registry)
+        data["connections"]["apm"] = {"provider": "cubeapm", "env": "staging", "account": "acme-bot"}
+        orgs.save(self.home, data, self.registry)
+        self.secret("acme", "apm", ["CUBEAPM_SERVER=apm.invalid", "CUBEAPM_EMAIL=a@b.invalid", "CUBEAPM_PASSWORD=pw-secret"])
+        self.fake("print('{}')", "cubeapm")
+        code, rows = self.verify("apm")
+        self.assertEqual((code, rows["apm"]["status"]), (1, "wrong_account"))
 
     def test_connect_sets_and_clears_the_account(self):
         result = self.cli("connect", "jenkins", "--account", "Tester", "--org", "acme", "--json")
@@ -123,6 +138,26 @@ class IdentityTests(OrgCase):
         self.assertEqual(self.apply(record)[0]["status"], "applied")
         # Secrets never enter the action record.
         self.assertNotIn("gh-secret-token", json.dumps(actions.load(self.root, record["id"])[1]))
+
+    def test_a_reference_counts_by_the_value_it_gives(self):
+        self.secret("acme", "gh", ["GH_TOKEN=gh-secret-token", "GH_HOST=keychain:gh-host"])
+        host = {"value": "github.a.invalid"}
+        with mock.patch.object(orgs, "reference", side_effect=lambda k, v: host["value"] if v.startswith("keychain:") else v):
+            record, _ = self.prepare()
+            host["value"] = "github.b.invalid"
+            with self.assertRaisesRegex(ValueError, "changed after action"):
+                self.apply(record)
+
+    def test_the_write_runs_with_the_settings_that_were_checked(self):
+        record, _ = self.prepare()
+
+        def confirm(prompt):
+            # Settings edited while the operator reads the preview do not reach the write.
+            self.secret("acme", "gh", ["GH_TOKEN=gh-other-token", "GH_HOST=github.other.invalid"])
+            return "yes"
+        done = actions.apply(self.home, self.ctx(), self.root, record["id"], self.registry, confirm=confirm)
+        self.assertEqual(done["status"], "applied")
+        self.assertEqual(self.used.read_text(), "gh-secret-token ")
 
 
 if __name__ == "__main__":

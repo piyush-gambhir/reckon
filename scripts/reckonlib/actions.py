@@ -64,12 +64,15 @@ def argv(operation, params, action_id):
 TARGET_KEY = re.compile(r"HOST|URL|SERVER|SITE|DOMAIN|ENDPOINT|ORG|PROJECT|ACCOUNT|REGION|PROFILE|TENANT|WORKSPACE|EMAIL|USER", re.I)
 
 
-def target(h, ctx, cname, conn, registry):
+def targeting(key):
+    return bool(TARGET_KEY.search(key)) and not orgs.SECRET_KEY.search(key)
+
+
+def target(conn, values):
     """Where a write would land, as a hash: the connection as configured (environment,
-    resource limits, expected account) and its non-secret target settings."""
-    spec = registry[conn["provider"]]
-    settings = {k: v for k, v in orgs.secrets(h, ctx["org"], cname, spec).items()
-                if TARGET_KEY.search(k) and not orgs.SECRET_KEY.search(k)}
+    resource limits, expected account) and its non-secret target settings, resolved
+    (a keychain: or op:// reference counts by the value it gives today)."""
+    settings = {k: v for k, v in values.items() if targeting(k)}
     return hashlib.sha256(json.dumps({"connection": conn, "settings": settings}, sort_keys=True).encode()).hexdigest()
 
 
@@ -118,7 +121,8 @@ def prepare(h, ctx, root, operation, params, registry):
     action_id = datetime.now(timezone.utc).strftime("a-%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:8]
     record = {"schema_version": 1, "id": action_id, "org": ctx["org"], "environment": ctx["env"], "connection": cname,
               "operation": operation, "params": params, "status": "prepared", "prepared_at": now(), "receipt": None,
-              "target_sha256": target(h, ctx, cname, conn, registry)}
+              "target_sha256": target(conn, {k: orgs.reference(k, v) for k, v in
+                                             orgs.secrets(h, ctx["org"], cname, registry[provider]).items() if targeting(k)})}
     record["payload_sha256"] = digest(record)
     path = local_path(root, "actions", action_id)
     private_dir(path)
@@ -178,11 +182,14 @@ def apply(h, ctx, root, action_id, registry, confirm=None):
             raise ValueError("action " + action_id + " changed after it was prepared; prepare it again")
         validate(record["operation"], record["params"])
         cname, conn = connection(ctx, record)
-        if record.get("target_sha256") != target(h, ctx, cname, conn, registry):
+        spec = registry[conn["provider"]]
+        # Read the settings once: the fingerprint, the account check and the write all use these.
+        values = {k: orgs.reference(k, v) for k, v in orgs.secrets(h, ctx["org"], cname, spec).items()}
+        if record.get("target_sha256") != target(conn, values):
             raise ValueError("connection " + cname + " changed after action " + action_id + " was prepared (its environment, resource "
                              "limits, account or target settings); prepare it again")
         # One live read proves the connection is still logged in to the account it expects.
-        account = connectors.whoami(h, ctx, cname, conn, registry)
+        account = connectors.whoami(h, ctx, cname, conn, registry, values)
         live = is_live(ctx, conn)
         print(preview(record, live, full=True, account=account), file=sys.stderr)
         expected = ctx["org"] if live else "yes"
@@ -190,8 +197,7 @@ def apply(h, ctx, root, action_id, registry, confirm=None):
             record.update(status="cancelled", decided_at=now())
             write_json(path / "action.json", record)
             return record
-        spec = registry[conn["provider"]]
-        env, values = orgs.child_env(h, ctx, cname, conn, spec, interactive=True)
+        env, values = orgs.child_env(h, ctx, cname, conn, spec, interactive=True, values=values)
         env.update(NO_COLOR="1", GH_PROMPT_DISABLED="1")
         command, body = argv(record["operation"], record["params"], record["id"])
         # Record the attempt before running, so a crash cannot hide that it may have happened.

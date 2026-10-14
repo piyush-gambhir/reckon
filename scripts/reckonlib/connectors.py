@@ -328,10 +328,10 @@ def extra_args(provider, values, config):
     return []
 
 
-def prepare(h, ctx, target, registry, interactive=False):
+def prepare(h, ctx, target, registry, interactive=False, values=None):
     cname, conn = orgs.resolve(ctx, target)
     spec = registry[conn["provider"]]
-    env, values = orgs.child_env(h, ctx, cname, conn, spec, interactive=interactive)
+    env, values = orgs.child_env(h, ctx, cname, conn, spec, interactive=interactive, values=values)
     if conn["provider"] == "kafka-rpk":
         # rpk reads RPK_* settings; derive them from the shared KAFKA_* names.
         for target_key, source_key in (("RPK_BROKERS", "KAFKA_BOOTSTRAP_SERVERS"), ("RPK_USER", "KAFKA_SASL_USERNAME"),
@@ -469,8 +469,9 @@ def probe(h, ctx, cname, conn, spec, env, values):
     return bounded(argv, env=env, cwd=str(orgs.org_path(h, ctx["org"]) / "runtime" / cname / "tmp"), timeout=20, max_bytes=262144)
 
 
-def account(spec, result, values):
-    """The account the verify read reports at the provider's identity path, or None."""
+def account(spec, result):
+    """The account the verify read reports at the provider's identity path, or None.
+    The full value, for comparison only; show it through shown()."""
     if not spec.get("identity") or result["status"] != "ok":
         return None
     try:
@@ -481,11 +482,15 @@ def account(spec, result, values):
     for path in spec["identity"] if isinstance(spec["identity"], list) else [spec["identity"]]:
         found = pick(data, path)
         if not isinstance(found, bool) and isinstance(found, (str, int)) and str(found).strip():
-            return orgs.redact(str(found).strip(), values)[:200]
+            return str(found).strip()
     return None
 
 
-def account_problem(cname, conn, seen):
+def shown(seen, values):
+    return None if seen is None else orgs.redact(seen, values)[:200]
+
+
+def account_problem(cname, conn, seen, values):
     """Why the account a tool reports is not the one the connection expects, or None."""
     expected = conn.get("account")
     if not expected:
@@ -494,25 +499,28 @@ def account_problem(cname, conn, seen):
         return cname + " did not report which account it uses, so it cannot be confirmed as " + expected
     # Logins and emails are case-insensitive; a pattern such as *@acme.com allows any account of a domain.
     if not fnmatchcase(seen.casefold(), expected.casefold()):
-        return (cname + " is logged in as " + seen + ", not " + expected + " (if " + seen + " is right: reckon connect " + cname +
-                " --account " + seen + ")")
+        text = shown(seen, values)
+        return cname + " is logged in as " + text + ", not " + expected + " (if " + text + " is right: reckon connect " + cname + " --account " + text + ")"
     return None
 
 
-def whoami(h, ctx, cname, conn, registry):
-    """Confirm a connection still uses its expected account, with one live read; raises otherwise."""
+def whoami(h, ctx, cname, conn, registry, values=None):
+    """Confirm a connection still uses its expected account, with one live read; raises otherwise.
+    Pass the settings the guarded command will run with, so both see the same credentials."""
     spec = registry[conn["provider"]]
     if not conn.get("account"):
         return None
-    _, _, _, env, values = prepare(h, ctx, cname, registry)
+    if not spec.get("verify"):
+        raise ValueError(cname + " has no live check, so its account cannot be confirmed as " + conn["account"])
+    _, _, _, env, values = prepare(h, ctx, cname, registry, values=values)
     result = probe(h, ctx, cname, conn, spec, env, values)
     if result["status"] != "ok":
         raise ValueError("could not confirm " + cname + "'s account (its check read " + result["status"] + "); run reckon verify " + cname)
-    seen = account(spec, result, values)
-    problem = account_problem(cname, conn, seen)
+    seen = account(spec, result)
+    problem = account_problem(cname, conn, seen, values)
     if problem:
         raise ValueError(problem)
-    return seen
+    return shown(seen, values)
 
 
 def verify(h, ctx, registry, names=()):
@@ -544,16 +552,17 @@ def verify(h, ctx, registry, names=()):
             result = probe(h, ctx, cname, conn, spec, env, values)
             detail = "" if result["status"] == "ok" else orgs.redact(result["stderr"].decode(errors="replace"), values).strip()[-400:]
             row.update(status=result["status"], detail=detail)
-            if result["status"] == "ok" and spec.get("identity"):
-                seen = account(spec, result, values)
-                problem = account_problem(cname, conn, seen)
-                row["account"] = seen
+            # A pinned account is checked even where the tool reports none: unconfirmed is not ok.
+            if result["status"] == "ok" and (spec.get("identity") or conn.get("account")):
+                seen = account(spec, result)
+                problem = account_problem(cname, conn, seen, values)
+                row["account"] = text = shown(seen, values)
                 if problem:
                     row.update(status="wrong_account", detail=problem)
-                elif seen and not conn.get("account"):
-                    row["detail"] = "account " + seen + " (pin it: reckon connect " + cname + " --account " + seen + ")"
-                elif seen:
-                    row["detail"] = "account " + seen
+                elif text and not conn.get("account"):
+                    row["detail"] = "account " + text + " (pin it: reckon connect " + cname + " --account " + text + ")"
+                elif text:
+                    row["detail"] = "account " + text
             rows.append(row)
     return rows
 
