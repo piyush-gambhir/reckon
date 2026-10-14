@@ -246,7 +246,7 @@ and ToolHive (2026-10-14), ranked by value for one person running several busine
 | Done 2026-10-14: workflow recipes with parameters and required checks (report schema still to do) | Goose recipes | M |
 | Large output spilled to the session, with a preview and the path | HolmesGPT | S |
 | Done 2026-10-14: agent spend per org from Claude Code and Codex session files (`reckon spend`; prices from `~/.reckon/prices.json`); budgets still to do | Paperclip | M |
-| Goals and KPIs per org, bound to reads, reported in briefs | Paperclip | M |
+| Done 2026-10-14: goals per org (`knowledge/*/goals.json`) bound to reads, reported in briefs from the newest saved evidence | Paperclip | M |
 | Per-connection circuit breaker and quota ledger | ContextForge | S |
 | Polled watches and an inbox (new dispute, new Sentry issue, failed deploy) | Composio triggers | M |
 | Done 2026-10-14 as `reckon org add <new> --like <org>`: environments and connection layout, never secrets or resource limits | Paperclip companies spec | S |

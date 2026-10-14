@@ -5,7 +5,7 @@ to run on a schedule and its output is the same for the same state."""
 from datetime import datetime, timedelta, timezone
 import json
 
-from . import activity, orgs, spend
+from . import activity, goals, orgs, spend
 from .store import local_path, read_json
 
 
@@ -44,6 +44,7 @@ def brief(h, ctx, registry, days=7, envs=None):
     events = [e for e in activity.read(h, ctx["org"], days, limit=100000) if e.get("environment") in envs]
     refused = [{"at": e["at"], "environment": e["environment"], "actor": e["actor"], "target": e.get("target"),
                 "command": " ".join(e.get("command", [])), "detail": e.get("detail", "")} for e in events if e["event"] == "refused"]
+    targets = [dict(row, environment=env) for env in envs for row in goals.report(root, env, registry)]
     stale = []
     for layer in ["_shared"] + list(envs):
         base = root / "knowledge" / layer
@@ -54,7 +55,7 @@ def brief(h, ctx, registry, days=7, envs=None):
     return {"org": ctx["org"], "environment": ctx["env"] if len(envs) == 1 else "all", "days": days, "open_sessions": sessions,
             "recent_findings": findings[:20], "writes_waiting_for_approval": pending,
             "writes_with_unknown_outcome": unknown, "connections_needing_attention": attention, "stale_knowledge": stale,
-            "refused_runs": refused[:20], "runs": sum(e["event"] == "run" for e in events)}
+            "refused_runs": refused[:20], "runs": sum(e["event"] == "run" for e in events), "goals": targets}
 
 
 def all_orgs(h, registry, days=7):
@@ -89,9 +90,18 @@ def render_all(result):
     return "\n".join(lines)
 
 
+def goal_line(r):
+    where = "[" + r["environment"] + "] " + r["title"] + ": "
+    if r["status"] in ("no reading", "unreadable"):
+        return where + r["status"] + " (" + r["next"] + ")"
+    return (where + format(r["value"], ",") + " vs target " + format(r["target"], ",") + ", " + r["status"] +
+            " (observed " + str(r["observed_at"])[:10] + ", " + r["evidence"] + ")")
+
+
 def render(result):
     lines = ["# Brief: " + result["org"] + " / " + result["environment"] + " (last " + str(result["days"]) + " days)", ""]
-    sections = (("Writes with an unknown outcome (run reckon act reconcile)", "writes_with_unknown_outcome",
+    sections = (("Goals (from the newest saved read)", "goals", goal_line),
+                ("Writes with an unknown outcome (run reckon act reconcile)", "writes_with_unknown_outcome",
                  lambda r: r["id"] + "  " + r["operation"] + " " + str(r["target"] or "") + " via " + r["connection"]),
                 ("Writes waiting for approval (reckon act apply)", "writes_waiting_for_approval",
                  lambda r: r["id"] + "  " + r["operation"] + " " + str(r["target"] or "") + " via " + r["connection"]),

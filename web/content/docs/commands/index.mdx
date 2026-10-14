@@ -125,6 +125,25 @@ Routines spend model usage without anyone watching, so start with one a week.
 `install` writes the schedule but does not load it; it prints the `launchctl`
 command for you to run.
 
+## Goals
+
+Put an org's targets in `knowledge/_shared/goals.json` (or `knowledge/<env>/goals.json`),
+each bound to a read and the number to take from its JSON output:
+
+```json
+{"goals": [
+  {"id": "clicks", "title": "Organic clicks (28 days)", "provider": "gsc",
+   "command": ["performance"], "path": "current.clicks", "target": 5000},
+  {"id": "p95", "title": "Checkout p95 ms", "provider": "cubeapm",
+   "command": ["metrics", "query"], "path": "data.0.value", "target": 800, "direction": "down"}
+]}
+```
+
+`reckon brief` shows each goal's value from the newest saved read of that command
+in the environment (with its date and evidence id), whether it is on track, or the
+read to run when there is none. Check `path` against the tool's real output; a
+weekly routine keeps the readings fresh.
+
 ## Agent spend
 
 ```bash
