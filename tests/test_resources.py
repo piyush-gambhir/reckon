@@ -58,6 +58,8 @@ class ResourceTests(OrgCase):
             ("gsc", ["sites", "list", "--site", "sc-domain:acme.com"], {}),
             ("gsc", ["sites", "get", "sc-domain:other.com", "--site", "sc-domain:acme.com"], {}),
             ("gsc", ["inspect", "https://other.com/page", "--site", "sc-domain:acme.com"], {}),
+            ("gsc", ["sites", "get", "--site", "https://evil.invalid#.acme.com/"], {}),
+            ("gsc", ["sites", "get", "--site", "https://www.acme.com@evil.invalid/"], {}),
             ("k8s", ["get", "pods", "-n", "shop", "-A"], {}),
             ("k8s", ["get", "pods", "-n", "shop", "--all-namespaces"], {}),
             ("k8s", ["get", "namespace/billing", "-n", "shop"], {}),

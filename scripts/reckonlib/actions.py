@@ -43,9 +43,10 @@ def validate(operation, params):
     if any(not isinstance(v, str) or "\x00" in v for v in params.values()):
         raise ValueError("parameters are text without NUL characters")
     if operation == "gsc.sitemap.submit":
-        if not PROPERTY.fullmatch(params["site"]):
+        if not PROPERTY.fullmatch(params["site"]) or (connectors.site_parts(params["site"]) or ("host",))[0] == "host":
             raise ValueError("site is a Search Console property: sc-domain:example.com or https://www.example.com/")
-        if not re.fullmatch(r"https?://[^\s*?\[\]]{1,2040}", params["sitemap"]) or not connectors.site_allowed(params["sitemap"], params["site"]):
+        if (not re.fullmatch(r"https?://[^\s*?\[\]]{1,2040}", params["sitemap"]) or (connectors.site_parts(params["sitemap"]) or ("",))[0] != "url"
+                or not connectors.site_allowed(params["sitemap"], params["site"])):
             raise ValueError("sitemap is the sitemap's full URL, inside the property " + params["site"])
         return provider
     if operation == "jira.issue.create":
@@ -152,15 +153,15 @@ def link(operation, out, params=None):
     return next(iter(re.findall(r"https://\S+", out)), None)
 
 
-def submitted(stamp, started, slack=300):
-    """Whether Google's lastSubmitted time is at or after the apply began, within slack seconds."""
+def submitted(stamp, started):
+    """Whether Google's lastSubmitted time is at or after the apply began."""
     try:
         when = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
     except ValueError:
         return False
     if when.tzinfo is None:
         when = when.replace(tzinfo=timezone.utc)
-    return (when - started).total_seconds() >= -slack
+    return when >= started
 
 
 def bound(conn, operation, params):
@@ -357,7 +358,8 @@ def reconcile(h, ctx, root, action_id, registry):
         if operation == "gsc.sitemap.submit":
             where = params["sitemap"]
             command = ["gsc", "sitemaps", "get", params["sitemap"], "--site=" + params["site"], "-o", "json"]
-            # Google's clock and ours may differ a little; a submit within those minutes counts.
+            # Only a submission at or after the apply began counts; an earlier one (even a minute before)
+            # proves nothing, and a clock difference leaves the outcome unknown rather than wrong.
             find = (lambda data: [console(params["site"])] if isinstance(data, dict) and submitted(data.get("lastSubmitted"), started) else [])
         elif operation == "jira.issue.create":
             where = "project " + params["project"]

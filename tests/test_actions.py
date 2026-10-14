@@ -293,8 +293,16 @@ class SitemapWriteTests(OrgCase):
                              ({"site": "sc-domain:other.com", "sitemap": "https://other.com/s.xml"}, "outside")):
             with self.assertRaisesRegex(ValueError, message):
                 self.prepare(**bad)
-        # A URL-prefix property inside the allowed domain is fine.
+        # Text that only looks like the property (a fragment or user info naming it) is not inside it.
+        for sitemap in ("https://evil.invalid#.acme.com/s.xml", "https://www.acme.com@evil.invalid/s.xml",
+                        "https://acme.com.evil.invalid/s.xml", "https://evil.invalid/www.acme.com/s.xml"):
+            with self.assertRaisesRegex(ValueError, "inside the property", msg=sitemap):
+                self.prepare(sitemap=sitemap)
+        with self.assertRaisesRegex(ValueError, "Search Console property"):
+            self.prepare(site="https://evil.invalid#.acme.com/", sitemap="https://evil.invalid/s.xml")
+        # A URL-prefix property inside the allowed domain is fine, and so is an explicit default port.
         self.prepare(site="https://www.acme.com/", sitemap="https://www.acme.com/news/sitemap.xml")
+        self.prepare(sitemap="https://acme.com:443/sitemap.xml")
 
     def test_apply_submits_once_without_read_only(self):
         done = self.apply(self.prepare())
@@ -309,8 +317,12 @@ class SitemapWriteTests(OrgCase):
         record = self.prepare()
         with mock.patch.object(actions, "bounded", return_value=timeout):
             self.assertEqual(self.apply(record)["status"], "unknown")
-        (self.tmp / "sitemap").write_text(json.dumps({"path": SITEMAP["sitemap"], "lastSubmitted": "2020-01-01T00:00:00Z"}))
-        self.assertEqual(actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)["status"], "unknown")
+        # A submission from before the apply, even a minute before, proves nothing.
+        from datetime import datetime, timedelta
+        approved = datetime.fromisoformat(actions.load(self.root, record["id"])[1]["approved_at"].replace("Z", "+00:00"))
+        for earlier in ("2020-01-01T00:00:00Z", (approved - timedelta(minutes=1)).isoformat()):
+            (self.tmp / "sitemap").write_text(json.dumps({"path": SITEMAP["sitemap"], "lastSubmitted": earlier}))
+            self.assertEqual(actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)["status"], "unknown")
         from reckonlib.store import now
         (self.tmp / "sitemap").write_text(json.dumps({"path": SITEMAP["sitemap"], "lastSubmitted": now()}))
         self.assertEqual(actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)["status"], "applied")

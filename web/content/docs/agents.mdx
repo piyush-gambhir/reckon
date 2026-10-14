@@ -132,6 +132,6 @@ recent issue that has the same summary but not this description).
 `https://www.example.com/`) and `sitemap` (its full URL, inside that property).
 Submitting is idempotent and asks Google to fetch the sitemap again; the
 connection needs a credential with write scope. For an unknown outcome,
-reconcile reads the sitemap and records `applied` when Google shows a submission at
-or after the apply (within five minutes of clock difference).
+reconcile reads the sitemap and records `applied` only when Google shows a
+submission at or after the moment the apply began.
 
