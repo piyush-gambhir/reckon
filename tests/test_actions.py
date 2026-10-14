@@ -51,7 +51,7 @@ class ActionTests(OrgCase):
         self.assertEqual(done["status"], "applied")
         self.assertEqual(done["receipt"]["url"], "https://github.com/acme/api/issues/7")
         body = (self.home / "orgs/acme/runtime/gh-staging/tmp/body").read_text()
-        self.assertEqual(body, PARAMS["body"])
+        self.assertEqual(body, PARAMS["body"] + "\n\n" + actions.marker(record["id"]) + "\n")
         with self.assertRaisesRegex(ValueError, "runs once"):
             self.apply(record, "yes")
 
@@ -81,7 +81,7 @@ class ActionTests(OrgCase):
 
     def test_failure_is_recorded_with_secrets_redacted(self):
         record = self.prepare(params=dict(PARAMS, labels="fail"))
-        with mock.patch.object(actions, "argv", lambda op, p: (["gh", "fail"], b"")):
+        with mock.patch.object(actions, "argv", lambda op, p, i: (["gh", "fail"], b"")):
             done = self.apply(record, "yes")
         self.assertEqual(done["status"], "failed")
         self.assertNotIn("gh-secret-token", json.dumps(done))
@@ -121,18 +121,38 @@ class ActionTests(OrgCase):
             self.apply(record, "yes")
         self.assertEqual(json.loads(path.read_text())["status"], "expired")
 
-    def test_reconcile_reads_back_an_unknown_outcome(self):
-        found = ("import json\nprint(json.dumps([{'number': 7, 'title': 'Fix checkout timeout', 'url': 'https://github.com/acme/api/issues/7',"
-                 " 'createdAt': '2999-01-01T00:00:00Z'}]))")
-        for listing, expected in ((found, "applied"), ("print('[]')", "failed")):
-            record = self.prepare()
-            with mock.patch.object(actions, "bounded", return_value={"status": "timeout", "exit_code": None, "stdout": b"", "stderr": b""}):
-                self.assertEqual(self.apply(record, "yes")["status"], "unknown")
-            self.fake(listing, "gh")
-            done = actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)
-            self.assertEqual(done["status"], expected)
-            self.assertTrue(done["receipt"]["reconciled"])
+    def test_applied_issues_carry_the_action_marker(self):
+        record = self.prepare()
+        self.apply(record, "yes")
+        body = (self.home / "orgs/acme/runtime/gh-staging/tmp/body").read_text()
+        self.assertTrue(body.startswith(PARAMS["body"]))
+        self.assertIn(actions.marker(record["id"]), body)
+
+    def test_reconcile_upgrades_only_on_proof(self):
+        timeout = {"status": "timeout", "exit_code": None, "stdout": b"", "stderr": b""}
+        record = self.prepare()
+        with mock.patch.object(actions, "bounded", return_value=timeout):
+            self.assertEqual(self.apply(record, "yes")["status"], "unknown")
+        # A same-title issue without this action's marker proves nothing; the outcome stays unknown.
+        self.fake("import json\nprint(json.dumps([{'number': 3, 'url': 'u3', 'body': 'Fix checkout timeout', 'createdAt': '2999-01-01T00:00:00Z'}]))", "gh")
+        still = actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)
+        self.assertEqual(still["status"], "unknown")
+        self.assertIn("still unknown", still["note"])
+        tag = actions.marker(record["id"])
+        self.fake("import json\nprint(json.dumps([{'number': 7, 'url': 'https://github.com/acme/api/issues/7', 'body': 'x\\n" + tag + "', 'createdAt': '2000-01-01T00:00:00Z'}]))", "gh")
+        done = actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)
+        self.assertEqual((done["status"], done["receipt"]["url"]), ("applied", "https://github.com/acme/api/issues/7"))
         with self.assertRaisesRegex(ValueError, "only unknown outcomes"):
+            actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)
+
+    def test_reconcile_refuses_a_reassigned_connection(self):
+        record = self.prepare()
+        with mock.patch.object(actions, "bounded", return_value={"status": "timeout", "exit_code": None, "stdout": b"", "stderr": b""}):
+            self.apply(record, "yes")
+        data = orgs.load(self.home, "acme", self.registry)
+        data["connections"]["gh-staging"]["env"] = "prod"
+        orgs.save(self.home, data, self.registry)
+        with self.assertRaisesRegex(ValueError, "no longer serves"):
             actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)
 
     def test_the_agent_may_prepare_but_never_apply(self):

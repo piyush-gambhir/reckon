@@ -112,9 +112,10 @@ an agent and without a terminal, shows the same preview, and asks you to type `y
 or the org name for production environments and for accounts shared by every
 environment. It runs the action once and keeps a receipt: `applied`, `failed`,
 `cancelled`, or `unknown` when a timeout leaves the outcome unclear. For `unknown`,
-run `reckon act reconcile <id>`: it reads the target back (for a GitHub issue, an
-issue with exactly that title created after approval) and records `applied` or
-`failed`, so you never re-run a write that already landed. Prepared actions expire
+run `reckon act reconcile <id>`: every applied issue carries a hidden marker with
+the action ID, and reconcile records `applied` only when it finds that marker. Not
+finding it leaves the action `unknown` (GitHub listings can lag), so check the
+repository yourself before preparing the write again. Prepared actions expire
 after 24 hours. The agent's Claude Code settings deny `reckon act apply`.
 Supported today: `github.issue.create`.
 

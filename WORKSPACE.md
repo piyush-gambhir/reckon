@@ -142,8 +142,9 @@ reckon act list
 Tell the operator the action ID and what it does. They run `reckon act apply <id>`,
 which shows the same preview, asks for `yes` (or the org name for production and
 for org-wide accounts), runs it once, and keeps a receipt. If a receipt says `unknown`, run
-`reckon act reconcile <id>` to read back what happened; never prepare the same write
-again until it says `failed`. Prepared actions expire after 24 hours. Supported writes:
+`reckon act reconcile <id>`: it marks the action `applied` only when it finds the
+issue carrying the action's marker; otherwise the outcome stays unknown and you must
+not prepare the same write again until the operator has checked. Prepared actions expire after 24 hours. Supported writes:
 `github.issue.create`. For any other change (rerun a build, edit a dashboard,
 submit a sitemap), describe the exact change and its target for the operator.
 

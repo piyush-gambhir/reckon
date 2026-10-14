@@ -45,12 +45,17 @@ def validate(operation, params):
     return provider
 
 
-def argv(operation, params):
+def marker(action_id):
+    """Hidden in the created issue so reconcile can prove which action made it."""
+    return "<!-- reckon-action: " + action_id + " -->"
+
+
+def argv(operation, params, action_id):
     """The exact command; the body travels on standard input, never in argv."""
     args = ["gh", "issue", "create", "--repo", params["repo"], "--title", params["title"], "--body-file", "-"]
     if params.get("labels"):
         args += ["--label", params["labels"]]
-    return args, params["body"].encode()
+    return args, (params["body"].rstrip("\n") + "\n\n" + marker(action_id) + "\n").encode()
 
 
 def digest(record):
@@ -120,6 +125,19 @@ def listing(root):
     return [{k: r.get(k) for k in ("id", "status", "operation", "connection", "environment", "prepared_at")} for r in rows]
 
 
+def connection(ctx, record):
+    """The exact connection the action was prepared for, still serving this environment and target."""
+    cname, conn = record["connection"], ctx["data"]["connections"].get(record["connection"])
+    if record["org"] != ctx["org"] or record["environment"] != ctx["env"]:
+        raise ValueError("action belongs to " + record["org"] + "/" + record["environment"] + "; this context is " + ctx["org"] + "/" + ctx["env"])
+    if not conn or conn["provider"] != WRITES[record["operation"]][0] or not orgs.applies(conn, ctx["env"]):
+        raise ValueError("connection " + cname + " changed or no longer serves " + ctx["env"] + "; prepare the action again")
+    repos = conn.get("resources", {}).get("repo")
+    if repos and not any(fnmatchcase(record["params"]["repo"], p) for p in repos):
+        raise ValueError("repo " + record["params"]["repo"] + " is now outside " + cname + "; prepare the action again")
+    return cname, conn
+
+
 def apply(h, ctx, root, action_id, registry, confirm=None):
     """Run one prepared action once. confirm(prompt) returns what the operator typed."""
     # Enforced here, not only in the CLI, so no caller inside an agent can apply.
@@ -143,13 +161,7 @@ def apply(h, ctx, root, action_id, registry, confirm=None):
         if record["payload_sha256"] != digest(record):
             raise ValueError("action " + action_id + " changed after it was prepared; prepare it again")
         validate(record["operation"], record["params"])
-        # The exact connection that was prepared; never a provider lookup that could pick another.
-        cname, conn = record["connection"], ctx["data"]["connections"].get(record["connection"])
-        if not conn or conn["provider"] != WRITES[record["operation"]][0] or not orgs.applies(conn, ctx["env"]):
-            raise ValueError("connection " + cname + " changed or no longer serves " + ctx["env"] + "; prepare the action again")
-        repos = conn.get("resources", {}).get("repo")
-        if repos and not any(fnmatchcase(record["params"]["repo"], p) for p in repos):
-            raise ValueError("repo " + record["params"]["repo"] + " is now outside " + cname + "; prepare the action again")
+        cname, conn = connection(ctx, record)
         live = is_live(ctx, conn)
         print(preview(record, live, full=True), file=sys.stderr)
         expected = ctx["org"] if live else "yes"
@@ -160,7 +172,7 @@ def apply(h, ctx, root, action_id, registry, confirm=None):
         spec = registry[conn["provider"]]
         env, values = orgs.child_env(h, ctx, cname, conn, spec, interactive=True)
         env.update(NO_COLOR="1", GH_PROMPT_DISABLED="1")
-        command, body = argv(record["operation"], record["params"])
+        command, body = argv(record["operation"], record["params"], record["id"])
         # Record the attempt before running, so a crash cannot hide that it may have happened.
         record.update(status="running", approved_at=now())
         write_json(path / "action.json", record)
@@ -182,35 +194,32 @@ def apply(h, ctx, root, action_id, registry, confirm=None):
 
 
 def reconcile(h, ctx, root, action_id, registry):
-    """Find out what happened to an action whose outcome is unknown, by reading the target.
+    """Find out whether an action with an unknown outcome landed, by reading the target.
 
-    For github.issue.create: an issue with exactly this title in the repo, created
-    after the action was approved, means it was applied."""
+    Only proof upgrades the receipt: an issue whose body carries this action's marker.
+    Not finding it is not proof of failure (search and listings lag), so the action
+    stays unknown and must not be prepared again until someone checks by hand."""
     path, _ = load(root, action_id)
     with lock(path):
         _, record = load(root, action_id)
         if record["status"] not in ("unknown", "running"):
             raise ValueError("action " + action_id + " is " + record["status"] + "; only unknown outcomes need reconciling")
-        cname, conn = record["connection"], ctx["data"]["connections"].get(record["connection"])
-        if not conn or record["org"] != ctx["org"] or record["environment"] != ctx["env"]:
-            raise ValueError("action belongs to " + record["org"] + "/" + record["environment"] + " and connection " + cname)
-        spec = registry[conn["provider"]]
-        env, values = orgs.child_env(h, ctx, cname, conn, spec)
+        cname, conn = connection(ctx, record)
+        env, values = orgs.child_env(h, ctx, cname, conn, registry[conn["provider"]])
         params = record["params"]
-        since = record.get("approved_at") or record["prepared_at"]
-        command = ["gh", "issue", "list", "--repo", params["repo"], "--state", "all", "--limit", "20",
-                   "--search", params["title"] + " in:title", "--json", "number,title,url,createdAt"]
-        result = bounded(command, env=env, cwd=env["TMPDIR"], timeout=60, max_bytes=262144)
+        command = ["gh", "issue", "list", "--repo", params["repo"], "--state", "all", "--limit", "100",
+                   "--json", "number,url,body,createdAt"]
+        result = bounded(command, env=env, cwd=env["TMPDIR"], timeout=60, max_bytes=8 * 1048576)
         if result["status"] != "ok":
             raise ValueError("could not read " + params["repo"] + " (" + result["status"] + "); the outcome stays unknown")
-        found = [i for i in json.loads(result["stdout"].decode() or "[]")
-                 if i.get("title") == params["title"] and i.get("createdAt", "") >= since[:19]]
+        tag = marker(action_id)
+        found = [i for i in json.loads(result["stdout"].decode() or "[]") if tag in (i.get("body") or "")]
         if found:
-            record.update(status="applied", reconciled_at=now(), receipt=dict(record.get("receipt") or {}, url=found[0]["url"], reconciled=True))
-        else:
-            # Nothing landed: safe to prepare again.
-            record.update(status="failed", reconciled_at=now(), receipt=dict(record.get("receipt") or {}, reconciled=True,
-                                                                          note="no matching issue found after approval"))
+            record.update(status="applied", reconciled_at=now(),
+                          receipt=dict(record.get("receipt") or {}, url=found[0]["url"], reconciled=True))
+            write_json(path / "action.json", record)
+            return record
+        record.update(last_reconcile_at=now())
         write_json(path / "action.json", record)
-        return record
-
+        return dict(record, note="no issue with this action's marker among the 100 newest in " + params["repo"] +
+                    "; still unknown. Check the repository before preparing it again.")
