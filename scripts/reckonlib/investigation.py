@@ -301,7 +301,7 @@ def history(root, env=None, service=None, query=None, limit=20):
     for p in sorted(local_path(root, "sessions").glob("*/session.json"), reverse=True):
         try:
             _, data = session_path(root, p.parent.name)
-        except ValueError:
+        except (ValueError, OSError):
             continue  # one unreadable session never hides the others
         if env and data["environment"] != env or service and data.get("service") != service:
             continue

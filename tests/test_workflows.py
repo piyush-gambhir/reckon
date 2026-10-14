@@ -160,6 +160,11 @@ class WorkflowTests(OrgCase):
         broken = sessions / "20990101T000000Z-broken0000"
         broken.mkdir()
         write_json(broken / "session.json", {"schema_version": 1, "id": broken.name, "environment": "staging", "workflow": "x"})
+        locked = sessions / "20200101T000000Z-locked0000"
+        locked.mkdir()
+        write_json(locked / "session.json", {})
+        (locked / "session.json").chmod(0)
+        self.addCleanup((locked / "session.json").chmod, 0o600)
         (orgs.workspace(self.home, "acme") / "actions" / "junk").mkdir(parents=True)
         write_json(orgs.workspace(self.home, "acme") / "actions" / "junk" / "action.json", [])
         second = self.start("site=sc-domain:acme.com")

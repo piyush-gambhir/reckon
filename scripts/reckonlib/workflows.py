@@ -121,7 +121,7 @@ def previous(root, env, snapshot):
                     or any(flow["params"].get(k) != v for k, v in series.items())):
                 continue
             actions = [{"id": n["id"], "text": n["text"]} for n in live(notes) if n.get("kind") == "action"]
-        except (ValueError, KeyError, TypeError, AttributeError):
+        except (ValueError, KeyError, TypeError, AttributeError, OSError):
             continue  # unreadable or malformed sessions never stop a new run
         # Creation time to the microsecond: two runs started in the same second still order correctly.
         if best is None or str(data.get("created_at", "")) > best[0]:
