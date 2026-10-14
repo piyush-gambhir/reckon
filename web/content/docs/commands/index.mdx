@@ -152,7 +152,8 @@ each bound to a read and the number to take from its JSON output:
 ```json
 {"goals": [
   {"id": "clicks", "title": "Organic clicks (28 days)", "provider": "gsc",
-   "command": ["performance"], "path": "current.clicks", "target": 5000},
+   "command": ["performance"], "match": ["sc-domain:acme.com", "28d"],
+   "path": "current.clicks", "target": 5000},
   {"id": "p95", "title": "Checkout p95 ms", "provider": "cubeapm",
    "command": ["metrics", "query"], "path": "data.0.value", "target": 800, "direction": "down"}
 ]}
@@ -160,8 +161,10 @@ each bound to a read and the number to take from its JSON output:
 
 `reckon brief` shows each goal's value from the newest saved read of that command
 in the environment (with its date and evidence id), whether it is on track, or the
-read to run when there is none. Check `path` against the tool's real output; a
-weekly routine keeps the readings fresh.
+read to run when there is none. `match` lists arguments the read must include
+(here the site and the period), so a one-day read of another site never counts.
+Check `path` against the tool's real output; a weekly routine keeps the readings
+fresh. A goals file that does not parse shows as one invalid row, not an error.
 
 ## Agent spend
 

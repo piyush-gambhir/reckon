@@ -24,7 +24,7 @@ class WatchTests(OrgCase):
 
     def test_first_poll_is_a_baseline_then_new_items_reach_the_inbox_and_brief(self):
         added = self.cli("watch", "add", "disputes", "--org", "acme", "--env", "prod", "--connection", "stripe", "--items", "data",
-                         "--title", "reason", "--", "disputes", "list", "--limit", "20")
+                         "--title", "reason", "--production", "--", "disputes", "list", "--limit", "20")
         self.assertEqual(added.returncode, 0, added.stderr)
         self.disputes("dp_1", "dp_2")
         self.assertEqual(watches.run(self.home, "acme", self.registry)[0]["status"], "baseline")
@@ -38,13 +38,33 @@ class WatchTests(OrgCase):
         self.assertIn("disputes: fraudulent dp_3", text)
         self.assertEqual(activity.read(self.home, "acme", env="prod", event="watch")[1]["new"], 1)
 
+    def test_titles_are_escaped_and_a_changed_watch_restarts(self):
+        watches.add(self.home, self.ctx(env="prod"), "d", "stripe", ["disputes", "list"], "data", "id", "reason", self.registry, True)
+        self.disputes("dp_1")
+        watches.run(self.home, "acme", self.registry)
+        self.feed.write_text(json.dumps({"data": [{"id": "dp_1"}, {"id": "dp_2", "reason": "\x1b[2Jfake\nline"}]}))
+        watches.run(self.home, "acme", self.registry)
+        self.assertEqual(watches.inbox(self.home, "acme")[0]["title"], "\\x1b[2Jfake line")
+        # Removing and adding it again starts from a baseline, not a flood.
+        watches.remove(self.home, "acme", "d")
+        watches.add(self.home, self.ctx(env="prod"), "d", "stripe", ["disputes", "list"], "data", "id", None, self.registry, True)
+        self.assertEqual(watches.run(self.home, "acme", self.registry)[0]["status"], "baseline")
+        data = orgs.load(self.home, "acme", self.registry)
+        data["connections"]["pg"] = {"provider": "postgres"}
+        orgs.save(self.home, data, self.registry)
+        with self.assertRaisesRegex(ValueError, "cannot be watched"):
+            watches.add(self.home, self.ctx(env="prod"), "pg", "pg", ["-c", "select 1"], "", "id", None, self.registry, True)
+
     def test_bad_watches_are_refused_or_reported(self):
         refused = self.cli("watch", "add", "w", "--org", "acme", "--env", "prod", "--connection", "stripe", "--", "charges", "create")
         self.assertEqual(refused.returncode, 1)
-        watches.add(self.home, self.ctx(env="prod"), "w", "stripe", ["charges", "list"], "missing", "id", registry=self.registry)
+        refused = self.cli("watch", "add", "w", "--org", "acme", "--env", "prod", "--connection", "stripe", "--", "charges", "list")
+        self.assertIn("pass --production", refused.stderr)
+        watches.add(self.home, self.ctx(env="prod"), "w", "stripe", ["charges", "list"], "missing", "id", registry=self.registry, production=True)
         self.assertEqual(watches.run(self.home, "acme", self.registry)[0]["status"], "error")
         pinned = self.cli("watch", "run", "--org", "acme", RECKON_ORG="acme", RECKON_ENV="prod")
         self.assertEqual(pinned.returncode, 1)
+        self.assertEqual(self.cli("watch", "list", "--org", "acme", RECKON_ORG="", RECKON_ENV="").returncode, 1)
         # The agent may read its own environment's inbox.
         self.assertEqual(self.cli("inbox", RECKON_ORG="acme", RECKON_ENV="prod").returncode, 0)
 

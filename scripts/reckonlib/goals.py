@@ -1,7 +1,8 @@
 """Goals: an org's targets, each bound to a read, reported from saved evidence.
 
 knowledge/_shared/goals.json (all environments) and knowledge/<env>/goals.json hold
-{"goals": [{"id", "title", "provider", "command": [words], "path": "current.clicks",
+{"goals": [{"id", "title", "provider", "command": [words], "match": [arguments the
+read must include, e.g. "sc-domain:acme.com", "28d"], "path": "current.clicks",
 "target": 5000, "direction": "up" | "down"}]}. The brief takes the newest ok
 evidence of that read in this environment and reads the number at path, so it
 contacts no tool; the value is as fresh as the last saved read."""
@@ -28,9 +29,11 @@ def load(root, env):
 
 
 def validate(goal, name):
+    words = goal.get("command") if isinstance(goal, dict) else None
+    match = goal.get("match", []) if isinstance(goal, dict) else None
     ok = (isinstance(goal, dict) and orgs.NAME.fullmatch(str(goal.get("id", ""))) and isinstance(goal.get("title"), str)
-          and isinstance(goal.get("provider"), str) and isinstance(goal.get("command"), list) and goal["command"]
-          and all(isinstance(w, str) and w for w in goal["command"]) and PATH.fullmatch(str(goal.get("path", "")))
+          and isinstance(goal.get("provider"), str) and isinstance(words, list) and isinstance(match, list) and (words or match)
+          and all(isinstance(w, str) and w for w in words + match) and PATH.fullmatch(str(goal.get("path", "")))
           and isinstance(goal.get("target"), (int, float)) and not isinstance(goal.get("target"), bool)
           and goal.get("direction", "up") in ("up", "down"))
     if not ok:
@@ -59,8 +62,10 @@ def latest(root, env, goal, registry=None):
             record = read_json(record_path)
         except ValueError:
             continue
+        args = record.get("command", [])[1:]
         if (record.get("environment") != env or record.get("status") != "ok" or record.get("provider") != goal["provider"]
-                or not connectors.matches(goal["command"], connectors.tokens(record.get("command", [])[1:], spec))):
+                or not connectors.matches(goal["command"], connectors.tokens(args, spec))
+                or not all(any(a == m or a.startswith(m + "=") or a.endswith("=" + m) for a in args) for m in goal.get("match", []))):
             continue
         # Observation time first; the record's write time breaks ties within a second.
         key = (record.get("observed_at", ""), record_path.stat().st_mtime_ns)
@@ -78,7 +83,12 @@ def latest(root, env, goal, registry=None):
 
 def report(root, env, registry=None):
     rows = []
-    for goal in load(root, env):
+    try:
+        found = load(root, env)
+    except ValueError as exc:
+        # One bad file is reported in the brief instead of stopping it.
+        return [{"goal": "goals.json", "title": "goals file", "status": "invalid", "next": str(exc)[:300]}]
+    for goal in found:
         row = {"goal": goal["id"], "title": goal["title"], "target": goal["target"], "direction": goal.get("direction", "up")}
         seen = latest(root, env, goal, registry)
         if not seen:

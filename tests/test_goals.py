@@ -45,8 +45,14 @@ class GoalTests(OrgCase):
         self.assertEqual(goals.report(self.root, "uat", self.registry)[0]["status"], "no reading")
         write_json(self.root / "knowledge" / "_shared" / "goals.json", {"goals": [{"id": "x", "title": "x", "provider": "gsc",
                                                                                    "command": ["performance"], "path": "a b", "target": 1}]})
-        with self.assertRaisesRegex(ValueError, "each goal needs"):
-            goals.report(self.root, "staging", self.registry)
+        self.assertEqual(goals.report(self.root, "staging", self.registry)[0]["status"], "invalid")
+        self.assertEqual(self.cli("brief", "--all-orgs").returncode, 0)
+
+    def test_match_keeps_other_reads_out(self):
+        write_json(self.root / "knowledge" / "_shared" / "goals.json", {"goals": [dict(GOALS["goals"][0], match=["sc-domain:acme.com", "28d"])]})
+        self.read({"current": {"clicks": 5200}}, ("gsc", "performance", "--site", "sc-domain:acme.com", "--last", "28d", "-o", "json"))
+        self.read({"current": {"clicks": 90}}, ("gsc", "performance", "--site", "sc-domain:other.com", "--last", "28d", "-o", "json"))
+        self.assertEqual(goals.report(self.root, "staging", self.registry)[0]["value"], 5200)
 
 
 if __name__ == "__main__":

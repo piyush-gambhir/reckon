@@ -118,6 +118,7 @@ def parser():
     command.add_argument("--items", default="", help="dotted path to the list of items in the JSON output (default: the top level)")
     command.add_argument("--key", default="id", help="field that identifies an item (default id)")
     command.add_argument("--title", help="field to show for an item")
+    command.add_argument("--production", action="store_true", help="confirm a watch in a production environment")
     command = sub.add_parser("inbox", parents=[scope], help="new items found by watches")
     command.add_argument("--days", type=int, default=7)
     command.add_argument("--all-envs", action="store_true")
@@ -351,7 +352,7 @@ def execute(args):
     h = orgs.home()
     registry = orgs.providers()
     name = args.command
-    if os.environ.get("RECKON_ORG") and (name in ("use", "connect", "login", "migrate", "open", "routine", "watch") or name == "org" and args.action == "add"
+    if activity.pinned() and (name in ("use", "connect", "login", "migrate", "open", "routine", "watch") or name == "org" and args.action == "add"
                                          or name == "act" and args.action == "apply"):
         # An agent started by reckon open works only inside its pinned org and environment.
         raise ValueError("reckon " + name + " is for the operator's own terminal, not a pinned agent")
@@ -447,6 +448,8 @@ def execute(args):
         return routines.run(h, org, args.name, registry)
     if name == "watch" and args.action != "add":
         from reckonlib import watches
+        if args.passthrough:
+            raise ValueError("only reckon watch add takes a read after --")
         org = args.org or orgs.context(h, registry=registry)["org"]
         orgs.load(h, org, registry)
         if args.action == "list":
@@ -464,7 +467,9 @@ def execute(args):
             if activity.pinned():
                 raise ValueError("a pinned agent sees only its own org; run reckon spend --all-orgs in your own terminal")
             return [spend.report(h, org, args.days) for org in orgs.orgs(h)]
-        org = args.org or orgs.context(h, registry=registry)["org"]
+        # A pinned agent sees only its own org's spend.
+        org = orgs.context(h, args.org, os.environ.get("RECKON_ENV"), registry)["org"] if activity.pinned() else \
+            args.org or orgs.context(h, registry=registry)["org"]
         orgs.load(h, org, registry)
         return [spend.report(h, org, args.days)]
     if name == "brief" and args.all_orgs:
@@ -562,11 +567,14 @@ def execute(args):
         from reckonlib import watches
         if len(args.name) != 1 or not args.connection:
             raise ValueError("reckon watch add <name> --connection <conn> --items <path> --key <field> -- <read>")
-        return watches.add(h, ctx, args.name[0], args.connection, args.passthrough, args.items, args.key, args.title, registry)
+        return watches.add(h, ctx, args.name[0], args.connection, args.passthrough, args.items, args.key, args.title, registry,
+                           args.production)
     if name == "inbox":
         from reckonlib import watches
         if args.all_envs and activity.pinned():
             raise ValueError("a pinned agent sees only its own environment's inbox")
+        if not 1 <= args.days <= 365:
+            raise ValueError("--days must be 1-365")
         return watches.inbox(h, ctx["org"], args.days, None if args.all_envs else ctx["env"])
     if name == "routine" and args.action == "add":
         from reckonlib import routines
@@ -824,7 +832,7 @@ def display(command, result):
                 print("  " + (m["runtime"] + " " + m["model"]).ljust(34) + "in " + format(m["input"], ",") + "  out " + format(m["output"], ",") +
                       "  cache read " + format(m["cache_read"], ",") + "  cache write " + format(m["cache_write"], ","))
             if row["unpriced_models"] and row["models"]:
-                print("  no price for " + ", ".join(row["unpriced_models"]) + " (add it to ~/.reckon/prices.json for an estimate)")
+                print("  no price for " + ", ".join(row["unpriced_models"]) + " (add it to $RECKON_HOME/prices.json for an estimate)")
     elif command == "workflows":
         for row in result:
             print(row["workflow"].ljust(18) + row["title"])

@@ -19,9 +19,10 @@ FIELDS = ("input", "output", "cache_read", "cache_write")
 
 def parse(stamp):
     try:
-        return datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+        when = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
     except ValueError:
         return None
+    return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
 
 
 def roots(root):
@@ -39,7 +40,8 @@ def claude(root, since):
     folders = roots(root)
     # Claude Code names a project folder after its path with every other character replaced by "-".
     prefixes = {re.sub(r"[^A-Za-z0-9]", "-", f) for f in folders}
-    totals, seen = {}, set()
+    # One line per content block, each with the message's usage so far: keep the largest per message.
+    messages = {}
     for project in sorted(base.iterdir()) if base.is_dir() else []:
         if not any(project.name.startswith(p) for p in prefixes):
             continue
@@ -56,51 +58,65 @@ def claude(root, since):
                     except (ValueError, KeyError, TypeError):
                         continue
                     when = parse(entry.get("timestamp"))
-                    key = message.get("id") or entry.get("uuid")
-                    if not when or when < since or key in seen or not inside(entry.get("cwd"), folders):
+                    model = message.get("model", "unknown")
+                    if not when or when < since or model == "<synthetic>" or not inside(entry.get("cwd"), folders):
                         continue
-                    seen.add(key)
-                    row = totals.setdefault(message.get("model", "unknown"), dict.fromkeys(FIELDS, 0))
-                    row["input"] += usage.get("input_tokens") or 0
-                    row["output"] += usage.get("output_tokens") or 0
-                    row["cache_read"] += usage.get("cache_read_input_tokens") or 0
-                    row["cache_write"] += usage.get("cache_creation_input_tokens") or 0
+                    row = {"input": usage.get("input_tokens") or 0, "output": usage.get("output_tokens") or 0,
+                           "cache_read": usage.get("cache_read_input_tokens") or 0,
+                           "cache_write": usage.get("cache_creation_input_tokens") or 0}
+                    key = message.get("id") or entry.get("uuid")
+                    known = messages.setdefault(key, (model, dict.fromkeys(FIELDS, 0)))[1]
+                    for f in FIELDS:
+                        known[f] = max(known[f], row[f])
+    totals = {}
+    for model, row in messages.values():
+        if any(row.values()):
+            into = totals.setdefault(model, dict.fromkeys(FIELDS, 0))
+            for f in FIELDS:
+                into[f] += row[f]
     return totals
 
 
 def codex(root, since):
+    """Per-turn usage events inside the window, so resumed sessions count only new turns
+    and an event replayed into a forked session counts once."""
     base = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "sessions"
-    folders, totals = roots(root), {}
+    folders, totals, seen = roots(root), {}, set()
     for path in sorted(base.rglob("*.jsonl")) if base.is_dir() else []:
         if datetime.fromtimestamp(path.stat().st_mtime, timezone.utc) < since:
             continue
-        meta, last, model = None, None, "codex"
+        model = "codex"
         with path.open(encoding="utf-8", errors="replace") as lines:
+            try:
+                meta = json.loads(next(lines, "{}")).get("payload", {})
+            except ValueError:
+                continue
+            if not isinstance(meta, dict) or not inside(meta.get("cwd"), folders):
+                continue
             for line in lines:
-                if meta is None:
-                    try:
-                        meta = json.loads(line).get("payload", {})
-                    except ValueError:
-                        break
-                    if not inside(meta.get("cwd"), folders) or (parse(meta.get("timestamp")) or since) < since:
-                        break
+                if '"token_count"' not in line and '"turn_context"' not in line:
                     continue
-                if '"token_count"' in line or '"turn_context"' in line:
-                    try:
-                        payload = json.loads(line).get("payload", {})
-                    except ValueError:
-                        continue
-                    if payload.get("type") == "token_count" and (payload.get("info") or {}).get("total_token_usage"):
-                        last = payload["info"]["total_token_usage"]
-                    elif payload.get("model"):
-                        model = payload["model"]
-        if last:
-            row = totals.setdefault(model, dict.fromkeys(FIELDS, 0))
-            cached = last.get("cached_input_tokens") or 0
-            row["input"] += (last.get("input_tokens") or 0) - cached
-            row["output"] += last.get("output_tokens") or 0
-            row["cache_read"] += cached
-            row["cache_write"] += last.get("cache_write_input_tokens") or 0
+                try:
+                    entry = json.loads(line)
+                    payload = entry.get("payload", {})
+                except ValueError:
+                    continue
+                if payload.get("type") != "token_count":
+                    model = payload.get("model") or model
+                    continue
+                info = payload.get("info") or {}
+                turn, total = info.get("last_token_usage"), info.get("total_token_usage")
+                when = parse(entry.get("timestamp"))
+                key = (entry.get("timestamp"), json.dumps(total, sort_keys=True))
+                if not turn or not when or when < since or key in seen:
+                    continue
+                seen.add(key)
+                row = totals.setdefault(model, dict.fromkeys(FIELDS, 0))
+                cached = turn.get("cached_input_tokens") or 0
+                row["input"] += (turn.get("input_tokens") or 0) - cached
+                row["output"] += turn.get("output_tokens") or 0
+                row["cache_read"] += cached
+                row["cache_write"] += turn.get("cache_write_input_tokens") or 0
     return totals
 
 
@@ -118,8 +134,7 @@ def prices(h):
 def report(h, org, days=30):
     since = datetime.now(timezone.utc) - timedelta(days=days)
     root = orgs.workspace(h, org)
-    table, rates = prices(h), []
-    models = []
+    table, rates, models = prices(h), [], []
     for runtime, totals in (("claude", claude(root, since)), ("codex", codex(root, since))):
         for model, row in sorted(totals.items()):
             rate = table.get(model)

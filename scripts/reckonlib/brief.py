@@ -46,7 +46,7 @@ def brief(h, ctx, registry, days=7, envs=None):
                 "command": " ".join(e.get("command", [])), "detail": e.get("detail", "")} for e in events if e["event"] == "refused"]
     targets = [dict(row, environment=env) for env in envs for row in goals.report(root, env, registry)]
     from .watches import inbox
-    new = [item for env in envs for item in inbox(h, ctx["org"], days, env)]
+    new = sorted((item for env in envs for item in inbox(h, ctx["org"], days, env)), key=lambda i: i["at"], reverse=True)
     stale = []
     for layer in ["_shared"] + list(envs):
         base = root / "knowledge" / layer
@@ -95,7 +95,7 @@ def render_all(result):
 
 def goal_line(r):
     where = "[" + r["environment"] + "] " + r["title"] + ": "
-    if r["status"] in ("no reading", "unreadable"):
+    if r["status"] in ("no reading", "unreadable", "invalid"):
         return where + r["status"] + " (" + r["next"] + ")"
     return (where + format(r["value"], ",") + " vs target " + format(r["target"], ",") + ", " + r["status"] +
             " (observed " + str(r["observed_at"])[:10] + ", " + r["evidence"] + ")")

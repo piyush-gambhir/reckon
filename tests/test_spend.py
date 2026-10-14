@@ -37,16 +37,40 @@ class SpendTests(OrgCase):
         (codex / "rollout-1.jsonl").write_text("\n".join(json.dumps(x) for x in (
             {"type": "session_meta", "payload": {"cwd": self.root + "/knowledge", "timestamp": stamp()}},
             {"type": "turn_context", "payload": {"model": "gpt-6.1-sol"}},
-            {"type": "event_msg", "payload": {"type": "token_count", "info": {"total_token_usage": {"input_tokens": 50, "cached_input_tokens": 20, "output_tokens": 5}}}},
-            {"type": "event_msg", "payload": {"type": "token_count", "info": {"total_token_usage": {"input_tokens": 80, "cached_input_tokens": 30, "output_tokens": 9}}}})) + "\n")
+            {"type": "event_msg", "timestamp": stamp(40), "payload": {"type": "token_count", "info": {
+                "total_token_usage": {"input_tokens": 1000}, "last_token_usage": {"input_tokens": 1000}}}},
+            {"type": "event_msg", "timestamp": stamp(), "payload": {"type": "token_count", "info": {
+                "total_token_usage": {"input_tokens": 1050, "output_tokens": 5},
+                "last_token_usage": {"input_tokens": 50, "cached_input_tokens": 20, "output_tokens": 5}}}},
+            {"type": "event_msg", "timestamp": stamp(), "payload": {"type": "token_count", "info": {
+                "total_token_usage": {"input_tokens": 1080, "output_tokens": 9},
+                "last_token_usage": {"input_tokens": 30, "cached_input_tokens": 10, "output_tokens": 4}}}})) + "\n")
+        # A forked session replaying the same events counts them once.
+        (codex / "rollout-2.jsonl").write_text((codex / "rollout-1.jsonl").read_text())
         result = spend.report(self.home, "acme", days=30)
         rows = {m["model"]: m for m in result["models"]}
         self.assertEqual((rows["claude-opus-5-5"]["input"], rows["claude-opus-5-5"]["output"], rows["claude-opus-5-5"]["cache_read"]), (12, 20, 200))
+        # Only the in-window turns count: input 80 - cached 30, output 9.
         self.assertEqual((rows["gpt-6.1-sol"]["input"], rows["gpt-6.1-sol"]["cache_read"], rows["gpt-6.1-sol"]["output"]), (50, 30, 9))
         self.assertIsNone(result["usd"])
         (self.home / "prices.json").write_text(json.dumps({"claude-opus-5-5": {"input": 1e6, "output": 0, "cache_read": 0, "cache_write": 0},
                                                            "gpt-6.1-sol": {"input": 0, "output": 1e6, "cache_read": 0, "cache_write": 0}}))
         self.assertEqual(spend.report(self.home, "acme", days=30)["usd"], 21.0)
+
+    def test_streamed_usage_and_synthetic_messages(self):
+        folder = self.dir / "claude" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", self.root)
+        folder.mkdir(parents=True)
+        lines = [{"type": "assistant", "cwd": self.root, "timestamp": stamp(), "message": {"id": "m1", "model": "claude-opus-5-5",
+                  "usage": {"input_tokens": 3, "output_tokens": out}}} for out in (1, 500)]
+        lines.append({"type": "assistant", "cwd": self.root, "timestamp": "2026-10-14T08:00:00", "message": {
+            "id": "s1", "model": "<synthetic>", "usage": {"input_tokens": 0, "output_tokens": 0}}})
+        (folder / "s.jsonl").write_text("\n".join(json.dumps(x) for x in lines) + "\n")
+        result = spend.report(self.home, "acme", days=30)
+        self.assertEqual([(m["model"], m["output"]) for m in result["models"]], [("claude-opus-5-5", 500)])
+        # A pinned agent cannot name another org.
+        refused = self.cli("spend", "--org", "beta", RECKON_ORG="acme", RECKON_ENV="staging")
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn("pinned", refused.stderr)
 
     def test_all_orgs_spend_is_for_the_operator(self):
         refused = self.cli("spend", "--all-orgs", RECKON_ORG="acme", RECKON_ENV="staging")
