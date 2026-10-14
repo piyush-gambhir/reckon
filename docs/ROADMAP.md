@@ -136,6 +136,10 @@ gog, Sentry, Cloudflare. HubSpot waits for its CLI source to be published.
 | Cloudflare | [cf](https://github.com/cloudflare/cf) | DNS, security and Workers across sites (beta: pin it) |
 | HubSpot | [agent-cli](https://github.com/HubSpot/agent-cli) | Pipeline and CRM hygiene |
 
+Checked 2026-10-14 against real release binaries (no account): every allowed command
+of Stripe 1.53.1, Linear 3.0.0, Supabase and Shopify 4.7.1 exists
+(`RECKON_ADOPTED_BIN` test). Still to run against real accounts.
+
 Done 2026-10-14 from source, pending live tests: Linear (schpet/linear-cli),
 Resend, Shopify (`store execute`, which refuses mutations; forced off) and Supabase
 (Management API reads only: `inspect db` and `migration list` create a read-write

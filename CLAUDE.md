@@ -45,6 +45,8 @@ python3 -B -m unittest discover -s tests -p 'test_*.py' -v
 bash tests/test-cli-install.sh
 bash -n scripts/reckon scripts/setup.sh
 RECKON_HOME="$(mktemp -d)" python3 scripts/reckon.py demo
+# Optional: check adopted CLIs' allowed commands against real release binaries (no account needed)
+RECKON_ADOPTED_BIN=/path/to/binaries python3 -B -m unittest discover -s tests -p 'test_adopted.py'
 ```
 
 The web site: `cd web && pnpm install && pnpm types:check && pnpm build:cloudflare && pnpm test:search`.

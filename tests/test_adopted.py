@@ -1,4 +1,10 @@
-"""Adopted third-party CLIs: entries are fail-closed allowlists. Offline."""
+"""Adopted third-party CLIs: entries are fail-closed allowlists. Offline.
+
+RECKON_ADOPTED_BIN=<dir with stripe, linear, supabase, shopify...> also checks each
+allowed read command against the real binary's --help (no account needed)."""
+import os
+import subprocess
+import tempfile
 import unittest
 
 from helpers import REGISTRY
@@ -34,6 +40,28 @@ class AdoptedTests(unittest.TestCase):
             for args in refused:
                 with self.assertRaises(ValueError, msg=(name, args)):
                     connectors.check(name, spec, args)
+
+
+@unittest.skipUnless(os.environ.get("RECKON_ADOPTED_BIN"), "set RECKON_ADOPTED_BIN to a folder of release binaries")
+class RealBinaryTests(unittest.TestCase):
+    def test_every_allowed_command_exists(self):
+        folder, home = os.environ["RECKON_ADOPTED_BIN"], tempfile.mkdtemp()
+        env = {"HOME": home, "XDG_CONFIG_HOME": home, "CI": "1", "NO_COLOR": "1", "PATH": folder + ":/usr/bin:/bin", "DO_NOT_TRACK": "1",
+               "STRIPE_CLI_TELEMETRY_OPTOUT": "1", "SUPABASE_TELEMETRY_DISABLED": "1", "SHOPIFY_CLI_NO_ANALYTICS": "1"}
+        checked = 0
+        for name, spec in REGISTRY.items():
+            binary = os.path.join(folder, spec["binary"])
+            if spec.get("mode") != "allowlist" or not os.access(binary, os.X_OK):
+                continue
+            for words in spec["read_commands"]:
+                if any("*" in w for w in words):
+                    continue
+                done = subprocess.run([binary] + words + ["--help"], env=env, capture_output=True, text=True, timeout=60)
+                # Some CLIs print the parent's help for an unknown verb, so the full path must appear.
+                text = " ".join((done.stdout + done.stderr).split()).lower()
+                self.assertTrue(done.returncode == 0 and " ".join([spec["binary"]] + words).lower() in text, (name, words))
+                checked += 1
+        self.assertGreater(checked, 0)
 
 
 if __name__ == "__main__":
