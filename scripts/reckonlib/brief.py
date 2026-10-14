@@ -18,19 +18,29 @@ def brief(h, ctx, registry, days=7, envs=None):
     envs = envs or [ctx["env"]]
     root = orgs.workspace(h, ctx["org"])
     since = datetime.now(timezone.utc) - timedelta(days=days)
-    sessions, findings = [], []
+    sessions, findings, series = [], [], {}
     for path in sorted(local_path(root, "sessions").glob("*/session.json"), reverse=True) if (root / "sessions").is_dir() else []:
-        data = read_json(path)
+        try:
+            data = read_json(path)
+        except (ValueError, OSError):
+            continue  # one unreadable session never stops the brief
+        if not isinstance(data, dict) or not isinstance(data.get("notes", []), list):
+            continue
+        review(series, data, envs)
         if data.get("status") == "open":
             sessions.append({"id": data["id"], "environment": data["environment"], "question": data["question"], "since": data["created_at"]})
         for note in data.get("notes", []):
             if note["kind"] == "finding" and not note.get("withdrawn_at") and parse(note["recorded_at"]) >= since:
                 findings.append({"session": data["id"], "environment": data["environment"], "text": note["text"], "at": note["recorded_at"]})
     pending, unknown = [], []
+    from .actions import target_text
     for path in sorted(local_path(root, "actions").glob("*/action.json"), reverse=True) if (root / "actions").is_dir() else []:
-        action = read_json(path)
-        row = {"id": action["id"], "operation": action["operation"], "connection": action["connection"],
-               "environment": action["environment"], "target": action["params"].get("repo")}
+        try:
+            action = read_json(path)
+            row = {"id": action["id"], "operation": action["operation"], "connection": action["connection"],
+                   "environment": action["environment"], "target": target_text(action["operation"], action["params"])}
+        except (ValueError, OSError, KeyError, TypeError, AttributeError):
+            continue
         if action["status"] == "prepared":
             pending.append(row)
         elif action["status"] in ("unknown", "running"):
@@ -58,7 +68,35 @@ def brief(h, ctx, registry, days=7, envs=None):
             "recent_findings": findings[:20], "writes_waiting_for_approval": pending,
             "writes_with_unknown_outcome": unknown, "connections_needing_attention": attention, "stale_knowledge": stale,
             "refused_runs": refused[:20], "runs": sum(e["event"] == "run" for e in events), "goals": targets,
-            "inbox": new[:30], "agent_budget": budget_warning(h, ctx["org"])}
+            "inbox": new[:30], "agent_budget": budget_warning(h, ctx["org"]),
+            "reviews": sorted(series.values(), key=lambda r: (r["last_done"] or "", r["workflow"]))}
+
+
+def review(series, data, envs):
+    """Fold one session into the review series it belongs to: when one last finished, and any run still open."""
+    flow = data.get("workflow")
+    if not isinstance(flow, dict) or not isinstance(flow.get("params"), dict) or data.get("environment") not in envs:
+        return
+    keys = [k for k in flow.get("series", []) if isinstance(k, str)]
+    name = " ".join(k + "=" + str(flow["params"].get(k)) for k in keys)
+    row = series.setdefault((flow.get("id"), data["environment"], name), {
+        "workflow": str(flow.get("id")), "environment": data["environment"], "series": name, "last_done": None, "session": None, "open": []})
+    if data.get("status") == "done":
+        done = str(data.get("closed_at") or data.get("created_at") or "")
+        if done > (row["last_done"] or ""):
+            row.update(last_done=done, session=data.get("id"))
+    elif data.get("status") == "open":
+        row["open"].append(data.get("id"))
+
+
+def review_line(r):
+    where = "[" + r["environment"] + "] " + r["workflow"] + (" " + r["series"] if r["series"] else "") + ": "
+    if r["last_done"]:
+        age = (datetime.now(timezone.utc) - parse(r["last_done"])).days
+        where += "last done " + r["last_done"][:10] + " (" + str(age) + " days ago, " + str(r["session"]) + ")"
+    else:
+        where += "never finished"
+    return where + ("; open: " + ", ".join(r["open"]) if r["open"] else "")
 
 
 def budget_warning(h, org):
@@ -118,6 +156,7 @@ def render(result):
                 ("New from watches (reckon inbox)", "inbox",
                  lambda r: "[" + r["environment"] + "] " + r["watch"] + ": " + r["title"] + "  (" + r["at"][:16] + ")"),
                 ("Goals (from the newest saved read)", "goals", goal_line),
+                ("Reviews (each series' last finished run; the next one follows it up)", "reviews", review_line),
                 ("Writes with an unknown outcome (run reckon act reconcile)", "writes_with_unknown_outcome",
                  lambda r: r["id"] + "  " + r["operation"] + " " + str(r["target"] or "") + " via " + r["connection"]),
                 ("Writes waiting for approval (reckon act apply)", "writes_waiting_for_approval",
