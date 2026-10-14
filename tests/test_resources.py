@@ -48,6 +48,17 @@ class ResourceTests(OrgCase):
             actions.prepare(self.home, self.ctx(), orgs.workspace(self.home, "acme"), "github.issue.create",
                             {"repo": "other/api", "title": "t", "body": "b"}, self.registry)
 
+    def test_site_targets_are_parsed_not_compared_as_text(self):
+        from reckonlib.connectors import site_allowed
+        for value, pattern, allowed in (("https://bücher.example/", "https://bücher.example/", True),
+                                        ("https://xn--bcher-kva.example/page", "https://bücher.example/", True),
+                                        ("https://acme.com:443/page", "https://acme.com/", True),
+                                        ("https://acme.com:0/", "https://acme.com/", False),
+                                        ("https://acme.com:8443/page", "https://acme.com/", False),
+                                        ("https://evil.invalid#.acme.com/", "sc-domain:acme.com", False),
+                                        ("https://WWW.ACME.COM./page", "sc-domain:acme.com", True)):
+            self.assertEqual(site_allowed(value, pattern), allowed, (value, pattern))
+
     def test_review_bypasses_are_closed(self):
         refused = [
             ("gh", ["issue", "view", "https://github.com/other/private/issues/1", "--repo", "acme/api"], {}),
@@ -60,6 +71,7 @@ class ResourceTests(OrgCase):
             ("gsc", ["inspect", "https://other.com/page", "--site", "sc-domain:acme.com"], {}),
             ("gsc", ["sites", "get", "--site", "https://evil.invalid#.acme.com/"], {}),
             ("gsc", ["sites", "get", "--site", "https://www.acme.com@evil.invalid/"], {}),
+            ("gsc", ["sites", "get", "--site", "https://www.acme.com:0/"], {}),
             ("k8s", ["get", "pods", "-n", "shop", "-A"], {}),
             ("k8s", ["get", "pods", "-n", "shop", "--all-namespaces"], {}),
             ("k8s", ["get", "namespace/billing", "-n", "shop"], {}),
