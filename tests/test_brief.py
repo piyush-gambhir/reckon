@@ -50,3 +50,13 @@ class BriefTests(OrgCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DoctorVersionTests(OrgCase):
+    def test_doctor_reports_cli_versions_older_than_the_pin(self):
+        self.fake("print('grafana-cli version v0.2.5-12-gabc')", "grafana")
+        self.fake("print('jenkins version v9.9.9')", "jenkins")
+        out = self.cli("doctor", "--json")
+        checks = json.loads(out.stdout)["checks"]
+        self.assertTrue(any(c.startswith("grafana 0.2.5 is older than the pinned") for c in checks), checks)
+        self.assertFalse(any(c.startswith("jenkins") and "older" in c for c in checks))

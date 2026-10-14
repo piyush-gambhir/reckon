@@ -255,6 +255,31 @@ def preflight(h, ctx, registry):
             "warnings": warnings, "note": "ready means configured locally; reckon verify proves live access"}
 
 
+def version_tuple(text):
+    import re
+    match = re.search(r"v?(\d+)\.(\d+)\.(\d+)", text)
+    return tuple(int(x) for x in match.groups()) if match else None
+
+
+def outdated():
+    """Installed sibling CLIs older than the release this checkout pins."""
+    import csv
+    from reckonlib.process import run as bounded
+    notes = []
+    with open(orgs.code_root() / "scripts" / "cli-releases.csv") as stream:
+        for row in csv.DictReader(stream):
+            if not shutil.which(row["binary"]):
+                continue
+            env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", ""), "NO_UPDATE_NOTIFIER": "1", "CI": "1"}
+            result = bounded([row["binary"], "version"], env=env, timeout=5, max_bytes=65536)
+            have = version_tuple((result["stdout"] + result["stderr"]).decode(errors="replace"))
+            want = version_tuple(row["release"])
+            if have and want and have < want:
+                notes.append(row["binary"] + " " + ".".join(map(str, have)) + " is older than the pinned " + row["release"] +
+                             " (run: " + row["binary"] + " update, or remove it and rerun bash scripts/setup.sh)")
+    return notes
+
+
 def doctor(h, registry):
     problems, checks = [], []
     checks.append("Python " + ".".join(map(str, sys.version_info[:3])))
@@ -278,6 +303,7 @@ def doctor(h, registry):
                 problems.append(org + "/" + cname + ": " + str(exc))
             if not shutil.which(spec["binary"]):
                 checks.append(org + "/" + cname + ": " + spec["binary"] + " is not installed")
+    checks += outdated()
     link = h / "bin" / "reckon"
     checks.append("reckon command: " + (str(link) if link.is_symlink() else "created on the first reckon open"))
     try:
