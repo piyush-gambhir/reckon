@@ -17,6 +17,8 @@ from .store import local_path, now, private_dir, read_bytes, read_json, write, w
 SCHEMA = 1
 NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 LABEL = re.compile(r"[A-Za-z0-9_.:/-]{1,80}")
+# Some tools report a name with spaces (a Grafana org), so only edge spaces and control characters are refused.
+ACCOUNT = re.compile(r"(?=\S)[^\x00-\x1f\x7f]{1,200}(?<=\S)")
 LINE = re.compile(r"(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)")
 PRODUCTION_NAMES = ("prod", "production")
 # Inherited from the operator's shell by every child; everything else is dropped.
@@ -71,8 +73,10 @@ def validate(data, org, registry):
         raise ValueError(org + ": connections must be an object")
     for cname, conn in data["connections"].items():
         name(cname, "connection")
-        if not isinstance(conn, dict) or set(conn) - {"provider", "env", "env_labels", "resources", "note"}:
-            raise ValueError(org + "/" + cname + ": allowed fields are provider, env, env_labels, resources, note")
+        if not isinstance(conn, dict) or set(conn) - {"provider", "env", "env_labels", "resources", "account", "note"}:
+            raise ValueError(org + "/" + cname + ": allowed fields are provider, env, env_labels, resources, account, note")
+        if "account" in conn and not (isinstance(conn["account"], str) and ACCOUNT.fullmatch(conn["account"])):
+            raise ValueError(org + "/" + cname + ": account is the login, email or account id the tool reports (a * pattern is allowed)")
         kinds = registry.get(conn.get("provider"), {}).get("resources", {})
         bound = conn.get("resources", {})
         if not isinstance(bound, dict) or set(bound) - set(kinds) or not all(
@@ -272,10 +276,12 @@ def configured(h, org, conn, spec, values=None):
     return any((config / p).is_file() and (config / p).stat().st_size > 0 for p in spec.get("config_files", []))
 
 
-def child_env(h, ctx, conn_name, conn, spec, interactive=False):
-    """A fresh environment for one CLI: its secrets, private config/home/cache, safety switches."""
+def child_env(h, ctx, conn_name, conn, spec, interactive=False, values=None):
+    """A fresh environment for one CLI: its secrets, private config/home/cache, safety switches.
+    values: settings already read and resolved, so a check and the run it guards use the same ones."""
     org_dir = org_path(h, ctx["org"])
-    values = {k: reference(k, v) for k, v in secrets(h, ctx["org"], conn_name, spec).items()}
+    if values is None:
+        values = {k: reference(k, v) for k, v in secrets(h, ctx["org"], conn_name, spec).items()}
     env = {k: v for k, v in os.environ.items() if k in BASE_KEYS}
     env.update(values)
     config = local_path(org_dir, "config", conn_name)
@@ -324,7 +330,7 @@ def describe(h, ctx, registry):
         spec = registry[conn["provider"]]
         scope = conn.get("env") or (", ".join(sorted(conn["env_labels"])) if "env_labels" in conn else "all environments")
         row = {"connection": cname, "provider": conn["provider"], "scope": scope,
-               "applies": applies(conn, ctx["env"]), "label": conn.get("env_labels", {}).get(ctx["env"])}
+               "applies": applies(conn, ctx["env"]), "label": conn.get("env_labels", {}).get(ctx["env"]), "account": conn.get("account")}
         try:
             row["installed"] = bool(shutil.which(spec["binary"]))
             row["configured"] = configured(h, ctx["org"], cname, spec)

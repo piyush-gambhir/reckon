@@ -110,6 +110,18 @@ def read_json(path):
     return json.loads(read_bytes(path).decode("utf-8"))
 
 
+def pick(data, where):
+    """The value at a dotted path (result.items, data.0.name) in parsed JSON, or None."""
+    for part in where.split(".") if where else []:
+        if isinstance(data, list) and part.isdigit() and int(part) < len(data):
+            data = data[int(part)]
+        elif isinstance(data, dict):
+            data = data.get(part)
+        else:
+            return None
+    return data
+
+
 @contextmanager
 def lock(path):
     """OS advisory lock releases automatically on interruption/process death."""

@@ -100,6 +100,33 @@ pinned are refused there (`gh search`, `gh api`, GitHub URLs, `sites list`, Bing
 `gh` runs in an empty folder so it cannot pick up a git remote. Prepared GitHub
 issues are checked against `repo` when prepared and again when applied.
 
+Pin the account a connection must use, so a token or login from another business
+is caught before it is used:
+
+```bash
+reckon connect github --org acme --account acme-bot
+reckon connect jira --org acme --account '*@acme.com'   # any account of a domain
+reckon connect jira --org acme --account ''             # remove it
+```
+
+`reckon verify` reads the account from its live check and reports it: `ok` when
+it matches (case does not matter; `*` is a wildcard), `wrong_account` when the tool
+is logged in as someone else or does not say. Before a prepared write runs,
+`reckon act apply` makes the same check and refuses on a mismatch. Tools that
+report an account, and the field used:
+
+| Tool | Account reported |
+| --- | --- |
+| GitHub | `login` from `gh api user` |
+| AWS | `Account` (the account ID) from `sts get-caller-identity` |
+| Jira | `emailAddress`, else `name` (Server), else `accountId` |
+| Jenkins | `id` from `whoami` |
+| Grafana | the org `name` from `org current` |
+| Nginx Proxy Manager | `email` from `user current` |
+| Elasticsearch | `cluster_name` from `cluster health` |
+| Search Console | `account` saved at `gsc auth login` (none with a raw access token) |
+| WhatsApp | the business account `name` |
+
 Remove one with `reckon connect <name> --org acme --remove` (its secrets file stays
 for you to delete). Run `reckon connect` again on an existing name to change it, for example to add
 a label: `reckon connect cubeapm --org acme --label dev=DEV`. A connection keeps
@@ -187,8 +214,8 @@ reckon doctor            # setup problems across every org
 `status` shows each connection as `ready`, `no_cli` or `no_credentials`, with
 its label in this environment. `verify` is the only one that contacts your
 tools. It runs one cheap read per connection (each integration page lists it),
-prints `ok`, `skipped` with the reason, or the error, and exits non-zero if any
-check failed. Clarity's check uses one of its 10 daily export requests.
+prints `ok`, `skipped` with the reason, `wrong_account`, or the error, and exits
+non-zero if any check failed. Where the tool reports an account, verify shows it. Clarity's check uses one of its 10 daily export requests.
 
 ## What a command gets
 

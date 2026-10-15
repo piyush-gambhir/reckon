@@ -30,7 +30,8 @@ Enterprise. Instead of the file, you can run `reckon login github` in your own
 terminal: it runs `gh auth login --insecure-storage`, which keeps the token in
 that connection's private config instead of the OS keychain.
 
-`reckon verify github` runs `gh auth status`.
+`reckon verify github` runs `gh api user` and reports the `login`; pin it with
+`reckon connect github --account <login>`.
 
 ## Read-only contract
 
@@ -38,7 +39,7 @@ that connection's private config instead of the OS keychain.
 `pr list|view|diff|checks|status`, `run list|view`, `workflow list|view`,
 `release list|view`, `issue list|view|status`, `repo view|list`, `search`,
 and `label list`. `auth status` is left out because it can print the saved
-token; `reckon verify` runs it for you. It also refuses `--web`, `-w` and
+token; `reckon verify` checks the login for you. It also refuses `--web`, `-w` and
 `--hostname`.
 A token without write scopes is the server-side barrier.
 

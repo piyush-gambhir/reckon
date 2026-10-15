@@ -1,9 +1,11 @@
 """Approved writes: the agent prepares an exact action, the operator applies it.
 
 prepare freezes the payload and its target and stores them with a hash. apply runs
-in the operator's own terminal, shows the same preview, asks for confirmation (the
-org name for production or org-wide connections), runs the command once, and keeps
-a receipt: applied, failed, or unknown when the outcome cannot be established.
+in the operator's own terminal, refuses if the connection changed since (its
+environment, resource limits, expected account or target settings) or is logged in
+to another account, shows the same preview, asks for confirmation (the org name for
+production or org-wide connections), runs the command once, and keeps a receipt:
+applied, failed, or unknown when the outcome cannot be established.
 """
 from fnmatch import fnmatchcase
 import hashlib
@@ -14,7 +16,7 @@ import sys
 import uuid
 from datetime import datetime, timezone
 
-from . import orgs
+from . import connectors, orgs
 from .process import run as bounded
 from .store import identifier, local_path, lock, now, private_dir, read_json, write_json
 
@@ -58,6 +60,22 @@ def argv(operation, params, action_id):
     return args, (params["body"].rstrip("\n") + "\n\n" + marker(action_id) + "\n").encode()
 
 
+# Settings that choose where a write lands (GH_HOST, JIRA_URL); secrets are never part of the fingerprint.
+TARGET_KEY = re.compile(r"HOST|URL|SERVER|SITE|DOMAIN|ENDPOINT|ORG|PROJECT|ACCOUNT|REGION|PROFILE|TENANT|WORKSPACE|EMAIL|USER", re.I)
+
+
+def targeting(key):
+    return bool(TARGET_KEY.search(key)) and not orgs.SECRET_KEY.search(key)
+
+
+def target(conn, values):
+    """Where a write would land, as a hash: the connection as configured (environment,
+    resource limits, expected account) and its non-secret target settings, resolved
+    (a keychain: or op:// reference counts by the value it gives today)."""
+    settings = {k: v for k, v in values.items() if targeting(k)}
+    return hashlib.sha256(json.dumps({"connection": conn, "settings": settings}, sort_keys=True).encode()).hexdigest()
+
+
 def digest(record):
     frozen = {k: record[k] for k in ("org", "environment", "connection", "operation", "params")}
     return hashlib.sha256(json.dumps(frozen, sort_keys=True).encode()).hexdigest()
@@ -78,10 +96,10 @@ def ask(prompt):
     return sys.stdin.readline()
 
 
-def preview(record, live, full=False):
+def preview(record, live, full=False, account=None):
     lines = ["Action " + record["id"] + " (" + record["status"] + ")",
-             "  " + record["operation"] + " on " + record["connection"] + " in " + record["org"] + "/" + record["environment"] +
-             ("  [LIVE: production or org-wide account]" if live else "")]
+             "  " + record["operation"] + " on " + record["connection"] + (" as " + printable(account) if account else "") +
+             " in " + record["org"] + "/" + record["environment"] + ("  [LIVE: production or org-wide account]" if live else "")]
     for key, value in sorted(record["params"].items()):
         # Approval shows every character; the agent-facing summary may abbreviate.
         text = printable(value if full or len(value) < 2000 else value[:2000] + "\n... (" + str(len(value)) + " characters)")
@@ -102,12 +120,14 @@ def prepare(h, ctx, root, operation, params, registry):
         raise ValueError("repo " + params["repo"] + " is outside " + cname + " (allowed: " + ", ".join(repos) + ")")
     action_id = datetime.now(timezone.utc).strftime("a-%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:8]
     record = {"schema_version": 1, "id": action_id, "org": ctx["org"], "environment": ctx["env"], "connection": cname,
-              "operation": operation, "params": params, "status": "prepared", "prepared_at": now(), "receipt": None}
+              "operation": operation, "params": params, "status": "prepared", "prepared_at": now(), "receipt": None,
+              "target_sha256": target(conn, {k: orgs.reference(k, v) for k, v in
+                                             orgs.secrets(h, ctx["org"], cname, registry[provider]).items() if targeting(k)})}
     record["payload_sha256"] = digest(record)
     path = local_path(root, "actions", action_id)
     private_dir(path)
     write_json(path / "action.json", record)
-    return record, preview(record, is_live(ctx, conn))
+    return record, preview(record, is_live(ctx, conn), account=conn.get("account"))
 
 
 def load(root, action_id):
@@ -162,15 +182,22 @@ def apply(h, ctx, root, action_id, registry, confirm=None):
             raise ValueError("action " + action_id + " changed after it was prepared; prepare it again")
         validate(record["operation"], record["params"])
         cname, conn = connection(ctx, record)
+        spec = registry[conn["provider"]]
+        # Read the settings once: the fingerprint, the account check and the write all use these.
+        values = {k: orgs.reference(k, v) for k, v in orgs.secrets(h, ctx["org"], cname, spec).items()}
+        if record.get("target_sha256") != target(conn, values):
+            raise ValueError("connection " + cname + " changed after action " + action_id + " was prepared (its environment, resource "
+                             "limits, account or target settings); prepare it again")
+        # One live read proves the connection is still logged in to the account it expects.
+        account = connectors.whoami(h, ctx, cname, conn, registry, values)
         live = is_live(ctx, conn)
-        print(preview(record, live, full=True), file=sys.stderr)
+        print(preview(record, live, full=True, account=account), file=sys.stderr)
         expected = ctx["org"] if live else "yes"
         if confirm("Type " + expected + " to apply, anything else to cancel: ").strip() != expected:
             record.update(status="cancelled", decided_at=now())
             write_json(path / "action.json", record)
             return record
-        spec = registry[conn["provider"]]
-        env, values = orgs.child_env(h, ctx, cname, conn, spec, interactive=True)
+        env, values = orgs.child_env(h, ctx, cname, conn, spec, interactive=True, values=values)
         env.update(NO_COLOR="1", GH_PROMPT_DISABLED="1")
         command, body = argv(record["operation"], record["params"], record["id"])
         # Record the attempt before running, so a crash cannot hide that it may have happened.

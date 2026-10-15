@@ -72,7 +72,8 @@ outcomes.
 - Done 2026-10-14: 24-hour expiry on prepared actions; `reckon act reconcile <id>`
   upgrades `unknown` to `applied` only on proof (a marker with the action ID in the
   created issue), never to `failed`.
-- Non-secret target fingerprint on prepared actions; editing means preparing again.
+- Done 2026-10-15: non-secret target fingerprint on prepared actions (the connection
+  as configured plus settings such as `GH_HOST`); any change means preparing again.
 - More writes, in this order: `jira.issue.create`, `gsc.sitemap.submit` (has a
   native dry run), `grafana.annotation.create`, `jenkins.job.build`.
 
@@ -196,9 +197,13 @@ model, results saved through the same session path.
 
 First slice built 2026-10-14: `reckon connect --allow kind=pattern` for GitHub
 repos, Search Console and Bing sites, Kubernetes namespaces and AWS regions,
-enforced by `reckon run` and prepared writes. Still to do: account identity
-checked by `verify`, and more kinds (Jira projects, Jenkins folders, Stripe
-account).
+enforced by `reckon run` and prepared writes. Done 2026-10-15: `reckon connect
+--account` pins the login, email or account ID a connection must use; `reckon verify`
+reads it from the live check (GitHub, AWS, Jira, Jenkins, Grafana, Nginx Proxy
+Manager, Elasticsearch, Search Console, WhatsApp) and reports `wrong_account`, and
+`reckon act apply` checks it before every write. Still to do: identity for the
+adopted business CLIs once their output is seen on a live account, and more kinds
+(Jira projects, Jenkins folders, Stripe account).
 
 - Each connection records the expected account identity (checked by
   `reckon verify`) and the resources it may touch: repositories, Search Console
@@ -254,7 +259,7 @@ and ToolHive (2026-10-14), ranked by value for one person running several busine
 | Done 2026-10-14: secret references (`keychain:`, `op://`) resolved only inside `reckon run` | ToolHive | S |
 | Done 2026-10-14: routines (`reckon routine add/install/run`): launchd or cron runs a pinned headless agent on a workflow; overlapping runs skip | Paperclip, HolmesGPT, Goose | M |
 | Done 2026-10-14: workflow recipes with parameters, required checks and report rules (evidence-backed `action` notes, a cap per review) | Goose recipes | M |
-| Large output spilled to the session, with a preview and the path | HolmesGPT | S |
+| Rejected 2026-10-15: large output spilled to the session with a preview. `reckon run` output is often piped (`\| jq`), and an agent's Bash tool is a pipe too, so truncating would break pipelines; Claude Code and Codex already spill long output themselves, and `--session` keeps the full output as evidence | HolmesGPT | S |
 | Done 2026-10-14: agent spend per org from Claude Code and Codex session files (`reckon spend`; prices from `~/.reckon/prices.json`), with a per-org token budget warned in `reckon open` and the brief | Paperclip | M |
 | Done 2026-10-14: goals per org (`knowledge/*/goals.json`) bound to reads, reported in briefs from the newest saved evidence | Paperclip | M |
 | Per-connection circuit breaker and quota ledger | ContextForge | S |

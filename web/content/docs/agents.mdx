@@ -108,7 +108,9 @@ reckon act apply <action-id>
 ```
 
 `prepare` freezes the exact payload and target with a hash. `apply` refuses inside
-an agent and without a terminal, shows the same preview, and asks you to type `yes`,
+an agent and without a terminal, refuses when the connection changed since (its
+environment, resource limits, pinned account, or settings such as `GH_HOST`) or is
+logged in to another account than the one pinned, shows the same preview, and asks you to type `yes`,
 or the org name for production environments and for accounts shared by every
 environment. It runs the action once and keeps a receipt: `applied`, `failed`,
 `cancelled`, or `unknown` when a timeout leaves the outcome unclear. For `unknown`,

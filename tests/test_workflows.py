@@ -65,7 +65,8 @@ class WorkflowTests(OrgCase):
         closed = self.cli("close", sid, "--outcome", "done", *self.scope)
         self.assertEqual(closed.returncode, 0, closed.stderr)
         report = json.loads(self.cli("report", sid, *self.scope, "--json").stdout)["report"]
-        self.assertIn("Fix page 0", open(report).read().split("## Recommended actions")[1])
+        with open(report) as text:
+            self.assertIn("Fix page 0", text.read().split("## Recommended actions")[1])
         self.assertTrue(self.check(sid)["ok"])
 
     def test_review_fixes(self):

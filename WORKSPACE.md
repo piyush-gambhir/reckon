@@ -163,7 +163,8 @@ reckon act list
 ```
 
 Tell the operator the action ID and what it does. They run `reckon act apply <id>`,
-which shows the same preview, asks for `yes` (or the org name for production and
+which refuses if the connection changed since you prepared it or is logged in to
+another account than the one pinned, shows the same preview, asks for `yes` (or the org name for production and
 for org-wide accounts), runs it once, and keeps a receipt. If a receipt says `unknown`, run
 `reckon act reconcile <id>`: it marks the action `applied` only when it finds the
 issue carrying the action's marker; otherwise the outcome stays unknown and you must

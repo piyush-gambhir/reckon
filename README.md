@@ -42,7 +42,8 @@ reckon run gsc -- top queries --site sc-domain:acme.com --last 28d -o json
   in your own terminal. Production and org-wide accounts need the org name typed.
 - **The context cannot drift.** An agent stays on the org and environment it started
   with. A connection from another environment is refused, and so is another
-  environment's label on a shared server like CubeAPM.
+  environment's label on a shared server like CubeAPM. `reckon connect --account`
+  pins the login a connection must use; `reckon verify` and every write check it.
 - **Each org has its own folder** (`~/.reckon/orgs/<org>/workspace`), so Claude Code
   and Codex keep each business's memory and conversations apart, and
   `claude --continue` resumes the right one.
