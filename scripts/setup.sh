@@ -8,7 +8,8 @@
 #   - Other Linux distros: prints manual install commands and exits
 #   - Windows: see scripts/setup.ps1 (and prefer WSL2 for the full experience)
 #
-# Idempotent: re-running only installs what's missing.
+# Idempotent: re-running installs what's missing and upgrades a custom CLI
+# older than its pin.
 #
 # Usage:  bash scripts/setup.sh
 #
@@ -142,14 +143,15 @@ brew_install_keg() {
 
 # Install a binary into a user-writable location.
 # Args: <url> <archive-type: zip|tar.gz|none> <bin-name-in-archive>
-#       <final-bin-name> [checksum-manifest-url]
+#       <final-bin-name> [checksum-manifest-url] [target-dir, default ~/.local/bin]
 download_install_bin() {
     local url="$1" archive="$2" inner="$3" final="$4" checksum_url="${5:-}"
-    local target_dir tmp package_name package_file
-    target_dir="${HOME}/.local/bin"
+    local target_dir="${6:-${HOME}/.local/bin}" tmp package_name package_file
     mkdir -p "$target_dir"
     tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' RETURN
+    # Clean up when this function returns; the trap then removes itself, or it
+    # would fire again on every later return with $tmp unset.
+    trap 'rm -rf "$tmp"; trap - RETURN' RETURN
 
     package_name="${url##*/}"
     case "$archive" in
@@ -190,7 +192,7 @@ download_install_bin() {
     case ":$PATH:" in
         *":$target_dir:"*) : ;;
         *) warn "$final installed to $target_dir but it's NOT on PATH — add to your shell rc:"
-           printf '       export PATH="%s:$PATH"\n' "$HOME/.local/bin" ;;
+           printf '       export PATH="%s:$PATH"\n' "$target_dir" ;;
     esac
 }
 
@@ -509,7 +511,7 @@ install_redis_cli() {
 }
 
 # -----------------------------------------------------------------------------
-# Go-based custom CLIs (grafana / jenkins / cubeapm) — same on all platforms.
+# Custom CLIs (pinned in cli-releases.csv) — same on all platforms.
 # -----------------------------------------------------------------------------
 
 # shellcheck source=lib/go-clis.sh
@@ -533,7 +535,7 @@ ensure_go() {
     if have go; then
         ok "Go installed ($(go version | awk '{print $3}'))"
     else
-        warn "Go not installed — needed for grafana / jenkins / cubeapm CLIs"
+        warn "Go not installed — used to build the custom CLIs when no release archive fits"
         info "Installing go..."
         case "$PLATFORM" in
             macos)

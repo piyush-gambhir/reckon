@@ -5,11 +5,12 @@
 
 .DESCRIPTION
     Installs every CLI that has a working native Windows port via winget,
-    plus the custom Go-based CLIs. Tools without good native Windows support
+    plus the custom CLIs from their release zips. Tools without good native Windows support
     (kcat, rpk) are skipped with a clear message. For the full
     experience use WSL2 + scripts/setup.sh.
 
-    Idempotent: re-running only installs what's missing.
+    Idempotent: re-running installs what's missing and upgrades a custom CLI
+    older than its pin.
 
 .EXAMPLE
     PS> .\scripts\setup.ps1
@@ -119,6 +120,31 @@ function Install-Winget {
     }
 }
 
+# The x.y.z a CLI reports: the number after "version" (gsc also prints the
+# latest release it knows of), else the first one in its output.
+function Get-CliVersion {
+    param([Parameter(Mandatory)] [string] $Bin)
+    $previousEAP = $ErrorActionPreference
+    $previousNotifier = $env:NO_UPDATE_NOTIFIER
+    try {
+        $ErrorActionPreference = 'Continue'
+        $env:NO_UPDATE_NOTIFIER = '1'
+        $out = (& $Bin version 2>&1 | Select-Object -First 20 | Out-String)
+    } catch {
+        return $null
+    } finally {
+        $ErrorActionPreference = $previousEAP
+        $env:NO_UPDATE_NOTIFIER = $previousNotifier
+    }
+    $match = [regex]::Match($out, '(?i)version[\s:=]+v?(\d+\.\d+\.\d+)')
+    if (-not $match.Success) { $match = [regex]::Match($out, '(\d+\.\d+\.\d+)') }
+    if ($match.Success) { return [version]$match.Groups[1].Value }
+    return $null
+}
+
+# Each CLI installs from its release zip, checked against the release's
+# checksums.txt: release builds carry settings a source build lacks (gsc's
+# built-in OAuth client). go install is the fallback where no zip fits.
 function Install-GoCli {
     param(
         [Parameter(Mandatory)] [string] $Module,
@@ -127,16 +153,53 @@ function Install-GoCli {
         [Parameter(Mandatory)] [string] $Release,
         [Parameter(Mandatory)] [string] $VersionPackage
     )
-    if (Test-Command $Bin) { Mark-Already $Bin; return }
-    if (-not (Test-Command go)) { Mark-Failed "$Bin (go not installed)"; return }
+    $destination = $null
+    if (Test-Command $Bin) {
+        $current = Get-CliVersion $Bin
+        # A copy that does not say its version is left alone.
+        if (-not $current -or $current -ge [version]$Release.TrimStart('v')) { Mark-Already $Bin; return }
+        Write-Info "$Bin — $current is older than the pinned $Release, upgrading..."
+        # Replace it where it is, so an old copy cannot shadow the new one.
+        $destination = Split-Path -Parent (Get-Command $Bin).Source
+    }
     $previousGoBin = $env:GOBIN
     $previousEAP = $ErrorActionPreference
     $stage = Join-Path ([IO.Path]::GetTempPath()) ([IO.Path]::GetRandomFileName())
-    Write-Info "$Bin — installing $Release ($Module@$Version)..."
     try {
-        $destination = (& go env GOBIN).Trim()
-        if (-not $destination) { $destination = Join-Path ((& go env GOPATH).Trim()) 'bin' }
         New-Item -ItemType Directory -Path $stage -Force | Out-Null
+        if (-not $destination) {
+            if (Test-Command go) {
+                $destination = (& go env GOBIN).Trim()
+                if (-not $destination) { $destination = Join-Path ((& go env GOPATH).Trim()) 'bin' }
+            } else {
+                $destination = Join-Path (Join-Path $HOME '.local') 'bin'
+            }
+        }
+        New-Item -ItemType Directory -Path $destination -Force | Out-Null
+        $repo = $Module -replace '^github\.com/', '' -replace '/cli-go$', ''
+        $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
+        $zip = "$(($repo -split '/')[-1])_windows_$arch.zip"
+        $url = "https://github.com/$repo/releases/download/$Release"
+        Write-Info "$Bin — installing $Release from github.com/$repo..."
+        try {
+            # PowerShell 5.1 may default to TLS 1.0, which GitHub refuses; its progress bar slows downloads.
+            [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+            $ProgressPreference = 'SilentlyContinue'
+            Invoke-WebRequest -Uri "$url/$zip" -OutFile (Join-Path $stage $zip) -UseBasicParsing
+            Invoke-WebRequest -Uri "$url/checksums.txt" -OutFile (Join-Path $stage 'checksums.txt') -UseBasicParsing
+            $line = Get-Content (Join-Path $stage 'checksums.txt') | Where-Object { ($_ -split '\s+')[1] -eq $zip } | Select-Object -First 1
+            $expected = if ($line) { ($line -split '\s+')[0].ToLower() } else { '' }
+            $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $stage $zip)).Hash.ToLower()
+            if (-not $expected -or $actual -ne $expected) { throw "checksum mismatch for $zip" }
+            Expand-Archive -LiteralPath (Join-Path $stage $zip) -DestinationPath (Join-Path $stage 'release') -Force
+            Move-Item -LiteralPath (Join-Path (Join-Path $stage 'release') "$Bin.exe") -Destination (Join-Path $destination "$Bin.exe") -Force
+            $env:Path = "$destination;$env:Path"
+            Mark-Installed $Bin
+            return
+        } catch {
+            if (-not (Test-Command go)) { Mark-Failed "$Bin ($($_.Exception.Message))"; return }
+            Write-Warn "$Bin — could not install the release zip ($($_.Exception.Message)), building from source (gsc then needs your own OAuth client)"
+        }
         $env:GOBIN = $stage
         # PowerShell 5.1 treats native stderr as ErrorRecord; Go writes normal
         # download progress there. Use its exit code, restoring state in finally.
@@ -145,7 +208,6 @@ function Install-GoCli {
         $installExitCode = $LASTEXITCODE
         $ErrorActionPreference = $previousEAP
         if ($installExitCode -ne 0) { Mark-Failed $Bin; return }
-        New-Item -ItemType Directory -Path $destination -Force | Out-Null
         Move-Item -LiteralPath (Join-Path $stage 'cli-go.exe') -Destination (Join-Path $destination "$Bin.exe") -Force
         $env:Path = "$destination;$env:Path"
         Mark-Installed $Bin

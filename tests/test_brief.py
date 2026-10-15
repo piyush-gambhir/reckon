@@ -1,8 +1,9 @@
 """reckon brief and session knowledge snapshots. Offline."""
 import json
+import os
 import unittest
 
-from helpers import JENKINS, OrgCase
+from helpers import JENKINS, SOURCE, OrgCase
 from reckonlib import investigation as work
 from reckonlib import orgs
 from reckonlib.store import create, write, write_json
@@ -103,3 +104,21 @@ class DoctorVersionTests(OrgCase):
         checks = json.loads(out.stdout)["checks"]
         self.assertTrue(any(c.startswith("grafana 0.2.5 is older than the pinned") for c in checks), checks)
         self.assertFalse(any(c.startswith("jenkins") and "older" in c for c in checks))
+
+    def test_the_version_line_wins_over_the_latest_release(self):
+        # gsc prints the newest release it knows of above its own version.
+        self.fake("print('latest  0.1.6\\nversion 0.1.8')", "gsc")
+        checks = json.loads(self.cli("doctor", "--json").stdout)["checks"]
+        self.assertFalse(any(c.startswith("gsc") for c in checks), checks)
+        self.fake("print('latest  0.1.8\\nversion 0.1.6')", "gsc")
+        checks = json.loads(self.cli("doctor", "--json").stdout)["checks"]
+        self.assertTrue(any(c.startswith("gsc 0.1.6 is older than the pinned v0.1.8") for c in checks), checks)
+
+    def test_doctor_says_when_reckon_is_not_on_path(self):
+        link = self.home / "bin" / "reckon"
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(SOURCE / "scripts" / "reckon.py")
+        checks = json.loads(self.cli("doctor", "--json").stdout)["checks"]
+        self.assertIn("reckon command: " + str(link) + " is not on PATH; add to your shell rc: export PATH=\"" + str(link.parent) + ":$PATH\"", checks)
+        on_path = self.cli("doctor", "--json", PATH=str(link.parent) + os.pathsep + os.environ["PATH"])
+        self.assertIn("reckon command: " + str(link), json.loads(on_path.stdout)["checks"])
