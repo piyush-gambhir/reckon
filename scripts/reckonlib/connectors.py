@@ -248,15 +248,69 @@ def scope(spec, args, label, others):
     return list(args)
 
 
+HOST = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*")
+
+
+def ascii_host(host):
+    """A host name in its ASCII (punycode) form, lower case, or None if it is not a plain host name.
+    Python's codec is IDNA2003, which maps some names onto others (faß.de becomes fass.de), so a
+    non-ASCII label counts only when it converts back to exactly itself."""
+    labels = []
+    for label in host.rstrip(".").lower().split("."):
+        if not label.isascii():
+            try:
+                converted = label.encode("idna").decode("ascii")
+                if converted.encode("ascii").decode("idna") != label:
+                    return None
+            except UnicodeError:
+                return None
+            label = converted
+        labels.append(label)
+    host = ".".join(labels)
+    return host if HOST.fullmatch(host) else None
+
+
+def site_parts(value):
+    """(kind, host, prefix) of a Search Console or Bing target: a domain property
+    (sc-domain:), a URL, or a bare host. None when it cannot be read safely: user
+    info, a fragment, port 0, or anything but a plain host name, so text like
+    https://evil.net#.acme.com/ is never taken for acme.com. Internationalized
+    names compare in their punycode form."""
+    from urllib.parse import urlsplit
+    if value.startswith("sc-domain:"):
+        host = ascii_host(value[len("sc-domain:"):])
+        return ("domain", host, None) if host else None
+    if "://" not in value:
+        host = ascii_host(value)
+        return ("host", host, None) if host else None
+    try:
+        parts = urlsplit(value)
+        port = parts.port
+    except ValueError:
+        return None
+    scheme, host = parts.scheme.lower(), ascii_host(parts.hostname or "")
+    if scheme not in ("http", "https") or not host or port == 0 or "@" in parts.netloc or "#" in value:
+        return None
+    netloc = host + (":" + str(port) if port is not None and port != (443 if scheme == "https" else 80) else "")
+    return ("url", host, scheme + "://" + netloc + (parts.path or "/") + ("?" + parts.query if parts.query else ""))
+
+
 def site_allowed(value, pattern):
     """A Search Console or Bing target: the property itself, or a page URL inside it."""
-    if fnmatchcase(value, pattern):
-        return True
-    host = re.sub(r"^https?://", "", value).split("/", 1)[0].lower()
-    if pattern.startswith("sc-domain:"):
-        domain = pattern[len("sc-domain:"):].lower()
-        return host == domain or host.endswith("." + domain)
-    return pattern.startswith("http") and value.startswith(pattern.rstrip("*"))
+    got = site_parts(value)
+    if not got:
+        return False
+    if any(c in pattern for c in "*?["):
+        # An operator's wildcard pattern matches the text, once the value is known to be a plain target.
+        return fnmatchcase(value, pattern)
+    allowed = site_parts(pattern)
+    if not allowed:
+        return False
+    if allowed[0] == "domain":
+        return got[1] == allowed[1] or got[1].endswith("." + allowed[1])
+    if allowed[0] == "url":
+        return got[0] == "url" and got[2].startswith(allowed[2])
+    return got == allowed
 
 
 def bind(spec, args, conn, values):

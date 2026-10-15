@@ -175,9 +175,9 @@ def parser():
     command.add_argument("--outcome", choices=("diagnosed", "done", "inconclusive"), required=True)
     command = sub.add_parser("act", parents=[scope], help="prepare a write for the operator, or apply one (operator only)")
     command.add_argument("action", choices=("prepare", "apply", "list", "show", "reconcile"))
-    command.add_argument("target", nargs="?", help="prepare: the write operation (github.issue.create); apply/show: the action ID")
+    command.add_argument("target", nargs="?", help="prepare: the write operation (github.issue.create, jira.issue.create); apply/show: the action ID")
     command.add_argument("--params", default="{}", help="prepare: parameters as a JSON object")
-    command.add_argument("--body-stdin", action="store_true", help="prepare: read the body parameter from standard input")
+    command.add_argument("--body-stdin", action="store_true", help="prepare: read the long text (GitHub body, Jira description) from standard input")
     command.add_argument("--session", help="prepare: the session this write comes from, so its next review sees the receipt")
     command = sub.add_parser("brief", parents=[scope], help="local digest: open work, findings, writes waiting, gaps (no network)")
     command.add_argument("--days", type=int, default=7)
@@ -730,7 +730,7 @@ def execute(args):
             return done
         params = json.loads(args.params)
         if args.body_stdin:
-            params["body"] = sys.stdin.read(65537)
+            params["description" if (args.target or "").startswith("jira.") else "body"] = sys.stdin.read(65537)
         if args.session:
             work.matching(session_path(root, args.session)[1], ctx)
         record, text = actions.prepare(h, ctx, root, args.target or "", params, registry, session=args.session)

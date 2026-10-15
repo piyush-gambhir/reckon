@@ -174,3 +174,155 @@ class ActionTests(OrgCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+FAKE_JIRA = ("import json, os, sys\n"
+             "args, tmp = sys.argv[1:], os.environ['TMPDIR']\n"
+             "if args[:2] == ['issue', 'search']:\n"
+             "    path = tmp + '/listing'\n"
+             "    print(open(path).read() if os.path.exists(path) else '[]'); sys.exit()\n"
+             "open(tmp + '/args', 'w').write(json.dumps({'args': args, 'read_only': os.environ.get('JIRA_READ_ONLY'),"
+             " 'no_input': os.environ.get('JIRA_NO_INPUT')}))\n"
+             "print(json.dumps({'id': '10001', 'key': 'ABC-7', 'self': 'https://acme.atlassian.net/rest/api/3/issue/10001'}))\n")
+JIRA_PARAMS = {"project": "ABC", "type": "Task", "summary": "-Checkout times out", "description": "Seen in s-1.\n",
+               "labels": "growth,checkout", "parent": "ABC-1"}
+
+
+class JiraWriteTests(OrgCase):
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch.object(actions, "terminal", return_value=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.org(connections={"jira": {"provider": "jira"}},
+                 secrets={"jira": ["JIRA_SITE=acme.atlassian.net", "JIRA_EMAIL=bot@acme.invalid", "JIRA_TOKEN=jira-secret-token"]})
+        self.fake(FAKE_JIRA, "jira")
+        self.root = orgs.workspace(self.home, "acme")
+        self.tmp = self.home / "orgs/acme/runtime/jira/tmp"
+
+    def prepare(self, **changes):
+        return actions.prepare(self.home, self.ctx(), self.root, "jira.issue.create", dict(JIRA_PARAMS, **changes), self.registry)[0]
+
+    def test_parameters_are_checked(self):
+        for bad in ({"project": "abc"}, {"type": "Task; rm"}, {"summary": "two\nlines"}, {"labels": "two words"},
+                    {"parent": "12"}, {"description": "x" * 30001}, {"assignee": "me"}):
+            with self.assertRaises(ValueError, msg=bad):
+                self.prepare(**bad)
+
+    def test_apply_creates_one_issue_and_links_it(self):
+        record = self.prepare()
+        # Org-wide connection: the operator types the org name.
+        done = actions.apply(self.home, self.ctx(), self.root, record["id"], self.registry, confirm=lambda p: "acme")
+        self.assertEqual(done["status"], "applied")
+        self.assertEqual(done["receipt"]["url"], "https://acme.atlassian.net/browse/ABC-7")
+        ran = json.loads((self.tmp / "args").read_text())
+        self.assertEqual(ran["args"], ["issue", "create", "--allow-duplicate", "--project=ABC", "--type=Task", "--summary=-Checkout times out",
+                                       "--description=Seen in s-1.\n\n" + actions.marker(record["id"], "jira.issue.create"),
+                                       "--label=growth", "--label=checkout", "--parent=ABC-1", "-o", "json"])
+        # The write runs without read-only mode and never waits for input.
+        self.assertEqual((ran["read_only"], ran["no_input"]), (None, "true"))
+
+    def test_reconcile_finds_the_issue_by_its_marker(self):
+        timeout = {"status": "timeout", "exit_code": None, "stdout": b"", "stderr": b""}
+        record = self.prepare()
+        with mock.patch.object(actions, "bounded", return_value=timeout):
+            self.assertEqual(actions.apply(self.home, self.ctx(), self.root, record["id"], self.registry, confirm=lambda p: "acme")["status"], "unknown")
+        other = {"key": "ABC-6", "self": "https://acme.atlassian.net/rest/api/3/issue/10000", "fields": {"summary": JIRA_PARAMS["summary"]}}
+        (self.tmp / "listing").write_text(json.dumps([other]))
+        self.assertEqual(actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)["status"], "unknown")
+        tag = actions.marker(record["id"], "jira.issue.create")
+        doc = {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Seen in s-1."}]},
+                                          {"type": "paragraph", "content": [{"type": "text", "text": tag}]}]}
+        # Quoting the marker in another issue, or a different summary, proves nothing.
+        quoting = {"key": "ABC-8", "self": other["self"], "fields": {"summary": JIRA_PARAMS["summary"],
+                                                                     "description": "Why did " + tag + " time out?\nStill checking."}}
+        renamed = {"key": "ABC-9", "self": other["self"], "fields": {"summary": "Something else", "description": doc}}
+        (self.tmp / "listing").write_text(json.dumps([other, quoting, renamed]))
+        self.assertEqual(actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)["status"], "unknown")
+        mine = {"key": "ABC-7", "self": "https://acme.atlassian.net/rest/api/3/issue/10001",
+                "fields": {"summary": JIRA_PARAMS["summary"], "description": doc}}
+        (self.tmp / "listing").write_text(json.dumps([other, quoting, mine]))
+        done = actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)
+        self.assertEqual((done["status"], done["receipt"]["url"]), ("applied", "https://acme.atlassian.net/browse/ABC-7"))
+
+
+FAKE_GSC = ("import json, os, sys\n"
+            "args, tmp = sys.argv[1:], os.environ['TMPDIR']\n"
+            "if args[:2] == ['sitemaps', 'get']:\n"
+            "    print(open(tmp + '/sitemap').read()); sys.exit()\n"
+            "open(tmp + '/args', 'w').write(json.dumps({'args': args, 'read_only': os.environ.get('GSC_READ_ONLY')}))\n"
+            "print(json.dumps({'site': 'sc-domain:acme.com', 'sitemap': args[2], 'submitted': True}))\n")
+SITEMAP = {"site": "sc-domain:acme.com", "sitemap": "https://www.acme.com/sitemap.xml"}
+
+
+class JiraLinkTests(unittest.TestCase):
+    def test_links_keep_a_server_context_path(self):
+        self.assertEqual(actions.browse({"key": "ABC-1", "self": "https://jira.example.invalid/jira/rest/api/2/issue/10001"}),
+                         "https://jira.example.invalid/jira/browse/ABC-1")
+        self.assertEqual(actions.browse({"key": "ABC-1", "self": "https://acme.atlassian.net/rest/api/3/issue/1"}),
+                         "https://acme.atlassian.net/browse/ABC-1")
+        self.assertIsNone(actions.browse({"key": "ABC-1", "self": "not a url"}))
+        # A Server (wiki markup) description and a Cloud (ADF) one read the same.
+        doc = {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "a"}, {"type": "hardBreak"},
+                                                                             {"type": "text", "text": "b"}]}]}
+        self.assertEqual((actions.plain(doc), actions.plain("a\nb"), actions.plain(None)), ("a\nb", "a\nb", ""))
+
+
+class SitemapWriteTests(OrgCase):
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch.object(actions, "terminal", return_value=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.org(connections={"gsc": {"provider": "gsc", "resources": {"site": ["sc-domain:acme.com"]}}},
+                 secrets={"gsc": ["GSC_ACCESS_TOKEN=gsc-secret-token"]})
+        self.fake(FAKE_GSC, "gsc")
+        self.root = orgs.workspace(self.home, "acme")
+        self.tmp = self.home / "orgs/acme/runtime/gsc/tmp"
+
+    def prepare(self, **changes):
+        return actions.prepare(self.home, self.ctx(), self.root, "gsc.sitemap.submit", dict(SITEMAP, **changes), self.registry)[0]
+
+    def apply(self, record):
+        return actions.apply(self.home, self.ctx(), self.root, record["id"], self.registry, confirm=lambda p: "acme")
+
+    def test_the_sitemap_must_be_inside_an_allowed_property(self):
+        for bad, message in (({"sitemap": "https://other.com/sitemap.xml"}, "inside the property"),
+                             ({"site": "acme.com"}, "Search Console property"),
+                             ({"sitemap": "https://www.acme.com/*.xml"}, "full URL"),
+                             ({"site": "sc-domain:other.com", "sitemap": "https://other.com/s.xml"}, "outside")):
+            with self.assertRaisesRegex(ValueError, message):
+                self.prepare(**bad)
+        # Text that only looks like the property (a fragment or user info naming it) is not inside it.
+        for sitemap in ("https://evil.invalid#.acme.com/s.xml", "https://www.acme.com@evil.invalid/s.xml",
+                        "https://acme.com.evil.invalid/s.xml", "https://evil.invalid/www.acme.com/s.xml"):
+            with self.assertRaisesRegex(ValueError, "inside the property", msg=sitemap):
+                self.prepare(sitemap=sitemap)
+        with self.assertRaisesRegex(ValueError, "Search Console property"):
+            self.prepare(site="https://evil.invalid#.acme.com/", sitemap="https://evil.invalid/s.xml")
+        # A URL-prefix property inside the allowed domain is fine, and so is an explicit default port.
+        self.prepare(site="https://www.acme.com/", sitemap="https://www.acme.com/news/sitemap.xml")
+        self.prepare(sitemap="https://acme.com:443/sitemap.xml")
+
+    def test_apply_submits_once_without_read_only(self):
+        done = self.apply(self.prepare())
+        self.assertEqual(done["status"], "applied")
+        self.assertEqual(done["receipt"]["url"], "https://search.google.com/search-console/sitemaps?resource_id=sc-domain%3Aacme.com")
+        ran = json.loads((self.tmp / "args").read_text())
+        self.assertEqual(ran, {"args": ["sitemaps", "submit", "https://www.acme.com/sitemap.xml", "--site=sc-domain:acme.com", "-o", "json"],
+                               "read_only": None})
+
+    def test_reconcile_needs_a_submission_after_the_apply(self):
+        timeout = {"status": "timeout", "exit_code": None, "stdout": b"", "stderr": b""}
+        record = self.prepare()
+        with mock.patch.object(actions, "bounded", return_value=timeout):
+            self.assertEqual(self.apply(record)["status"], "unknown")
+        # A submission from before the apply, even a minute before, proves nothing.
+        from datetime import datetime, timedelta
+        approved = datetime.fromisoformat(actions.load(self.root, record["id"])[1]["approved_at"].replace("Z", "+00:00"))
+        for earlier in ("2020-01-01T00:00:00Z", (approved - timedelta(minutes=1)).isoformat()):
+            (self.tmp / "sitemap").write_text(json.dumps({"path": SITEMAP["sitemap"], "lastSubmitted": earlier}))
+            self.assertEqual(actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)["status"], "unknown")
+        from reckonlib.store import now
+        (self.tmp / "sitemap").write_text(json.dumps({"path": SITEMAP["sitemap"], "lastSubmitted": now()}))
+        self.assertEqual(actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)["status"], "applied")

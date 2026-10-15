@@ -44,9 +44,10 @@ forms (`-s`, `-e`, `-t`, `-u`, `-k`), `--api-version`, `--profile`,
 `--read-only` and `--no-input`, the `auth` and `update` commands, and `issue
 download` with `--out`, which write local files.
 
-Jira writes are not supported yet; the agent describes the change and you make it.
-GitHub issues can already be prepared by the agent and applied by you (see
-[Agents](/docs/agents#writes)).
+One write is supported: the agent prepares `jira.issue.create` and you apply it in
+your own terminal with `reckon act apply <id>`, which runs `jira issue create` once
+without read-only mode (see [Agents](/docs/agents#writes)). Edits, transitions and
+comments are not supported yet; the agent describes the change and you make it.
 
 ## Key commands
 
