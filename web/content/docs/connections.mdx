@@ -217,6 +217,13 @@ tools. It runs one cheap read per connection (each integration page lists it),
 prints `ok`, `skipped` with the reason, `wrong_account`, or the error, and exits
 non-zero if any check failed. Where the tool reports an account, verify shows it. Clarity's check uses one of its 10 daily export requests.
 
+Each result goes to the org's activity log (`reckon log --event verify`), and
+`status` and `preflight` show the last one beside each connection, so `ready`
+(configured) and working are told apart. A result stops showing once the
+connection's settings change (labels, limits, account) or it is removed. A
+connection whose last check failed is also a preflight warning, so the agent
+asks you to fix it instead of trying it.
+
 ## What a command gets
 
 `reckon run <connection-or-tool> -- <arguments>` runs the CLI with:

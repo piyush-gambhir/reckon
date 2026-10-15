@@ -64,8 +64,10 @@ Some connections are limited to named resources (the "Limited to" column in
 property, Kubernetes to some namespaces. Name the target explicitly (`--repo`,
 `--site`, `--namespace`); anything outside the list is refused.
 
-`reckon status` lists every connection with its state. `reckon verify` makes one
-live read per connection to prove access.
+`reckon status` lists every connection with its state and its last live check.
+`reckon verify` makes one live read per connection to prove access. If preflight
+warns that a connection failed its last check, ask the operator to fix it rather
+than trying it.
 
 ### Shared backends: CubeAPM
 

@@ -56,6 +56,32 @@ class IdentityTests(OrgCase):
         self.edit("jenkins", account="dev-*")
         self.assertEqual(self.verify("jenkins")[1]["jenkins"]["status"], "wrong_account")
 
+    def test_status_and_preflight_show_the_last_live_check(self):
+        def show(command):
+            return json.loads(self.cli(command, "--org", "acme", "--env", "staging", "--json").stdout)
+        self.assertNotIn("verified", show("status")["connections"][0])
+        self.verify()
+        self.login.write_text("someone-else")
+        self.verify("gh")
+        rows = {r["connection"]: r for r in show("status")["connections"]}
+        self.assertEqual((rows["gh"]["verified"]["status"], rows["jenkins"]["verified"]["status"]), ("wrong_account", "ok"))
+        warnings = show("preflight")["warnings"]
+        self.assertIn("gh failed its last live check (wrong_account); ask the operator to fix it and run reckon verify gh", warnings)
+        self.login.write_text("acme-bot")
+        self.verify("gh")
+        self.assertFalse([w for w in show("preflight")["warnings"] if "live check" in w])
+        logged = json.loads(self.cli("log", "--org", "acme", "--env", "staging", "--event", "verify", "--json").stdout)
+        self.assertEqual([(r["target"], r["status"]) for r in logged[:2]], [("gh", "ok"), ("gh", "wrong_account")])
+        # A check counts only for the configuration it checked, and not for a connection re-added under its name.
+        self.edit("gh", account="acme-*")
+        rows = {r["connection"]: r for r in show("status")["connections"]}
+        self.assertNotIn("verified", rows["gh"])
+        self.assertIn("verified", rows["jenkins"])
+        self.cli("connect", "jenkins", "--remove", "--org", "acme")
+        self.cli("connect", "jenkins", "--provider", "jenkins", "--for-env", "staging", "--org", "acme")
+        rows = {r["connection"]: r for r in show("status")["connections"]}
+        self.assertNotIn("verified", rows["jenkins"])
+
     def test_an_account_that_is_not_reported_cannot_be_confirmed(self):
         self.fake("print('not json')", "jenkins")
         self.edit("jenkins", account="tester")
@@ -88,6 +114,10 @@ class IdentityTests(OrgCase):
     def test_connect_sets_and_clears_the_account(self):
         result = self.cli("connect", "jenkins", "--account", "Tester", "--org", "acme", "--json")
         self.assertEqual(json.loads(result.stdout)["account"], "Tester")
+        # It already has credentials, so the next step is checking it, not filling them in.
+        self.assertEqual(json.loads(result.stdout)["next"], "reckon verify jenkins")
+        fresh = self.cli("connect", "gh-other", "--provider", "github", "--org", "acme", "--json")
+        self.assertTrue(json.loads(fresh.stdout)["next"].startswith("edit "), fresh.stdout)
         self.assertEqual(self.cli("connect", "jenkins", "--account", "", "--org", "acme").returncode, 0)
         self.assertNotIn("account", orgs.load(self.home, "acme", self.registry)["connections"]["jenkins"])
         refused = self.cli("connect", "apm", "--provider", "cubeapm", "--account", "x", "--org", "acme")

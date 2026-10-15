@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from reckonlib import activity, connectors, orgs, workspace  # noqa: E402
 from reckonlib import investigation as work  # noqa: E402
 from reckonlib.operations import OPERATIONS, build, plan  # noqa: E402
-from reckonlib.store import create, local_path, lock, now, resolve_service, services, session_path, window, write_json  # noqa: E402
+from reckonlib.store import create, local_path, lock, now, read_json, resolve_service, services, session_path, window, write_json  # noqa: E402
 
 INVESTIGATIONS = ("debug", "investigate", "monitor", "analyze")
 EXIT = {"timeout": 124, "output_limit": 3, "unavailable": 127, "cancelled": 130}
@@ -186,7 +186,7 @@ def parser():
     command.add_argument("--all-orgs", action="store_true", help="every org and environment, one digest (operator only)")
     command = sub.add_parser("log", parents=[scope], help="this org's activity: runs, refusals and write steps")
     command.add_argument("--days", type=int, default=7)
-    command.add_argument("--event", choices=("run", "refused", "act.prepare", "act.apply", "act.reconcile"))
+    command.add_argument("--event", choices=("run", "refused", "verify", "act.prepare", "act.apply", "act.reconcile", "routine", "watch"))
     command.add_argument("--all-envs", action="store_true")
     command.add_argument("--limit", type=int, default=50)
     command = sub.add_parser("demo", help="synthetic investigation in a throwaway org; no network")
@@ -223,6 +223,10 @@ def connect(h, args, registry):
             raise ValueError("unknown connection: " + args.name)
         del data["connections"][args.name]
         orgs.save(h, data, registry)
+        # A connection added later under this name starts unchecked.
+        checks = checks_path(h, ctx["org"], args.name)
+        if checks.is_file():
+            checks.unlink()
         workspace.ensure(h, ctx, registry)
         return {"org": ctx["org"], "removed": args.name, "secrets_kept": str(orgs.secrets_path(h, ctx["org"], args.name))}
     conn = dict(data["connections"].get(args.name, {}))
@@ -262,10 +266,15 @@ def connect(h, args, registry):
     workspace.ensure(h, ctx, registry)
     path, created = connectors.template(h, ctx["org"], args.name, registry[conn["provider"]])
     spec = registry[conn["provider"]]
+    try:
+        ready = orgs.configured(h, ctx["org"], args.name, spec)
+    except ValueError:
+        ready = False
     return {"org": ctx["org"], "connection": args.name, "provider": conn["provider"], "environment": conn.get("env") or "all",
             "env_labels": conn.get("env_labels", {}), "resources": conn.get("resources", {}), "account": conn.get("account"),
             "secrets": str(path), "secrets_created": created,
-            "next": "edit " + str(path) + (" or run: reckon login " + args.name if spec.get("login") else "") +
+            "next": "reckon verify " + args.name if ready else
+                    "edit " + str(path) + (" or run: reckon login " + args.name if spec.get("login") else "") +
                     ", then: reckon verify " + args.name}
 
 
@@ -282,9 +291,63 @@ def knowledge_count(root, layer):
     return len(list(path.glob("*.md"))) + len(list(path.glob("*.json"))) if path.is_dir() else 0
 
 
+def shape(conn):
+    """A connection's configuration as a hash: a live check counts only for the setup it checked."""
+    import hashlib
+    return hashlib.sha256(json.dumps(conn, sort_keys=True).encode()).hexdigest()
+
+
+def checks_path(h, org, cname):
+    return local_path(orgs.org_path(h, org), "runtime", cname) / "verify.json"
+
+
+def remember(h, ctx, rows):
+    """Log each live check, and keep the newest per connection and environment for status and preflight."""
+    for row in rows:
+        if row["status"] == "skipped":
+            continue
+        entry = activity.record(h, ctx, "verify", target=row["connection"], status=row["status"], account=row.get("account"),
+                                detail=row.get("detail") or None)
+        path = checks_path(h, ctx["org"], row["connection"])
+        try:
+            with lock(path.parent):
+                saved = read_json(path) if path.is_file() else {}
+                saved = saved if isinstance(saved, dict) else {}
+                saved[ctx["env"]] = {"at": entry["at"], "status": row["status"], "detail": entry.get("detail"),
+                                     "connection_sha256": shape(ctx["data"]["connections"][row["connection"]])}
+                write_json(path, saved)
+        except (OSError, ValueError):
+            pass
+
+
+def described(h, ctx, registry):
+    """orgs.describe plus each connection's last live check here, while its configuration is
+    unchanged: configured locally ("ready") is not the same as working."""
+    rows = orgs.describe(h, ctx, registry)
+    for row in rows:
+        if not row["applies"]:
+            continue
+        try:
+            path = checks_path(h, ctx["org"], row["connection"])
+            found = (read_json(path) if path.is_file() else {}).get(ctx["env"])
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(found, dict) and found.get("connection_sha256") == shape(ctx["data"]["connections"][row["connection"]]):
+            row["verified"] = {k: found.get(k) for k in ("at", "status", "detail")}
+    return rows
+
+
+def checked(row):
+    found = row.get("verified")
+    if not found:
+        return ""
+    return ("  last verify: " + str(found["status"]) + " " + str(found["at"])[:16].replace("T", " ") + "Z" +
+            (": " + str(found["detail"])[:80] if found.get("detail") and found["status"] != "ok" else ""))
+
+
 def preflight(h, ctx, registry):
     root = orgs.workspace(h, ctx["org"])
-    rows = orgs.describe(h, ctx, registry)
+    rows = described(h, ctx, registry)
     sessions = work.history(root, ctx["env"], limit=200)
     open_sessions = [s for s in sessions if s.get("status") == "open"]
     incidents = sorted(p.name for p in (root / "incidents").iterdir() if p.is_dir() and not p.name.startswith(".")) if (root / "incidents").is_dir() else []
@@ -293,11 +356,15 @@ def preflight(h, ctx, registry):
         warnings.append("PRODUCTION: prefer the cheapest signal and bound every query")
     if not any(r["applies"] for r in rows):
         warnings.append("no connections for " + ctx["env"] + "; ask the operator to run reckon connect")
+    for r in rows:
+        if r["applies"] and r.get("verified", {}).get("status") not in (None, "ok"):
+            warnings.append(r["connection"] + " failed its last live check (" + str(r["verified"]["status"]) +
+                            "); ask the operator to fix it and run reckon verify " + r["connection"])
     if not knowledge_count(root, ctx["env"]) and not knowledge_count(root, "_shared"):
         warnings.append("no knowledge for this org yet; do not invent facts")
     return {"org": ctx["org"], "name": ctx["data"]["name"], "environment": ctx["env"], "production": ctx["production"],
             "resolved_from": ctx["source"], "workspace": str(root),
-            "connections": [{k: r[k] for k in ("connection", "provider", "state", "label")} for r in rows if r["applies"]],
+            "connections": [{k: r.get(k) for k in ("connection", "provider", "state", "label", "verified")} for r in rows if r["applies"]],
             "other_environments": [r["connection"] + " (" + r["scope"] + ")" for r in rows if not r["applies"]],
             "knowledge": {"_shared": knowledge_count(root, "_shared"), ctx["env"]: knowledge_count(root, ctx["env"])},
             "open_sessions": [{"id": s["id"], "question": s["question"]} for s in open_sessions[:5]],
@@ -306,8 +373,10 @@ def preflight(h, ctx, registry):
 
 
 def version_tuple(text):
+    """The x.y.z a CLI reports: the number after "version" (gsc also prints the latest
+    release it knows of), else the first one in its output."""
     import re
-    match = re.search(r"v?(\d+)\.(\d+)\.(\d+)", text)
+    match = re.search(r"version[\s:=]+v?(\d+)\.(\d+)\.(\d+)", text, re.I) or re.search(r"v?(\d+)\.(\d+)\.(\d+)", text)
     return tuple(int(x) for x in match.groups()) if match else None
 
 
@@ -326,7 +395,7 @@ def outdated():
             want = version_tuple(row["release"])
             if have and want and have < want:
                 notes.append(row["binary"] + " " + ".".join(map(str, have)) + " is older than the pinned " + row["release"] +
-                             " (run: " + row["binary"] + " update, or remove it and rerun bash scripts/setup.sh)")
+                             " (rerun scripts/setup.sh or setup.ps1 to upgrade it)")
     return notes
 
 
@@ -355,7 +424,12 @@ def doctor(h, registry):
                 checks.append(org + "/" + cname + ": " + spec["binary"] + " is not installed")
     checks += outdated()
     link = h / "bin" / "reckon"
-    checks.append("reckon command: " + (str(link) if link.is_symlink() else "created on the first reckon open"))
+    if not link.is_symlink():
+        checks.append("reckon command: created on the first reckon open")
+    elif str(link.parent) not in os.environ.get("PATH", "").split(os.pathsep):
+        checks.append("reckon command: " + str(link) + " is not on PATH; add to your shell rc: export PATH=\"" + str(link.parent) + ":$PATH\"")
+    else:
+        checks.append("reckon command: " + str(link))
     try:
         ctx = orgs.context(h, registry=registry)
         checks.append("default context: " + ctx["org"] + "/" + ctx["env"] + " (from " + ctx["source"] + ")")
@@ -530,11 +604,13 @@ def execute(args):
         return activity.read(h, ctx["org"], args.days, None if args.all_envs else ctx["env"], args.event, args.limit)
     if name == "status":
         return {"org": ctx["org"], "name": ctx["data"]["name"], "environment": ctx["env"], "production": ctx["production"],
-                "resolved_from": ctx["source"], "workspace": str(root), "connections": orgs.describe(h, ctx, registry)}
+                "resolved_from": ctx["source"], "workspace": str(root), "connections": described(h, ctx, registry)}
     if name == "preflight":
         return preflight(h, ctx, registry)
     if name == "verify":
-        return connectors.verify(h, ctx, registry, tuple(args.connections))
+        rows = connectors.verify(h, ctx, registry, tuple(args.connections))
+        remember(h, ctx, rows)
+        return rows
     if name == "run":
         command = args.passthrough
         if not command:
@@ -837,9 +913,10 @@ def display(command, result):
             if command == "status":
                 where = "" if row["applies"] else "  [" + row["scope"] + " only]"
                 print("  " + row["connection"].ljust(22) + row["provider"].ljust(14) + row["state"] + (" label=" + row["label"] if row.get("label") else "") +
-                      (" account=" + row["account"] if row.get("account") else "") + where)
+                      (" account=" + row["account"] if row.get("account") else "") + where + checked(row))
             else:
-                print("  " + row["connection"].ljust(22) + row["provider"].ljust(14) + row["state"] + (" label=" + row["label"] if row.get("label") else ""))
+                print("  " + row["connection"].ljust(22) + row["provider"].ljust(14) + row["state"] + (" label=" + row["label"] if row.get("label") else "") +
+                      checked(row))
         if not result["connections"]:
             print("  no connections yet: reckon connect <name> --provider <tool>")
         if command == "preflight":

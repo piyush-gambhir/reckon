@@ -100,10 +100,14 @@ Once you have checked the new org, delete the old files from the checkout.
 
 ## Pinned CLI releases
 
-Setup builds the nine CLIs maintained alongside Reckon with `go install` (it
-installs Go first if needed) at the versions pinned in
-`scripts/cli-releases.csv`, and installs each under its public name. A command
-already on your PATH is left in place.
+Setup installs the nine CLIs maintained alongside Reckon from their GitHub
+release archives at the versions pinned in `scripts/cli-releases.csv`, after
+checking each archive against the release's `checksums.txt`. Release builds
+matter: a source build of `gsc` has no built-in OAuth client. A copy already on
+your PATH is kept when it is current and replaced in place when it is older than
+the pin, so rerunning setup upgrades them. `reckon doctor` lists any that are
+behind. Where no archive fits your platform, setup builds from source with
+`go install`.
 
 | CLI | Release |
 | --- | --- |
@@ -113,7 +117,7 @@ already on your PATH is left in place.
 | `es` | 0.1.11 |
 | `jira` | 0.1.12 |
 | `nginxpm` | 0.1.12 |
-| `gsc` | 0.1.6 |
+| `gsc` | 0.1.8 |
 | `bwt` | 0.1.6 |
 | `clarity` | 0.1.4 |
 
