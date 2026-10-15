@@ -5,6 +5,7 @@
   "area": "gtm",
   "budget": 40,
   "playbook": "growth-review.md",
+  "series": ["site"],
   "params": {
     "site": {
       "help": "Search Console property, e.g. sc-domain:acme.com",

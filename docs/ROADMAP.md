@@ -56,8 +56,12 @@ outcomes.
   overridable per org) with parameters and required checks; `reckon check` marks each met
   by evidence, skipped with a reason, unavailable or to do, and `close --outcome done`
   is refused while any is to do.
-- A saved review links observation, finding, proposed action and the action's
-  receipt, so next week's review starts from last week's.
+- Done 2026-10-15: a review links observation, finding, proposed action and the action's
+  receipt, so next week's review starts from last week's: runs of a recipe form a
+  series (`series` in the recipe, the site for growth reviews), a new run shows the
+  last finished one's findings, actions and session-linked writes (`reckon act prepare
+  --session`), and its `follow-up` check needs a `reckon note --follows` finding for
+  each earlier action.
 - Done 2026-10-14: `reckon run --cache AGE`, keyed by org/env/connection/exact
   command, stored redacted, evidence keeps the original observation time.
 - Done 2026-10-14: per-session read budgets (`reckon task --budget N`), enforced

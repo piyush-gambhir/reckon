@@ -16,6 +16,12 @@ The growth review recipe lists the reads that make a review complete (totals,
 trend, top queries and pages, opportunities, Bing, on-site behaviour, a finding).
 Checks for tools the org has not connected show as unavailable rather than missing.
 
+Each week's review of a site starts from the last finished one: the new session
+shows its findings, its actions and the writes prepared from it with their
+receipts, and adds a `follow-up` check. The agent records what happened to each
+action with `reckon note <id> --kind finding --follows <action-note-id> --evidence <ids>`
+before the review can be closed as done.
+
 ## Jira
 
 ```bash

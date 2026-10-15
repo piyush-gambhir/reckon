@@ -13,6 +13,12 @@ reckon task --workflow growth-review --param site=sc-domain:<domain>   # one ses
 Read `knowledge/_shared/company.md` for the sites, key pages and target queries.
 Save every read below with `--session <id>`.
 
+If the task output shows `previous` (the last finished review of this site), start
+there: for each of its actions, make the read that shows what happened and record
+`reckon note <id> --kind finding --follows <action-note-id> --evidence <ids>`
+(done or not, and whether the numbers moved). `reckon check` lists any not yet
+followed up as `follow-up`.
+
 ## Reads
 
 1. Totals and trend, current vs previous period:

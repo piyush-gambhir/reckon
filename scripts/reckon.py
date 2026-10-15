@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from reckonlib import activity, connectors, orgs, workspace  # noqa: E402
 from reckonlib import investigation as work  # noqa: E402
 from reckonlib.operations import OPERATIONS, build, plan  # noqa: E402
-from reckonlib.store import create, local_path, lock, resolve_service, services, session_path, window, write_json  # noqa: E402
+from reckonlib.store import create, local_path, lock, now, resolve_service, services, session_path, window, write_json  # noqa: E402
 
 INVESTIGATIONS = ("debug", "investigate", "monitor", "analyze")
 EXIT = {"timeout": 124, "output_limit": 3, "unavailable": 127, "cancelled": 130}
@@ -160,6 +160,8 @@ def parser():
     command.add_argument("--withdraw", metavar="NOTE_ID", help="withdraw a note: it stays on record but no longer counts")
     command.add_argument("--evidence", nargs="*", default=[])
     command.add_argument("--next-check", default="")
+    command.add_argument("--follows", action="append", default=[], metavar="NOTE_ID",
+                         help="a finding that says what happened to an action from the last review (repeatable)")
     command = sub.add_parser("history", parents=[scope], help="search this org's sessions and RCAs")
     command.add_argument("--service")
     command.add_argument("--query")
@@ -176,6 +178,7 @@ def parser():
     command.add_argument("target", nargs="?", help="prepare: the write operation (github.issue.create); apply/show: the action ID")
     command.add_argument("--params", default="{}", help="prepare: parameters as a JSON object")
     command.add_argument("--body-stdin", action="store_true", help="prepare: read the body parameter from standard input")
+    command.add_argument("--session", help="prepare: the session this write comes from, so its next review sees the receipt")
     command = sub.add_parser("brief", parents=[scope], help="local digest: open work, findings, writes waiting, gaps (no network)")
     command.add_argument("--days", type=int, default=7)
     command.add_argument("--save", action="store_true", help="also write it to the org folder's briefs/<date>-<env>.md")
@@ -636,13 +639,19 @@ def execute(args):
         bounds = window(args.start, args.end) if args.start else None
         if args.budget is not None and not 1 <= args.budget <= 1000:
             raise ValueError("--budget must be 1-1000")
+        last = workflows.previous(root, ctx["env"], recipe) if recipe else None
         path, data = create(root, ctx["org"], ctx["env"], args.question, "task", bounds=bounds, playbook=playbook, area=args.area,
-                            budget=args.budget, workflow=recipe)
+                            budget=args.budget, workflow=recipe, previous=last)
         report = work.report(root, data["id"])
         result = {"session": data["id"], "org": ctx["org"], "environment": ctx["env"], "path": str(path), "report": str(report),
                   "next": "reckon run <connection> --session " + data["id"] + " -- <arguments>"}
+        if last:
+            result["previous"] = work.summary(root, last)
+            result["start_with"] = ("the last review's actions: for each, record what happened with reckon note " + data["id"] +
+                                    " --kind finding --follows <action-note-id> --evidence <ids>")
         if recipe:
-            result["checks"] = [c["id"] + ": " + c["text"] for c in recipe["checks"]]
+            result["checks"] = [c["id"] + ": " + c["text"] for c in recipe["checks"]] + (["follow-up: each action from the last review"]
+                                                                                          if last and last["actions"] else [])
             result["done_when"] = "reckon check " + data["id"] + " shows no check left to do; skip one with reckon note " + data["id"] + \
                 " --kind question --text \"skip <check>: <reason>\""
         return result
@@ -687,7 +696,7 @@ def execute(args):
             return work.withdraw(root, args.session, args.withdraw, args.text)
         if not args.kind:
             raise ValueError("note needs --kind, or --withdraw <note-id>")
-        return work.note(root, args.session, args.kind, args.text, args.evidence, args.next_check)
+        return work.note(root, args.session, args.kind, args.text, args.evidence, args.next_check, args.follows)
     if name == "history":
         if not 1 <= args.limit <= 200:
             raise ValueError("history limit must be 1–200")
@@ -722,7 +731,9 @@ def execute(args):
         params = json.loads(args.params)
         if args.body_stdin:
             params["body"] = sys.stdin.read(65537)
-        record, text = actions.prepare(h, ctx, root, args.target or "", params, registry)
+        if args.session:
+            work.matching(session_path(root, args.session)[1], ctx)
+        record, text = actions.prepare(h, ctx, root, args.target or "", params, registry, session=args.session)
         activity.record(h, ctx, "act.prepare", target=record["connection"], action=record["id"], operation=record["operation"])
         print(text, file=sys.stderr)
         return {"action": record["id"], "status": record["status"],
@@ -745,7 +756,7 @@ def execute(args):
                 if todo:
                     raise ValueError("workflow checks still to do: " + ", ".join(todo) + "; read them, or record why with reckon note " +
                                      args.session + " --kind question --text \"skip <check>: <reason>\"")
-            data["status"] = args.outcome
+            data.update(status=args.outcome, closed_at=now())
             write_json(path / "session.json", data)
         return {"session": args.session, "status": args.outcome}
 
@@ -922,6 +933,14 @@ def display(command, result):
                 print("    Next: " + item["next_check"])
         for gap in result["gaps"]:
             print("  Gap: " + gap)
+        if result.get("previous"):
+            last = result["previous"]
+            followed = {f for n in session["notes"] if not n.get("withdrawn_at") for f in n.get("follows", [])}
+            print("Last review " + last["session"] + " (" + last["status"] + "):")
+            for action in last["actions"]:
+                print("  action " + action["id"] + ("  followed up" if action["id"] in followed else "  to follow up") + ": " + action["text"])
+            for done in last["writes"]:
+                print("  write " + str(done["action"]) + "  " + str(done["status"]) + (" " + done["url"] if done.get("url") else ""))
         print("Use --json for the full context, evidence paths, operation plan and instructions.")
     elif command == "collect":
         for item in result:
