@@ -74,6 +74,15 @@ def validate(operation, params):
     return provider
 
 
+def target_text(operation, params):
+    """A short name for what a write touches, for lists and briefs."""
+    if operation == "jira.issue.create":
+        return str(params.get("project")) + ": " + str(params.get("summary"))
+    if operation == "gsc.sitemap.submit":
+        return params.get("sitemap")
+    return params.get("repo")
+
+
 def marker(action_id, operation="github.issue.create"):
     """Left in the created issue so reconcile can prove which action made it (hidden on GitHub)."""
     if operation == "jira.issue.create":

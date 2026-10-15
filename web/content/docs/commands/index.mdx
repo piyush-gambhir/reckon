@@ -218,7 +218,8 @@ reckon brief --all-orgs --save  # every business in one digest, saved to ~/.reck
 
 The brief is built from saved files only: open sessions, recent findings, writes
 waiting for `reckon act apply` or with an `unknown` outcome, refused runs,
-connections that are not ready, and knowledge untouched for 90 days. `--all-orgs`
+connections that are not ready, knowledge untouched for 90 days, and when each
+review series (a workflow recipe and, for growth reviews, a site) last finished. `--all-orgs`
 starts with one table row per org and runs only in your own terminal, never in a
 pinned agent. It contacts no tool, so it is safe
 to run from cron or launchd, for example

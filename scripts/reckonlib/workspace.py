@@ -55,6 +55,17 @@ def overview(h, ctx, registry):
     lines += ["", "Run tools through Reckon, never directly: `reckon run <connection-or-tool> -- <arguments>`.",
               "Reckon adds the connection's credentials and forces read-only. Credentials are never available to you.",
               "Save work in sessions (`reckon task`, `reckon debug`, `reckon run --session`), and facts in `knowledge/`.", ""]
+    from .actions import WRITES
+    writes = []
+    for operation, (provider, required, optional, _) in sorted(WRITES.items()):
+        names = [c for c, conn in sorted(data["connections"].items()) if conn["provider"] == provider]
+        if names:
+            writes.append("- `" + operation + "` via " + ", ".join("`" + n + "`" for n in names) + ": " + ", ".join(required) +
+                          (" (optional: " + ", ".join(optional) + ")" if optional else ""))
+    if writes:
+        lines += ["## Writes you can prepare", "",
+                  "You prepare, the operator applies: `reckon act prepare <write> --session <id> --params '{...}'` (see WORKSPACE.md).", ""]
+        lines += writes + [""]
     return "\n".join(lines)
 
 

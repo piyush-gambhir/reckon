@@ -37,6 +37,49 @@ class BriefTests(OrgCase):
         self.assertIn("# Brief: acme / staging", text)
         self.assertIn("a-2", text)
 
+    def test_reviews_show_when_each_series_last_finished(self):
+        flow = {"id": "growth-review", "series": ["site"], "params": {"site": "sc-domain:acme.com", "week": "2026-10-05"}}
+        for status, closed, other in (("done", "2026-10-06T09:00:00Z", {}), ("done", "2026-10-13T09:00:00Z", {}), ("open", None, {}),
+                                      ("done", "2026-10-14T09:00:00Z", {"site": "sc-domain:other.com"})):
+            _, data = create(self.root, "acme", "staging", "review", "task", workflow=dict(flow, params=dict(flow["params"], **other)))
+            path = self.root / "sessions" / data["id"] / "session.json"
+            write_json(path, dict(data, status=status, closed_at=closed))
+        # An unreadable session and a malformed write are passed over.
+        write(self.root / "sessions" / "20200101T000000Z-broken0000" / "session.json", "{not json")
+        write_json(self.root / "actions" / "a-x" / "action.json", [])
+        write_json(self.root / "actions" / "a-j" / "action.json", {"id": "a-j", "status": "prepared", "operation": "jira.issue.create",
+                                                                   "connection": "jira", "environment": "staging",
+                                                                   "params": {"project": "ABC", "summary": "Fix titles"}})
+        # Hand-edited workflow data is passed over, dates that cannot be read count as no date, and
+        # values that print alike stay separate series.
+        for odd in ({"workflow": dict(flow, series=None)}, {"workflow": dict(flow, series="site")}, {"workflow": dict(flow, id=["x"])},
+                    {"closed_at": "not-a-date"}, {"closed_at": "2026-10-13"},
+                    {"workflow": {"id": "custom", "series": ["a", "b"], "params": {"a": "x b=y", "b": "z"}}},
+                    {"workflow": {"id": "custom", "series": ["b", "a"], "params": {"a": "x", "b": "y b=z"}}}):
+            _, data = create(self.root, "acme", "staging", "odd", "task", workflow=flow)
+            write_json(self.root / "sessions" / data["id"] / "session.json", dict(dict(data, status="done", closed_at="2026-10-01T00:00:00Z"), **odd))
+        result = self.cli("brief", "--org", "acme", "--env", "staging", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = json.loads(result.stdout)
+        self.assertEqual(sum(r["workflow"] == "custom" for r in out["reviews"]), 2)
+        rows = {r["series"]: r for r in out["reviews"] if r["workflow"] == "growth-review"}
+        self.assertEqual(rows["site=sc-domain:acme.com"]["last_done"], "2026-10-13T09:00:00Z")
+        self.assertEqual(len(rows["site=sc-domain:acme.com"]["open"]), 1)
+        self.assertEqual(rows["site=sc-domain:other.com"]["last_done"], "2026-10-14T09:00:00Z")
+        self.assertEqual([a["target"] for a in out["writes_waiting_for_approval"]], ["ABC: Fix titles"])
+        text = self.cli("brief", "--org", "acme", "--env", "staging").stdout
+        self.assertIn("[staging] growth-review site=sc-domain:acme.com: last done 2026-10-13", text)
+
+    def test_reckon_md_lists_the_writes_this_org_can_prepare(self):
+        data = orgs.load(self.home, "acme", self.registry)
+        data["connections"]["gh"] = {"provider": "github"}
+        orgs.save(self.home, data, self.registry)
+        from reckonlib import workspace
+        text = workspace.overview(self.home, self.ctx(), self.registry)
+        self.assertIn("## Writes you can prepare", text)
+        self.assertIn("- `github.issue.create` via `gh`: repo, title, body (optional: labels)", text)
+        self.assertNotIn("jira.issue.create", text)
+
     def test_sessions_record_and_compare_their_knowledge(self):
         write(self.root / "knowledge" / "_shared" / "company.md", "v1\n")
         _, session = create(self.root, "acme", "staging", "q", "task")

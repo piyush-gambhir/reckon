@@ -10,7 +10,8 @@ connections. This guide applies to every org.
 0. For a new day or week, `reckon brief` shows open sessions, recent findings,
    writes waiting for approval or with unknown outcomes, refused runs and
    connection gaps, and each goal in `knowledge/*/goals.json` against its target
-   from the newest saved read, and new items from watches (`reckon inbox`).
+   from the newest saved read, new items from watches (`reckon inbox`), and when
+   each review series (a recipe and, for growth reviews, a site) last finished.
    `reckon log` lists what ran in this org and
    environment, including refusals.
 1. Run `reckon preflight`. It prints the org, the environment this agent is pinned
