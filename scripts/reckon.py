@@ -270,12 +270,15 @@ def connect(h, args, registry):
         ready = orgs.configured(h, ctx["org"], args.name, spec)
     except ValueError:
         ready = False
+    # Name the org and an environment the connection serves: the saved default may be another org.
+    env = next((e for e in [ctx["env"]] + data["environments"] if e and orgs.applies(conn, e)), data["environments"][0])
+    target = args.name + " --org " + ctx["org"] + " --env " + env
     return {"org": ctx["org"], "connection": args.name, "provider": conn["provider"], "environment": conn.get("env") or "all",
             "env_labels": conn.get("env_labels", {}), "resources": conn.get("resources", {}), "account": conn.get("account"),
             "secrets": str(path), "secrets_created": created,
-            "next": "reckon verify " + args.name if ready else
-                    "edit " + str(path) + (" or run: reckon login " + args.name if spec.get("login") else "") +
-                    ", then: reckon verify " + args.name}
+            "next": "reckon verify " + target if ready else
+                    "edit " + str(path) + (" or run: reckon login " + target if spec.get("login") else "") +
+                    ", then: reckon verify " + target}
 
 
 def context(h, args, registry, need_env=True):
