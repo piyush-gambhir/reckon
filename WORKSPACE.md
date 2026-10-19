@@ -270,7 +270,8 @@ numbers are not complete history.
 | WhatsApp numbers and quality | `whatsapp -- numbers list`, `templates list --status rejected` |
 | WhatsApp spend per category | `whatsapp -- analytics pricing --from <date> --to <date> --dimension pricing_category` |
 
-These CLIs run as allowlists; `reckon run <tool> -- --help` shows each one's flags.
+These CLIs run as allowlists: `reckon run <tool> -- <command> --help` shows a command's flags, and a refused
+command's message lists every command that is allowed.
 
 ### Operations and incidents
 
@@ -298,8 +299,10 @@ prints a stream of indented JSON objects, not one JSON value.
 ## Databases, queues and caches
 
 `postgres`, `mysql`, `mongodb`, `clickhouse`, `redis`, `kafka` (kcat) and
-`kafka-rpk` connections always ask the operator before each run. The layers below
-are defence in depth; **only layer 1 actually denies writes on every path**.
+`kafka-rpk` connections always ask the operator before each run: in Claude Code each
+`reckon run` on them needs approval, and an agent in any other runtime (Codex) is
+refused, so the operator runs those reads. The layers below are defence in depth;
+**only layer 1 actually denies writes on every path**.
 
 1. **The connection's database user must be a true read-only role** (ClickHouse:
    a server-side `readonly=1` profile). This is the operator's responsibility and

@@ -10,8 +10,10 @@ holds the model and the current milestone; this file is the long view.
 | Milestone | State |
 | --- | --- |
 | M1 Orgs, environments, connections | Built (PR #38): every CLI through `reckon run`, per-org folders, pinned agents, sessions, migration |
-| M3 Approved writes, first slice | Built (PR #39): `reckon act prepare/apply`, receipts, `github.issue.create` |
-| Workflows | Growth review and release review exist as skill playbooks |
+| M2 Workflows | First slices built: recipes with required checks, review series, cache, read budgets, quotas (details below) |
+| M3 Approved writes | Built for `github.issue.create`, `jira.issue.create` and `gsc.sitemap.submit`, with expiry, account pins and reconcile |
+| M4 Agent CLI contract | All nine CLIs ship `commands resolve` (released 2026-10-20) and `reckon run` consults it |
+| M5-M9 | First slices: adopted CLIs, resource binding, knowledge snapshots, brief, routines and watches |
 
 ## What the research says
 

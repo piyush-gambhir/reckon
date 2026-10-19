@@ -81,8 +81,9 @@ In Claude Code, Reckon writes `.claude/settings.json` in the org folder:
 | deny | `reckon login`, `use`, `connect`, `org`, `migrate`, and reading or editing any org's `secrets/` folder |
 
 Codex reads the same guide through `AGENTS.md`, but Reckon writes no Codex
-permission rules. Run Codex with approvals on, so database and queue runs still
-reach you before they execute.
+permission rules. So in Codex, `reckon run` refuses database, Redis and Kafka
+connections outright; open the org in Claude Code for those, or run the query
+yourself.
 
 <Callout type="warn">
   The pinned context, argument checks and permission rules stop mistakes by an

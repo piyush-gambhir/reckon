@@ -405,9 +405,12 @@ def command(h, ctx, cname, conn, spec, values, args):
     return argv
 
 
-def cache_key(ctx, cname, argv, stdin):
+def cache_key(ctx, cname, conn, values, argv, stdin):
+    """The connection's settings are part of the key, so repointing a connection (another host,
+    account or token) never returns the old target's output. Only the hash is kept."""
     import hashlib
-    material = json.dumps([ctx["org"], ctx["env"], cname, argv, (stdin or b"").decode("utf-8", "replace")])
+    material = json.dumps([ctx["org"], ctx["env"], cname, conn, sorted(values.items()), argv,
+                           (stdin or b"").decode("utf-8", "replace")], sort_keys=True)
     return hashlib.sha256(material.encode()).hexdigest()
 
 
@@ -469,7 +472,7 @@ def run(h, ctx, target, args, registry, timeout=60, max_bytes=8 * 1048576, stdin
     bind(spec, args, conn, values)
     args = scope(spec, args, label, conn.get("env_labels", {}).values())
     argv = command(h, ctx, cname, conn, spec, values, args)
-    key = cache_key(ctx, cname, argv, stdin)
+    key = cache_key(ctx, cname, conn, values, argv, stdin)
     hit = cached(h, ctx, key, cache_seconds)
     if hit:
         result = {"status": "ok", "exit_code": hit["exit_code"], "duration_ms": hit["duration_ms"],

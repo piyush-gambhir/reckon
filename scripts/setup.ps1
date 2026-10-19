@@ -248,7 +248,7 @@ function Show-NextSteps {
   4. For Kafka tools (kcat, rpk), use WSL2:
        wsl --install
        # then inside WSL: bash scripts/setup.sh
-  5. Read CLAUDE.md "Database safety contract" before any DB query.
+  5. Read WORKSPACE.md "Databases, queues and caches" before connecting a database.
 
 '@ | Write-Host
 }

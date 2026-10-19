@@ -91,7 +91,7 @@ conversations and lets `claude --continue` resume the right business.
    from any other.
 4. **Writes are prepared, then applied by the operator** (milestone 3). The
    agent prepares an action with its exact payload and real target; the
-   operator runs `reckon act apply <id>`, which records a receipt (done, failed
+   operator runs `reckon act apply <id>`, which records a receipt (applied, failed
    or unknown).
 
 Limits, stated plainly: everything runs as the same OS user, so these rules stop
@@ -117,7 +117,7 @@ write barrier for databases.
 
 | | Milestone | Done when |
 | --- | --- | --- |
-| M1 | Orgs, environments and connections (built 2026-10-14) | Two orgs work side by side. All nine CLIs plus `gh`, `aws`, `kubectl` and `git` run through `reckon run` and `reckon verify` with per-connection credentials. Sessions are per org. The current single-org data migrates with one command. Missing credentials fail with no fallback to global logins. |
+| M1 | Orgs, environments and connections (built 2026-10-14) | Two orgs work side by side. All nine CLIs plus `gh`, `aws` and `kubectl` run through `reckon run` and `reckon verify` with per-connection credentials (local `git` is a typed read in incident sessions). Sessions are per org. The current single-org data migrates with one command. Missing credentials fail with no fallback to global logins. |
 | M2 | First cross-area workflows | A GTM review (Search Console, Bing, Clarity) and a release review (Jenkins, GitHub) run as saved sessions with evidence. Each org has a company profile. Read-only MCP for tools without a CLI. |
 | M3 | Approved writes (started 2026-10-14: prepare/apply, receipts, github.issue.create) | Prepare and apply, receipts, the production guard, a first write (create a GitHub or Jira issue). |
 | M4 | Dogfood and measure | Used on two real businesses for two weeks; the next connectors and workflows chosen from what was actually repeated. |
@@ -130,5 +130,5 @@ provenance, evaluations and briefings.
 
 ## Deferred
 
-Team accounts, a hosted or scheduled agent, MCP writes, a web dashboard and
-autonomous remediation. The Python 3.9 standard-library core stays.
+Team accounts, a hosted agent, MCP writes, a web dashboard and autonomous
+remediation. (Local schedules exist: `reckon routine` runs a recipe with headless Claude Code.) The Python 3.9 standard-library core stays.

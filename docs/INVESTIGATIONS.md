@@ -2,7 +2,7 @@
 
 Reckon now supplies local session management and bounded evidence collection for a coding agent. It does not run its own LLM or automatically decide the root cause. The agent reads the saved evidence, tests explanations, and records findings using the commands below.
 
-Requires Python 3.9+ available as `python3`; no pip packages are required. Every command works in the pinned org and environment (`reckon preflight` shows them; `--org` and `--env` override). macOS/Linux are the primary implementation targets; native PowerShell routes to the same core but remains experimental until Windows execution is validated.
+Requires Python 3.9+ available as `python3`; no pip packages are required. Every command works in the pinned org and environment (`reckon preflight` shows them). In your own terminal `--org` and `--env` choose another; a pinned agent is refused if it names a different one. macOS/Linux are the primary implementation targets; native PowerShell routes to the same core but remains experimental until Windows execution is validated.
 
 ## Try it without infrastructure
 

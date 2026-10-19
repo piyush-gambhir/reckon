@@ -602,7 +602,7 @@ print_next_steps() {
        reckon use acme/prod
        reckon verify
        reckon open
-  4. Read CLAUDE.md "Database safety contract" before any DB query.
+  4. Read WORKSPACE.md "Databases, queues and caches" before connecting a database.
 
 NEXT
 }

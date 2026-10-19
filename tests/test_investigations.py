@@ -114,6 +114,29 @@ class WorkflowTests(Fixture):
         self.assertIn("850 ms", text)
         self.assertEqual(context["session"]["status"], "open")
 
+    def test_collection_passes_the_clis_own_resolver_first(self):
+        self.fake('import json, sys\nif sys.argv[1:3] == ["commands", "resolve"]:\n    print(json.dumps({"command": "cubeapm metrics", "effect": "remote_write"}))\nelse:\n    print("[]")')
+        path, data = self.session()
+        with self.assertRaisesRegex(ValueError, "remote_write"):
+            self.collect(data["id"])
+        self.assertEqual(evidence(path), [])  # refused before any read started
+
+    def test_collection_is_in_the_activity_log(self):
+        self.fake('print("[]")')
+        _, data = self.session()
+        self.collect(data["id"])
+        from reckonlib import activity
+        runs = activity.read(self.home, "acme", event="run")
+        self.assertEqual({(e["target"], e["operation"], e["session"]) for e in runs}, {("cubeapm", "cubeapm.metrics.range", data["id"])})
+
+    def test_withdrawn_finding_does_not_diagnose(self):
+        self.fake('print("[]")')
+        _, data = self.session()
+        record = self.collect(data["id"])[0]
+        note = work.note(self.root, data["id"], "finding", "Latency doubled", [record["id"]])
+        work.withdraw(self.root, data["id"], note["id"], "Wrong service")
+        self.assertEqual(self.cli_staging("close", data["id"], "--outcome", "diagnosed").returncode, 1)
+
     def test_collect_resume_notes_report_and_history(self):
         self.fake('import json; print(json.dumps({"status":"success","data":{"resultType":"matrix","result":[{"metric":{},"values":[[0,"100"],[1,"200"]]}]}}))')
         path, data = self.session()

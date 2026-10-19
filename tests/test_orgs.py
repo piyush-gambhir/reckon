@@ -906,12 +906,13 @@ class WorkspaceTests(OrgCase):
                           JENKINS_TOKEN="t", KUBECONFIG="/tmp/kube", XDG_CONFIG_HOME="/tmp/xdg", RECKON_ORG="old", RECKON_ENV="old",
                           RECKON_CONNECTION="old", RECKON_FOO="x", CUBEAPM_PASSWORD="p", HOME="/home/me", LANG="C.UTF-8",
                           REDISCLI_AUTH="r", GOOGLE_APPLICATION_CREDENTIALS="/tmp/adc.json")
-        env = workspace.agent_env(self.home, self.ctx_, self.registry)
+        env = workspace.agent_env(self.home, self.ctx_, self.registry, "codex")
         for key in ("GH_TOKEN", "GITHUB_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "JENKINS_URL", "JENKINS_TOKEN",
                     "KUBECONFIG", "XDG_CONFIG_HOME", "RECKON_CONNECTION", "RECKON_FOO", "CUBEAPM_PASSWORD", "REDISCLI_AUTH",
                     "GOOGLE_APPLICATION_CREDENTIALS"):
             self.assertNotIn(key, env)
-        self.assertEqual((env["RECKON_HOME"], env["RECKON_ORG"], env["RECKON_ENV"]), (str(self.home), "acme", "staging"))
+        self.assertEqual((env["RECKON_HOME"], env["RECKON_ORG"], env["RECKON_ENV"], env["RECKON_RUNTIME"]),
+                         (str(self.home), "acme", "staging", "codex"))
         self.assertEqual(env["HOME"], "/home/me")
         self.assertEqual(env["LANG"], "C.UTF-8")
         self.assertTrue(env["PATH"].startswith(str(self.home / "bin") + os.pathsep))

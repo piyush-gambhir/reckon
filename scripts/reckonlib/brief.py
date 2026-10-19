@@ -27,6 +27,8 @@ def brief(h, ctx, registry, days=7, envs=None):
         if not isinstance(data, dict) or not isinstance(data.get("notes", []), list):
             continue
         review(series, data, envs)
+        if data.get("environment") not in envs:
+            continue  # another environment's work stays out of this brief
         if data.get("status") == "open":
             sessions.append({"id": data["id"], "environment": data["environment"], "question": data["question"], "since": data["created_at"]})
         for note in data.get("notes", []):
@@ -40,6 +42,8 @@ def brief(h, ctx, registry, days=7, envs=None):
             row = {"id": action["id"], "operation": action["operation"], "connection": action["connection"],
                    "environment": action["environment"], "target": target_text(action["operation"], action["params"])}
         except (ValueError, OSError, KeyError, TypeError, AttributeError):
+            continue
+        if row["environment"] not in envs:
             continue
         if action["status"] == "prepared":
             pending.append(row)

@@ -129,7 +129,7 @@ def attempt(h, ctx, folder, name, routine, registry):
     log = folder / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ") + ".log")
     with open(os.open(str(log), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w", encoding="utf-8") as out:
         # Its own process group, so a timeout stops the agent and everything it started.
-        child = subprocess.Popen(argv(routine, binary), cwd=str(root), env=workspace.agent_env(h, ctx, registry),
+        child = subprocess.Popen(argv(routine, binary), cwd=str(root), env=workspace.agent_env(h, ctx, registry, "claude"),
                                  stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
         try:
             code = child.wait(timeout=routine["timeout_minutes"] * 60)

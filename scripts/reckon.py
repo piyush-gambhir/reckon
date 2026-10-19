@@ -402,12 +402,13 @@ def outdated():
     return notes
 
 
-def doctor(h, registry):
+def doctor(h, registry, only=None):
+    """only: the one org a pinned agent may inspect."""
     problems, checks = [], []
     checks.append("Python " + ".".join(map(str, sys.version_info[:3])))
     if h.exists() and os.name != "nt" and h.stat().st_mode & 0o077:
         problems.append(str(h) + " is readable by other users; run: chmod 700 " + str(h))
-    found = orgs.orgs(h)
+    found = [o for o in orgs.orgs(h) if only is None or o == only]
     checks.append("orgs: " + (", ".join(found) or "none (reckon org add <org> or reckon migrate --org <org>)"))
     for org in found:
         try:
@@ -441,6 +442,21 @@ def doctor(h, registry):
     return {"home": str(h), "checks": checks, "problems": problems}
 
 
+def approval_gate(ctx, target, registry):
+    """Database and queue reads must reach the operator before they run. Claude Code's ask
+    rules do that (reckon open writes them); other runtimes get no such prompt, so a pinned
+    agent there is refused instead of running unseen."""
+    if not activity.pinned() or os.environ.get("RECKON_RUNTIME") == "claude":
+        return
+    try:
+        conn = orgs.resolve(ctx, target)[1]
+    except ValueError:
+        return  # connectors.run explains an unknown connection
+    if registry[conn["provider"]].get("mode") == "approval":
+        raise ValueError(target + " runs only after you approve each command, which needs Claude Code (reckon open " + ctx["org"] + "/" +
+                         ctx["env"] + " claude); otherwise run it yourself in your own terminal")
+
+
 def execute(args):
     h = orgs.home()
     registry = orgs.providers()
@@ -471,9 +487,14 @@ def execute(args):
                     "connections": sorted(data["connections"]), "fill_in": templates,
                     "next": "fill in each credentials file, then reckon verify --org " + args.org + " --env " + envs[0] if templates else
                             "reckon connect <name> --org " + args.org + " --provider <tool> [--for-env <env>]"}
+        # A pinned agent sees its own org only, never the operator's other businesses.
+        own = os.environ.get("RECKON_ORG") if activity.pinned() else None
         if args.action == "list":
-            return [{"org": o, "name": orgs.load(h, o, registry)["name"], "environments": orgs.load(h, o, registry)["environments"]} for o in orgs.orgs(h)]
+            return [{"org": o, "name": orgs.load(h, o, registry)["name"], "environments": orgs.load(h, o, registry)["environments"]}
+                    for o in orgs.orgs(h) if own is None or o == own]
         org = args.org or orgs.context(h, registry=registry)["org"]
+        if own is not None and org != own:
+            raise ValueError("a pinned agent sees only its own org")
         data = orgs.load(h, org, registry)
         return dict(data, workspace=str(orgs.workspace(h, org)))
     if name == "use":
@@ -518,7 +539,7 @@ def execute(args):
         from reckonlib.demo import demo
         return demo(h)
     if name == "doctor":
-        return doctor(h, registry)
+        return doctor(h, registry, os.environ.get("RECKON_ORG", "") if activity.pinned() else None)
     if name == "act" and args.action == "apply":
         from reckonlib import actions
         if not args.target:
@@ -639,6 +660,7 @@ def execute(args):
                 raise ValueError("--cache takes a number and s, m, h or d, e.g. 15m")
             cache_seconds = int(args.cache[:-1]) * unit
         try:
+            approval_gate(ctx, args.target, registry)
             outcome = connectors.run(h, ctx, args.target, command, registry, args.timeout, args.max_bytes, stdin, cache_seconds)
         except ValueError as exc:
             activity.record(h, ctx, "refused", target=args.target, command=words, args=command, session=args.session, detail=exc)
@@ -762,6 +784,10 @@ def execute(args):
                               args.timeout, args.max_bytes, registry)
         work.report(root, args.session)
         return result
+    if name in ("resume", "report", "note", "promote") and activity.pinned():
+        # A pinned agent's saved work stays in its environment, like every read that made it.
+        # The operator may still open another environment's session with --env.
+        work.matching(session_path(root, args.session)[1], ctx)
     if name == "resume":
         return work.resume(root, args.session)
     if name == "check":
@@ -779,6 +805,8 @@ def execute(args):
     if name == "history":
         if not 1 <= args.limit <= 200:
             raise ValueError("history limit must be 1–200")
+        if args.all_envs and activity.pinned():
+            raise ValueError("a pinned agent sees only its own environment's history")
         return work.history(root, None if args.all_envs else ctx["env"], args.service, args.query, args.limit)
     if name == "promote":
         return {"incident": str(work.promote(root, args.session, args.slug)), "note": "Preliminary snapshot; complete RCA.md using the RCA template."}
@@ -800,9 +828,12 @@ def execute(args):
     if name == "act":
         from reckonlib import actions
         if args.action == "list":
-            return actions.listing(root)
+            return [r for r in actions.listing(root) if not activity.pinned() or r["environment"] == ctx["env"]]
         if args.action == "show":
-            return actions.load(root, args.target or "")[1]
+            record = actions.load(root, args.target or "")[1]
+            if activity.pinned() and record["environment"] != ctx["env"]:
+                raise ValueError("action " + record["id"] + " belongs to " + record["environment"] + "; a pinned agent sees only " + ctx["env"])
+            return record
         if args.action == "reconcile":
             done = actions.reconcile(h, ctx, root, args.target or "", registry)
             activity.record(h, ctx, "act.reconcile", target=done["connection"], action=done["id"], status=done["status"])
@@ -821,7 +852,7 @@ def execute(args):
         path, _ = session_path(root, args.session)
         with lock(path):
             _, data = session_path(root, args.session)
-            if args.outcome == "diagnosed" and not any(n["kind"] == "finding" for n in data["notes"]):
+            if args.outcome == "diagnosed" and not any(n["kind"] == "finding" for n in work.live(data["notes"])):
                 raise ValueError("record an evidence-backed finding before marking the investigation diagnosed")
             if args.outcome == "done" and data.get("workflow"):
                 work.matching(data, ctx)

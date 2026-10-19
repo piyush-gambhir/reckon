@@ -125,13 +125,14 @@ def ensure(h, ctx, registry):
     return root
 
 
-def agent_env(h, ctx, registry):
-    """The operator's environment minus every provider credential, plus the pinned context."""
+def agent_env(h, ctx, registry, runtime):
+    """The operator's environment minus every provider credential, plus the pinned context.
+    RECKON_RUNTIME tells reckon run whether Claude Code's ask rules guard approval connections."""
     prefixes = tuple(p for spec in registry.values() for p in spec["prefixes"])
     # Credentials some CLIs read under their own names, outside the provider prefixes.
     named = {"KUBECONFIG", "XDG_CONFIG_HOME"} | {k for spec in registry.values() for k in spec.get("agent_scrub", [])}
     env = {k: v for k, v in os.environ.items() if not k.startswith(prefixes) and not k.startswith("RECKON_") and k not in named}
-    env.update(RECKON_HOME=str(h), RECKON_ORG=ctx["org"], RECKON_ENV=ctx["env"])
+    env.update(RECKON_HOME=str(h), RECKON_ORG=ctx["org"], RECKON_ENV=ctx["env"], RECKON_RUNTIME=runtime)
     env["PATH"] = str(h / "bin") + os.pathsep + env.get("PATH", "")
     return env
 
@@ -144,4 +145,4 @@ def launch(h, ctx, registry, runtime=None, extra=()):
     banner = ctx["org"] + " · " + ctx["env"]
     print(("!!! " + banner + " (PRODUCTION) !!!") if ctx["production"] else ("=== " + banner + " ==="))
     os.chdir(root)
-    os.execvpe(runtime, [runtime] + list(extra), agent_env(h, ctx, registry))
+    os.execvpe(runtime, [runtime] + list(extra), agent_env(h, ctx, registry, runtime))

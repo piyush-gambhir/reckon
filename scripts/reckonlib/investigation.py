@@ -133,6 +133,18 @@ def collect(h, ctx, root, sid, operation=None, params=None, refresh=False, timeo
                 from .connectors import scope
                 scope(registry["cubeapm"], command["argv"][1:], labels[ctx["env"]], labels.values())
     sources = {c["provider"]: source(h, ctx, c["provider"], registry) for c in commands}
+    # Typed reads pass the same gates as reckon run before any of them starts: argument
+    # rules, the CLI's own resolver and the connection's resource limits.
+    from . import activity, connectors
+    for command in commands:
+        cname, env, values, problem = sources[command["provider"]]
+        if cname and not problem:
+            conn = ctx["data"]["connections"][cname]
+            spec = registry[conn["provider"]]
+            connectors.check(conn["provider"], spec, command["argv"][1:])
+            if spec.get("resolver"):
+                connectors.resolved(spec, env, command["argv"][1:])
+            connectors.bind(spec, command["argv"][1:], conn, values)
     results = []
     with lock(path):
         _, session = session_path(root, sid)
@@ -164,11 +176,18 @@ def collect(h, ctx, root, sid, operation=None, params=None, refresh=False, timeo
                       "limits": {"timeout_seconds": timeout, "output_bytes": max_bytes, "result_limit": command["limit"]},
                       "artifacts": {}, "summary": "Collection started."}
             write_json(target / "record.json", record)
+            if not problem and cname:
+                try:
+                    connectors.quota(h, ctx, cname, registry[ctx["data"]["connections"][cname]["provider"]], command["argv"][1:])
+                except ValueError as exc:
+                    problem = str(exc)
             if problem:
                 record.update(status="unavailable", completeness="unavailable", summary=problem)
             else:
                 result = run(command["argv"], env=env, cwd=root, timeout=timeout, max_bytes=max_bytes, stdin=command["stdin"])
                 save(target, record, result, values, command["format"], command["limit"])
+                activity.record(h, ctx, "run", target=cname or command["provider"], operation=task["operation"], args=command["argv"][1:],
+                                session=sid, status=record["status"], exit_code=record.get("exit_code"))
             record["completed_at"] = now()
             write_json(target / "record.json", record)
             results.append(record)
