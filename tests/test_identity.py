@@ -114,10 +114,14 @@ class IdentityTests(OrgCase):
     def test_connect_sets_and_clears_the_account(self):
         result = self.cli("connect", "jenkins", "--account", "Tester", "--org", "acme", "--json")
         self.assertEqual(json.loads(result.stdout)["account"], "Tester")
-        # It already has credentials, so the next step is checking it, not filling them in.
-        self.assertEqual(json.loads(result.stdout)["next"], "reckon verify jenkins")
+        # It already has credentials, so the next step is checking it, not filling them in. The hint
+        # names the org and an environment the connection serves, so it works whatever the saved default is.
+        self.assertEqual(json.loads(result.stdout)["next"], "reckon verify jenkins --org acme --env staging")
         fresh = self.cli("connect", "gh-other", "--provider", "github", "--org", "acme", "--json")
         self.assertTrue(json.loads(fresh.stdout)["next"].startswith("edit "), fresh.stdout)
+        self.assertTrue(json.loads(fresh.stdout)["next"].endswith("reckon verify gh-other --org acme --env staging"), fresh.stdout)
+        uat = self.cli("connect", "jenkins-uat", "--provider", "jenkins", "--for-env", "uat", "--org", "acme", "--json")
+        self.assertIn("reckon login jenkins-uat --org acme --env uat", json.loads(uat.stdout)["next"])
         self.assertEqual(self.cli("connect", "jenkins", "--account", "", "--org", "acme").returncode, 0)
         self.assertNotIn("account", orgs.load(self.home, "acme", self.registry)["connections"]["jenkins"])
         refused = self.cli("connect", "apm", "--provider", "cubeapm", "--account", "x", "--org", "acme")
