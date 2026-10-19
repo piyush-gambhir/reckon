@@ -8,3 +8,4 @@ nginxpm,github.com/piyush-gambhir/nginxpm-cli/cli-go,v0.1.13,v0.1.13,internal/bu
 gsc,github.com/piyush-gambhir/gsc-cli/cli-go,1da4dc3454261f5310a6fca0ab4b761bffef4798,v0.1.8,internal/build
 bwt,github.com/piyush-gambhir/bing-webmaster-cli/cli-go,09d94bc19ed4f4ec13fa7e5ec2111132723c5631,v0.1.7,internal/build
 clarity,github.com/piyush-gambhir/clarity-cli/cli-go,f141352a8a3f924af723cdd00b532c1e91a93b31,v0.1.5,internal/build
+whatsapp,github.com/piyush-gambhir/whatsapp-cli/cli-go,v0.1.0,v0.1.0,internal/build

@@ -12,7 +12,7 @@ holds the model and the current milestone; this file is the long view.
 | M1 Orgs, environments, connections | Built (PR #38): every CLI through `reckon run`, per-org folders, pinned agents, sessions, migration |
 | M2 Workflows | First slices built: recipes with required checks, review series, cache, read budgets, quotas (details below) |
 | M3 Approved writes | Built for `github.issue.create`, `jira.issue.create` and `gsc.sitemap.submit`, with expiry, account pins and reconcile |
-| M4 Agent CLI contract | All nine CLIs ship `commands resolve` (released 2026-10-20) and `reckon run` consults it |
+| M4 Agent CLI contract | All ten of our CLIs ship `commands resolve` (released 2026-10-20) and `reckon run` consults it |
 | M5-M9 | First slices: adopted CLIs, resource binding, knowledge snapshots, brief, routines and watches |
 
 ## What the research says
@@ -188,7 +188,7 @@ this order (each a Go CLI with `commands resolve` from day one):
 
 1. WhatsApp Business Cloud API: Meta archived its SDKs; phone numbers, templates,
    conversation and pricing analytics, quality rating. Indian sales and support.
-   First version built 2026-10-14 as `whatsapp-cli` (local, not yet published):
+   First version built 2026-10-14 as `whatsapp-cli`, published 2026-10-20 (v0.1.0):
    GET-only, `commands resolve`, Graph v25.0, reviewed; not yet run against a live
    account. Conversation analytics left out (that pricing ended 2025-07-01).
 2. Zoho CRM: no CLI anywhere; records, search and COQL share Zoho Books' OAuth.

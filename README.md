@@ -84,8 +84,8 @@ Try one offline: `reckon demo`.
 | Revenue and reliability | `stripe`, `razorpay`, `shopify`, `resend`, `sentry`, `cloudflare` (cf), `supabase`; adopted CLIs, read-only lists |
 | Sales and support | `whatsapp` (WhatsApp Business: numbers, templates, message and pricing analytics; ours, read-only) |
 
-`reckon connect --list` shows them all. The nine CLIs above that are ours
-(grafana, jenkins, cubeapm, es, jira, nginxpm, gsc, bwt, clarity) are pinned in
+`reckon connect --list` shows them all. The ten CLIs above that are ours
+(grafana, jenkins, cubeapm, es, jira, nginxpm, gsc, bwt, clarity, whatsapp) are pinned in
 [scripts/cli-releases.csv](scripts/cli-releases.csv) and installed by setup.
 
 ## Setup

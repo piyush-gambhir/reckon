@@ -20,7 +20,7 @@ inside an org is [WORKSPACE.md](WORKSPACE.md); the plan is
 | `scripts/providers.json` | Every supported tool: binary, setting prefixes, required settings, safety switches, denied arguments, read commands, live check, login |
 | `skills/reckon/` | The ops method (investigate, monitor, analyze) and knowledge templates |
 | `WORKSPACE.md` | Imported by every org's `CLAUDE.md`; the agent-facing rules and recipes |
-| `scripts/setup.sh`, `setup.ps1`, `cli-releases.csv` | Tool installation; pins for the nine sibling CLIs |
+| `scripts/setup.sh`, `setup.ps1`, `cli-releases.csv` | Tool installation; pins for the ten sibling CLIs |
 | `web/` | Documentation site (Next.js + Fumadocs, static export to Cloudflare) |
 
 ## Rules
