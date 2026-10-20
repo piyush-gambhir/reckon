@@ -41,6 +41,8 @@ Commands you run yourself:
 | `reckon connect <name> --provider <p>` | Add a connection (`--for-env`, `--label`); `--list` shows every provider |
 | `reckon login <connection>` | Run the CLI's own login for one connection, in a terminal |
 | `reckon use <org>/<env>` | Set the default context for the next launch |
+| `reckon link [<org>/<env> [<folder>]]` | Make a folder default to an org and environment (`--use <connection>` prefers an account per tool); no target lists links |
+| `reckon unlink [<folder>]` | Remove a folder's link |
 | `reckon open [<org>/<env>]` | Start Claude Code or Codex in the org's folder, pinned to that environment |
 | `reckon migrate --org <org>` | Copy an older checkout's layout into an org (`--rename`, `--share`, `--dry-run`) |
 | `reckon doctor` | Diagnose setup problems |

@@ -293,6 +293,8 @@ def apply(h, ctx, root, action_id, registry, confirm=None):
     if not terminal():
         raise ValueError("reckon act apply is for the operator's own terminal")
     confirm = confirm or ask
+    # A prepared write runs its saved connection from any folder: no folder link preferences.
+    ctx = dict(ctx, link=None)
     path, _ = load(root, action_id)
     with lock(path):
         _, record = load(root, action_id)
