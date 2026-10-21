@@ -75,7 +75,8 @@ def fingerprint(watch):
 
 
 def poll(h, org, name, watch, registry):
-    ctx = orgs.context(h, org, watch["environment"], registry)
+    # A saved watch reads its own connection from any folder: no folder link preferences.
+    ctx = dict(orgs.context(h, org, watch["environment"], registry), link=None)
     folder = local_path(orgs.org_path(h, org), "runtime", "watches", name)
     try:
         held = lock(folder)
@@ -89,6 +90,9 @@ def poll(h, org, name, watch, registry):
 
 
 def check(h, ctx, folder, name, watch, registry):
+    # The saved connection itself, or nothing: a removed one must not turn into a tool name that resolves elsewhere.
+    if watch["connection"] not in ctx["data"]["connections"]:
+        raise ValueError(name + ": connection " + watch["connection"] + " no longer exists; remove the watch and add it again")
     outcome = connectors.run(h, ctx, watch["connection"], watch["args"], registry, timeout=60)
     result = outcome["result"]
     if result["status"] != "ok":

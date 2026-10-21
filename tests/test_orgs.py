@@ -1120,5 +1120,101 @@ class LikeTests(OrgCase):
         self.assertEqual(narrow["connections"], ["github"])
 
 
+class LinkTests(OrgCase):
+    def setUp(self):
+        super().setUp()
+        self.org("acme", connections={"gh-acme": {"provider": "github"}, "gh-bot": {"provider": "github"},
+                                      "jenkins-staging": {"provider": "jenkins", "env": "staging"},
+                                      "jenkins-uat": {"provider": "jenkins", "env": "uat"}})
+        self.org("other", ("dev",))
+        orgs.set_context(self.home, "other", "dev", self.registry)
+        self.repo = self.dir / "code" / "acme"
+        (self.repo / "src").mkdir(parents=True)
+
+    def test_a_linked_folder_and_its_subfolders_default_to_the_link(self):
+        orgs.link(self.home, self.repo, "acme", "uat", registry=self.registry)
+        ctx = orgs.context(self.home, registry=self.registry, cwd=self.repo / "src")
+        self.assertEqual((ctx["org"], ctx["env"]), ("acme", "uat"))
+        self.assertIn("folder link", ctx["source"])
+        # Arguments still win, and another org named outright gets no link.
+        self.assertEqual(orgs.context(self.home, None, "staging", self.registry, cwd=self.repo)["env"], "staging")
+        named = orgs.context(self.home, "other", None, self.registry, cwd=self.repo)
+        self.assertEqual((named["org"], named["env"], named["link"]), ("other", "dev", None))
+        self.assertEqual(orgs.context(self.home, registry=self.registry, cwd=self.dir)["org"], "other")
+        # The deepest link wins and inherits nothing from the one above it.
+        orgs.link(self.home, self.repo / "src", "other", "dev", registry=self.registry)
+        self.assertEqual(orgs.context(self.home, registry=self.registry, cwd=self.repo / "src")["org"], "other")
+        self.assertEqual(orgs.context(self.home, registry=self.registry, cwd=self.repo)["org"], "acme")
+
+    def test_pinned_agents_and_org_folders_ignore_links(self):
+        orgs.link(self.home, self.repo, "other", "dev", registry=self.registry)
+        os.environ.update(RECKON_ORG="acme", RECKON_ENV="staging")
+        ctx = orgs.context(self.home, registry=self.registry, cwd=self.repo)
+        self.assertEqual((ctx["org"], ctx["env"], ctx["link"]), ("acme", "staging", None))
+        os.environ.pop("RECKON_ORG")
+        os.environ.pop("RECKON_ENV")
+        with self.assertRaisesRegex(ValueError, "already belong to their org"):
+            orgs.link(self.home, orgs.workspace(self.home, "acme"), "acme", "uat", registry=self.registry)
+        self.assertIsNone(orgs.linked(self.home, orgs.workspace(self.home, "acme")))
+
+    def test_a_preferred_connection_answers_for_its_tool_in_each_environment(self):
+        orgs.link(self.home, self.repo, "acme", "staging", ["gh-acme", "jenkins-staging", "jenkins-uat"], self.registry)
+        staging = orgs.context(self.home, registry=self.registry, cwd=self.repo)
+        uat = orgs.context(self.home, None, "uat", self.registry, cwd=self.repo)
+        self.assertEqual(orgs.resolve(staging, "github")[0], "gh-acme")
+        self.assertEqual(orgs.resolve(staging, "jenkins")[0], "jenkins-staging")
+        self.assertEqual(orgs.resolve(uat, "jenkins")[0], "jenkins-uat")
+        # A connection named outright still works; saved work and other folders do not follow the preference.
+        self.assertEqual(orgs.resolve(staging, "gh-bot")[0], "gh-bot")
+        with self.assertRaisesRegex(ValueError, "several github"):
+            orgs.resolve(dict(staging, link=None), "github")
+        with self.assertRaisesRegex(ValueError, "several github"):
+            orgs.resolve(self.ctx("acme", "staging"), "github")
+
+    def test_a_preference_is_never_a_guess(self):
+        cases = ((["gh-acme", "gh-bot"], "prefer one github connection"), (["ghost"], "no connection ghost"))
+        for use, message in cases:
+            with self.subTest(use=use), self.assertRaisesRegex(ValueError, message):
+                orgs.link(self.home, self.repo, "acme", "staging", use, self.registry)
+        with self.assertRaisesRegex(ValueError, "no environment 'prod'"):
+            orgs.link(self.home, self.repo, "acme", "prod", registry=self.registry)
+        data = orgs.load(self.home, "acme", self.registry)
+        data["connections"]["github"] = {"provider": "github"}
+        orgs.save(self.home, data, self.registry)
+        with self.assertRaisesRegex(ValueError, "connection named github"):
+            orgs.link(self.home, self.repo, "acme", "staging", ["gh-acme"], self.registry)
+        # A link made before the org changed fails closed instead of falling back.
+        del data["connections"]["github"]
+        orgs.save(self.home, data, self.registry)
+        orgs.link(self.home, self.repo, "acme", "staging", ["gh-acme"], self.registry)
+        data["connections"]["github"] = {"provider": "github"}
+        orgs.save(self.home, data, self.registry)
+        with self.assertRaisesRegex(ValueError, "names a connection"):
+            orgs.resolve(orgs.context(self.home, registry=self.registry, cwd=self.repo), "github")
+        # A removed preference fails closed even when a replacement is named like the tool.
+        del data["connections"]["gh-acme"]
+        orgs.save(self.home, data, self.registry)
+        for target in ("jenkins", "github"):
+            with self.subTest(target=target), self.assertRaisesRegex(ValueError, "no longer has"):
+                orgs.resolve(orgs.context(self.home, registry=self.registry, cwd=self.repo), target)
+
+    def test_a_malformed_links_file_fails_closed(self):
+        orgs.write(self.home / "links.json", '{"schema_version": 1, "links": {"/x": {"org": "acme"}}}')
+        with self.assertRaisesRegex(ValueError, "malformed"):
+            orgs.context(self.home, registry=self.registry, cwd=self.repo)
+
+    def test_cli_links_lists_and_unlinks(self):
+        linked = self.cli("link", "acme/uat", str(self.repo), "--use", "gh-acme", "--json")
+        self.assertEqual(linked.returncode, 0, linked.stderr)
+        self.assertEqual(json.loads(linked.stdout)["use"], ["gh-acme"])
+        listed = json.loads(self.cli("link", "--json").stdout)["links"]
+        self.assertEqual([(r["org"], r["env"]) for r in listed], [("acme", "uat")])
+        inner = self.cli("unlink", str(self.repo / "src"))
+        self.assertIn("unlink that folder instead", inner.stderr)
+        self.assertEqual(self.cli("link", "acme/uat", str(self.repo), RECKON_ORG="acme", RECKON_ENV="uat").returncode, 1)
+        self.assertEqual(self.cli("unlink", str(self.repo)).returncode, 0)
+        self.assertEqual(json.loads(self.cli("link", "--json").stdout)["links"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

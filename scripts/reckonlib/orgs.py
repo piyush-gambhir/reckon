@@ -145,8 +145,8 @@ def create(h, org, display=None, envs=("prod", "uat", "dev"), production=None, r
 
 def context(h, org=None, env=None, registry=None, cwd=None):
     """Resolve the org and environment: arguments, then the agent's pinned
-    RECKON_ORG/RECKON_ENV, then the saved default. Missing or unknown values
-    fail closed."""
+    RECKON_ORG/RECKON_ENV, then the link of the folder the command runs in, then
+    the saved default. Missing or unknown values fail closed."""
     pinned = (os.environ.get("RECKON_ORG"), os.environ.get("RECKON_ENV"))
     # reckon open pins an agent to one org and environment; it cannot step outside them.
     if pinned[0] and org and org != pinned[0] or pinned[1] and env and env != pinned[1]:
@@ -154,12 +154,21 @@ def context(h, org=None, env=None, registry=None, cwd=None):
                          "; another org or environment needs its own agent (reckon open <org>/<env>)")
     saved_path = local_path(h, "context")
     saved = read_bytes(saved_path, 4096).decode().strip().partition("/")[::2] if saved_path.is_file() else (None, None)
+    # An agent started by reckon open follows its pin, never the folder it wanders into.
+    link = None if "RECKON_ORG" in os.environ or "RECKON_ENV" in os.environ else linked(h, cwd)
     source = "arguments"
     if not org:
-        org, source = (pinned[0], "RECKON_ORG/RECKON_ENV") if pinned[0] else (saved[0], str(saved_path))
+        if pinned[0]:
+            org, source = pinned[0], "RECKON_ORG/RECKON_ENV"
+        elif link:
+            org, source = link["org"], "folder link " + link["path"]
+        else:
+            org, source = saved[0], str(saved_path)
+    # A link is a default, not a lock: it applies only when the chosen org is the linked one.
+    link = link if link and link["org"] == org else None
     if not env:
-        # An org named explicitly keeps the environment pinned or saved for that same org.
-        env = pinned[1] if pinned[0] == org else saved[1] if saved[0] == org else None
+        # An org named explicitly keeps the environment pinned, linked or saved for that same org.
+        env = pinned[1] if pinned[0] == org else link["env"] if link else saved[1] if saved[0] == org else None
     if not org:
         raise ValueError("no org selected: run reckon use <org>/<env> (reckon org list shows your orgs)")
     data = load(h, org, registry)
@@ -174,7 +183,7 @@ def context(h, org=None, env=None, registry=None, cwd=None):
         owner = here.relative_to(base).parts[0]
         if owner != org:
             raise ValueError("this folder belongs to org " + owner + ", but the selected org is " + org)
-    return {"org": org, "env": env, "production": env in data["production"], "source": source, "data": data}
+    return {"org": org, "env": env, "production": env in data["production"], "source": source, "data": data, "link": link}
 
 
 def set_context(h, org, env, registry=None):
@@ -185,6 +194,86 @@ def set_context(h, org, env, registry=None):
     write(local_path(h, "context"), org + "/" + env + "\n")
 
 
+def folder(path):
+    return Path(os.path.realpath(os.path.expanduser(str(path))))
+
+
+def links(h):
+    """Folder links from $RECKON_HOME/links.json: {folder: {org, env, use?}}. A
+    malformed file is an error, never read as "no links"."""
+    path = local_path(h, "links.json")
+    if not path.is_file():
+        return {}
+    try:
+        data = read_json(path)
+    except ValueError:
+        data = None
+    entries = data.get("links") if isinstance(data, dict) and data.get("schema_version") == SCHEMA else None
+    if not isinstance(entries, dict) or not all(
+            isinstance(v, dict) and not set(v) - {"org", "env", "use"} and isinstance(v.get("org"), str) and NAME.fullmatch(v["org"])
+            and isinstance(v.get("env"), str) and NAME.fullmatch(v["env"])
+            and isinstance(v.get("use", []), list) and all(isinstance(c, str) and NAME.fullmatch(c) for c in v.get("use", []))
+            for v in entries.values()):
+        raise ValueError(str(path) + " is malformed; fix or delete it")
+    return entries
+
+
+def linked(h, cwd=None):
+    """The deepest link covering a folder, with its path, or None. Folders under
+    $RECKON_HOME belong to their org and never follow a link."""
+    here, root = folder(cwd or os.getcwd()), folder(h)
+    if here == root or root in here.parents:
+        return None
+    entries = links(h)
+    found = [Path(p) for p in entries if Path(p) == here or Path(p) in here.parents]
+    if not found:
+        return None
+    best = max(found, key=lambda p: len(p.parts))
+    return dict(entries[str(best)], path=str(best))
+
+
+def link(h, path, org, env, use=(), registry=None):
+    """Make a folder and everything below it default to an org and environment, and
+    optionally prefer connections for their tools. Replaces a link at the same folder."""
+    where, root = folder(path), folder(h)
+    if not where.is_dir():
+        raise ValueError("not a folder: " + str(where))
+    if where == root or root in where.parents:
+        raise ValueError("folders under " + str(h) + " already belong to their org")
+    data = load(h, org, registry)
+    if env not in data["environments"]:
+        raise ValueError(org + " has no environment " + repr(env) + "; choose one of: " + ", ".join(data["environments"]))
+    conns, use = data["connections"], sorted(set(use))
+    for cname in use:
+        if cname not in conns:
+            raise ValueError(org + " has no connection " + cname + " (reckon status --org " + org + " lists them)")
+    for provider in sorted({conns[c]["provider"] for c in use}):
+        # reckon run <name> means the connection of that name first, so the preference would never apply.
+        if provider in conns and provider not in use:
+            raise ValueError(org + " has a connection named " + provider + ", so reckon run " + provider + " always means it; prefer it or rename it")
+        # One preferred connection per tool and environment, or the preference would still be a guess.
+        for each in data["environments"]:
+            fit = [c for c in use if conns[c]["provider"] == provider and applies(conns[c], each)]
+            if len(fit) > 1:
+                raise ValueError(", ".join(fit) + " all serve " + org + "/" + each + "; prefer one " + provider + " connection per environment")
+    entries = links(h)
+    entry = dict({"org": org, "env": env}, **({"use": use} if use else {}))
+    replaced = entries.get(str(where))
+    entries[str(where)] = entry
+    write_json(local_path(h, "links.json"), {"schema_version": SCHEMA, "links": entries})
+    return dict(entry, path=str(where), replaced=replaced)
+
+
+def unlink(h, path):
+    where, entries = folder(path), links(h)
+    if str(where) not in entries:
+        covering = linked(h, where)
+        raise ValueError("no link at " + str(where) + ("; it follows the link at " + covering["path"] + ", unlink that folder instead" if covering else ""))
+    entry = entries.pop(str(where))
+    write_json(local_path(h, "links.json"), {"schema_version": SCHEMA, "links": entries})
+    return dict(entry, path=str(where))
+
+
 def applies(conn, env):
     """A labelled shared connection serves only the environments it has a label for."""
     if "env_labels" in conn:
@@ -193,15 +282,34 @@ def applies(conn, env):
 
 
 def resolve(ctx, target):
-    """A connection name, or a provider with exactly one connection for this environment."""
+    """A connection name, the connection the folder link prefers for a provider, or a
+    provider with exactly one connection for this environment. Saved work that must
+    not depend on the folder it runs in clears ctx["link"] first."""
     conns = ctx["data"]["connections"]
+    link = ctx.get("link") or {}
+    use = link.get("use", [])
+    # Checked before any name: a replacement named like the tool must not stand in for a removed preference.
+    missing = [c for c in use if c not in conns]
+    if missing:
+        raise ValueError("the folder link at " + link["path"] + " prefers " + ", ".join(missing) + ", which " + ctx["org"] +
+                         " no longer has; link the folder again (reckon link)")
+    preferred = [c for c in use if conns[c]["provider"] == target]
     if target in conns:
+        if preferred and target not in preferred:
+            raise ValueError(target + " names a connection, but the folder link at " + link["path"] + " prefers " + ", ".join(preferred) +
+                             " for that tool; name the connection you mean")
         if not applies(conns[target], ctx["env"]):
             if "env_labels" in conns[target]:
                 raise ValueError("connection " + target + " has no label for " + ctx["env"] + "; add one: reckon connect " + target +
                                  " --label " + ctx["env"] + "=<label>")
             raise ValueError("connection " + target + " belongs to " + conns[target]["env"] + "; this context is " + ctx["org"] + "/" + ctx["env"])
         return target, conns[target]
+    if preferred:
+        fit = [c for c in preferred if applies(conns[c], ctx["env"])]
+        if len(fit) == 1:
+            return fit[0], conns[fit[0]]
+        raise ValueError("the folder link at " + link["path"] + " prefers " + ", ".join(preferred) + " for " + target + ", and " +
+                         ("none of them serves " if not fit else "several serve ") + ctx["env"] + "; name a connection or link the folder again")
     matches = [(n, c) for n, c in sorted(conns.items()) if c["provider"] == target and applies(c, ctx["env"])]
     if len(matches) == 1:
         return matches[0]

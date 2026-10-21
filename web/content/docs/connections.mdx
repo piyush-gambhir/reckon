@@ -43,11 +43,35 @@ reckon status            # context, connections and their state
 Inside an agent started with `reckon open`, the org and environment are
 pinned: `--org` or `--env` naming anything else is refused, so the agent cannot
 step into another business or environment. In your own shell, commands use
-`--org` and `--env` when given, then the default from `reckon use` (saved in
-`~/.reckon/context`). `reckon open` takes an `<org>/<env>` argument, and without
-one it uses the saved default. An unknown or missing org or environment is an
-error. Reckon never falls back to another environment, and a command run in one
-org's folder refuses another org.
+`--org` and `--env` when given, then the link of the folder you are in, then the
+default from `reckon use` (saved in `~/.reckon/context`). `reckon open` takes an
+`<org>/<env>` argument, and without one it uses the folder's link or the saved
+default. An unknown or missing org or environment is an error. Reckon never
+falls back to another environment, and a command run in one org's folder refuses
+another org.
+
+### Folder links
+
+Link a code folder to the business it belongs to, so commands run there (and in
+every folder below it) use that org and environment without flags. With `--use`,
+a tool name means the connection, and so the account, you prefer in that folder:
+
+```bash
+cd ~/code/acme/api
+reckon link acme/prod --use github-acme --use aws-prod --use aws-uat
+reckon run github -- pr list                             # github-acme, here and below
+reckon run aws --env uat -- cloudwatch describe-alarms   # aws-uat, preferred for uat
+reckon link                                              # every link; * marks this folder's
+reckon unlink                                            # remove this folder's link
+```
+
+A link is a default, not a lock: `--org` and `--env` still win, and the deepest
+linked folder applies. Each tool may have one preferred connection per
+environment. A preferred connection that no longer exists is an error, never a
+fallback to another account. Agents started with `reckon open` keep their pin and
+ignore links. Watches and prepared writes keep the connection chosen when they
+were created, and saved sessions ignore preferences, so they read the same
+accounts from any folder. Links live in `~/.reckon/links.json`.
 
 ## Connections
 

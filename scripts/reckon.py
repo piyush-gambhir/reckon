@@ -26,7 +26,7 @@ def parser():
     p = argparse.ArgumentParser(prog="reckon", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="command", required=True, metavar="command")
     scope = argparse.ArgumentParser(add_help=False)
-    scope.add_argument("--org", help="org (defaults to the agent's pinned org, then reckon use)")
+    scope.add_argument("--org", help="org (defaults to the agent's pinned org, then the folder's link, then reckon use)")
     scope.add_argument("--env", help="environment within the org")
     scope.add_argument("--json", action="store_true", help="structured output")
 
@@ -47,6 +47,16 @@ def parser():
 
     command = sub.add_parser("use", help="set the default org and environment for the next launch")
     command.add_argument("target", help="<org>/<env>, or <env> to keep the current org")
+    command.add_argument("--json", action="store_true")
+
+    command = sub.add_parser("link", help="make a folder default to an org, environment and preferred connections; no target lists links")
+    command.add_argument("target", nargs="?", help="<org>/<env>")
+    command.add_argument("folder", nargs="?", help="the folder to link (default: the current one)")
+    command.add_argument("--use", action="append", default=[], metavar="CONNECTION",
+                         help="in this folder, reckon run <tool> means this connection (repeatable)")
+    command.add_argument("--json", action="store_true")
+    command = sub.add_parser("unlink", help="remove a folder's link")
+    command.add_argument("folder", nargs="?", help="the linked folder (default: the current one)")
     command.add_argument("--json", action="store_true")
 
     command = sub.add_parser("connect", parents=[scope], help="add a tool connection, or update its environment labels")
@@ -461,7 +471,7 @@ def execute(args):
     h = orgs.home()
     registry = orgs.providers()
     name = args.command
-    if activity.pinned() and (name in ("use", "connect", "login", "migrate", "open", "routine", "watch") or name == "org" and args.action == "add"
+    if activity.pinned() and (name in ("use", "link", "unlink", "connect", "login", "migrate", "open", "routine", "watch") or name == "org" and args.action == "add"
                                          or name == "act" and args.action == "apply"):
         # An agent started by reckon open works only inside its pinned org and environment.
         raise ValueError("reckon " + name + " is for the operator's own terminal, not a pinned agent")
@@ -503,9 +513,24 @@ def execute(args):
             env, org = org, orgs.context(h, registry=registry)["org"]
         orgs.set_context(h, org, env, registry)
         result = {"org": org, "environment": env, "note": "used by the next reckon open and by shells without a pinned context"}
+        here = orgs.linked(h)
         if os.environ.get("RECKON_ORG"):
             result["warning"] = "this shell is pinned to " + os.environ["RECKON_ORG"] + "/" + os.environ.get("RECKON_ENV", "") + " and keeps it"
+        elif here and (here["org"], here["env"]) != (org, env):
+            result["warning"] = "this folder is linked to " + here["org"] + "/" + here["env"] + " and keeps it (reckon link)"
         return result
+    if name == "link":
+        if not args.target:
+            if args.folder or args.use:
+                raise ValueError("name the org and environment: reckon link <org>/<env> [<folder>] [--use <connection>]")
+            here = orgs.linked(h)
+            return {"links": [dict(v, path=p) for p, v in sorted(orgs.links(h).items())], "here": here["path"] if here else None}
+        org, env = split(args.target)
+        if not env:
+            raise ValueError("name the environment too: reckon link " + org + "/<env>")
+        return orgs.link(h, args.folder or os.getcwd(), org, env, args.use, registry)
+    if name == "unlink":
+        return orgs.unlink(h, args.folder or os.getcwd())
     if name == "connect":
         return connect(h, args, registry)
     if name == "login":
@@ -772,8 +797,10 @@ def execute(args):
         return entries
     if name == "capabilities":
         readiness = {}
+        # Typed operations run in sessions, which ignore folder link preferences.
+        plain = dict(ctx, link=None)
         for provider in sorted({v[0] for v in OPERATIONS.values()}):
-            readiness[provider] = (work.source(h, ctx, provider, registry)[3] or "ready") if provider != "git" else "local"
+            readiness[provider] = (work.source(h, plain, provider, registry)[3] or "ready") if provider != "git" else "local"
         return {"org": ctx["org"], "environment": ctx["env"], "live_verified": False, "operations": [
             {"operation": op, "provider": v[0], "capability": v[1], "required": v[2].split(), "optional": v[3].split(),
              "readiness": readiness[v[0]]} for op, v in OPERATIONS.items()]}
@@ -892,7 +919,7 @@ def question(text):
 
 
 def saved_context(h, registry):
-    """reckon open ignores a pinned shell and uses the saved default."""
+    """reckon open ignores a pinned shell and uses the folder's link or the saved default."""
     pinned = {k: os.environ.pop(k) for k in ("RECKON_ORG", "RECKON_ENV") if k in os.environ}
     try:
         return orgs.context(h, registry=registry)
@@ -963,6 +990,15 @@ def display(command, result):
             for warning in result["warnings"]:
                 print("warning: " + warning)
             print("note: " + result["note"])
+    elif command == "link" and "links" in result:
+        for row in result["links"]:
+            print(("* " if row["path"] == result["here"] else "  ") + row["path"] + "  ->  " + row["org"] + "/" + row["env"] +
+                  ("  prefers " + ", ".join(row["use"]) if row.get("use") else ""))
+        if not result["links"]:
+            print("no folder links yet: reckon link <org>/<env> [<folder>] [--use <connection>]")
+    elif command in ("link", "unlink"):
+        print(command + "ed " + result["path"] + "  ->  " + result["org"] + "/" + result["env"] +
+              ("  prefers " + ", ".join(result["use"]) if command == "link" and result.get("use") else ""))
     elif command == "connect" and isinstance(result, list):
         for row in result:
             print(row["provider"].ljust(15) + row["title"].ljust(24) + row["mode"].ljust(10) + ", ".join(row["settings"]))

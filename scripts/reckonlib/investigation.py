@@ -101,6 +101,8 @@ def collect(h, ctx, root, sid, operation=None, params=None, refresh=False, timeo
     if not 0 < timeout <= 120 or not 0 < max_bytes <= 8388608:
         raise ValueError("timeout must be 0–120 seconds; output limit 1–8388608 bytes")
     registry = registry or orgs.providers()
+    # A saved session reads the same connections from any folder: no folder link preferences.
+    ctx = dict(ctx, link=None)
     path, session = session_path(root, sid)
     matching(session, ctx)
     tasks, _ = plan(session)

@@ -11,7 +11,7 @@ inside an org is [WORKSPACE.md](WORKSPACE.md); the plan is
 | Path | What it is |
 | --- | --- |
 | `scripts/reckon.py` | The `reckon` CLI (argparse). Everything after the first `--` goes to `run` or `open`. |
-| `scripts/reckonlib/orgs.py` | `$RECKON_HOME`, org.json, context resolution, connections, secrets parsing, the per-command child environment |
+| `scripts/reckonlib/orgs.py` | `$RECKON_HOME`, org.json, context resolution, folder links, connections, secrets parsing, the per-command child environment |
 | `scripts/reckonlib/connectors.py` | `reckon run`, `verify`, `login`: argument checks, provider-specific arguments |
 | `scripts/reckonlib/workspace.py` | Each org's agent folder, its generated files and permissions, `reckon open` |
 | `scripts/reckonlib/migrate.py` | Copies a pre-org checkout's layout into an org |

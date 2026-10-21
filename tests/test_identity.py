@@ -138,6 +138,13 @@ class IdentityTests(OrgCase):
         done = actions.apply(self.home, self.ctx(), self.root, record["id"], self.registry, confirm=lambda p: asked.append(p) or "yes")
         return done, asked
 
+    def test_apply_ignores_the_folder_link_it_runs_in(self):
+        record, _ = self.prepare()
+        # A stale link (its preferred connection was removed) must not block the saved connection's account check.
+        stale = dict(self.ctx(), link={"path": "/code/acme", "org": "acme", "env": "staging", "use": ["gh-removed"]})
+        done = actions.apply(self.home, stale, self.root, record["id"], self.registry, confirm=lambda prompt: "yes")
+        self.assertEqual(done["status"], "applied")
+
     def test_apply_confirms_the_account_before_asking(self):
         record, shown = self.prepare()
         self.assertIn("on gh as acme-bot in acme/staging", shown)

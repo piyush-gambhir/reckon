@@ -1,5 +1,6 @@
 """Watches poll saved reads into the inbox; the brief lists what is new. Offline, fake stripe."""
 import json
+import os
 import unittest
 
 from helpers import OrgCase
@@ -67,6 +68,32 @@ class WatchTests(OrgCase):
         self.assertEqual(self.cli("watch", "list", "--org", "acme", RECKON_ORG="", RECKON_ENV="").returncode, 1)
         # The agent may read its own environment's inbox.
         self.assertEqual(self.cli("inbox", RECKON_ORG="acme", RECKON_ENV="prod").returncode, 0)
+
+    def test_a_watch_reads_its_own_connection_from_a_linked_folder(self):
+        self.disputes("dp_1")
+        watches.add(self.home, self.ctx(env="staging"), "w", "stripe", ["disputes", "list"], "data", "id", registry=self.registry)
+        data = orgs.load(self.home, "acme", self.registry)
+        data["connections"]["stripe-b"] = {"provider": "stripe"}
+        orgs.save(self.home, data, self.registry)
+        repo = self.dir / "repo"
+        repo.mkdir()
+        # A link made before stripe existed (reckon link refuses it now) prefers stripe-b;
+        # the saved watch still reads stripe, wherever it is polled from.
+        orgs.write(self.home / "links.json", json.dumps({"schema_version": 1, "links": {str(orgs.folder(repo)): {
+            "org": "acme", "env": "staging", "use": ["stripe-b"]}}}))
+        here = os.getcwd()
+        os.chdir(repo)
+        self.addCleanup(os.chdir, here)
+        self.assertEqual(watches.run(self.home, "acme", self.registry)[0]["status"], "baseline")
+
+    def test_a_removed_connection_is_not_replaced_by_another_of_its_tool(self):
+        watches.add(self.home, self.ctx(env="staging"), "w", "stripe", ["disputes", "list"], "data", "id", registry=self.registry)
+        data = orgs.load(self.home, "acme", self.registry)
+        data["connections"]["stripe-other"] = data["connections"].pop("stripe")
+        orgs.save(self.home, data, self.registry)
+        result = watches.run(self.home, "acme", self.registry)[0]
+        self.assertEqual(result["status"], "error")
+        self.assertIn("no longer exists", result["detail"])
 
 
 if __name__ == "__main__":
