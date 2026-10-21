@@ -205,21 +205,13 @@ mark_skipped()   { warn "$1 — skipped (manual install required)"; SKIPPED=$((S
 # Per-tool installers — each knows about every supported platform.
 # -----------------------------------------------------------------------------
 
-install_python() {
-    if have python3 && python3 -c 'import sys; sys.exit(sys.version_info < (3, 9))'; then
-        mark_already 'Python 3.9+'
-        return
+build_reckon() {
+    if ! have cargo; then
+        err 'Rust is required to build Reckon from source. Install it from https://rustup.rs, then rerun setup.'
+        return 1
     fi
-    info 'Python — installing for investigation support...'
-    case "$PLATFORM" in
-        macos) brew_install python3 || true ;;
-        linux) [ -z "$PKG" ] || pkg_install python3 python3 || true ;;
-    esac
-    if have python3 && python3 -c 'import sys; sys.exit(sys.version_info < (3, 9))'; then
-        mark_installed 'Python 3.9+'
-    else
-        mark_failed 'Python 3.9+ (python3) — install a supported Python and add it to PATH'
-    fi
+    info 'Building the native Reckon CLI...'
+    cargo build --locked --release
 }
 
 install_jq() {
@@ -575,17 +567,17 @@ ensure_go() {
 
 setup_workspace() {
     header "Reckon home"
-    local home="${RECKON_HOME:-$HOME/.reckon}"
+    local reckon_home="${RECKON_HOME:-$HOME/.reckon}"
     # Business data lives here, never in this checkout. Orgs, connections and
     # their credentials are created by `reckon org add` and `reckon connect`.
-    (umask 077 && mkdir -p "$home/bin")
-    chmod 0700 "$home"
-    ln -sfn "$(pwd)/scripts/reckon.py" "$home/bin/reckon"
-    ok "reckon command linked at $home/bin/reckon"
+    (umask 077 && mkdir -p "$reckon_home/bin")
+    chmod 0700 "$reckon_home"
+    ln -sfn "$(pwd)/target/release/reckon" "$reckon_home/bin/reckon"
+    ok "reckon command linked at $reckon_home/bin/reckon"
     case ":$PATH:" in
-        *":$home/bin:"*) ok "$home/bin is on PATH" ;;
-        *) warn "$home/bin is NOT on PATH; add to your shell rc:"
-           printf '       export PATH="%s/bin:$PATH"\n' "$home" ;;
+        *":$reckon_home/bin:"*) ok "$reckon_home/bin is on PATH" ;;
+        *) warn "$reckon_home/bin is NOT on PATH; add to your shell rc:"
+           printf '       export PATH="%s/bin:$PATH"\n' "$reckon_home" ;;
     esac
 }
 
@@ -622,10 +614,10 @@ main() {
     case "$PLATFORM" in
         macos) ensure_brew ;;
     esac
+    build_reckon
     ensure_go
 
     header "Observability & CI/CD"
-    install_python
     install_jq
     install_aws
     install_gh

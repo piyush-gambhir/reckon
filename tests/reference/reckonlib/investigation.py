@@ -437,7 +437,7 @@ def _write_report(root, sid):
         lines.append("")
     lines += ["## Evidence", ""]
     for record in records:
-        lines += ["### " + record["label"] + " — " + record["id"], "",
+        lines += ["### " + record["label"] + ": " + record["id"], "",
                   "- Source: " + record["operation"] + (" via " + record["connection"] if record.get("connection") else "") +
                   "; status: " + record["status"] + "; completeness: " + record["completeness"],
                   "- Observed: " + record["observed_at"] + "; scope: " + record["temporal_scope"],

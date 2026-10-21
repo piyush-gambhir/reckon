@@ -40,6 +40,8 @@ Commands you run yourself:
 | `reckon org add\|list\|show` | Create (optionally `--like` another org's layout), list or show orgs |
 | `reckon connect <name> --provider <p>` | Add a connection (`--for-env`, `--label`); `--list` shows every provider |
 | `reckon login <connection>` | Run the CLI's own login for one connection, in a terminal |
+| `reckon secrets setup` | Configure reader/writer service accounts restricted to one 1Password vault |
+| `reckon secrets set\|link\|import\|recover <connection>` | Manage connection credentials in 1Password; [setup and options](/docs/secrets) |
 | `reckon use <org>/<env>` | Set the default context for the next launch |
 | `reckon link [<org>/<env> [<folder>]]` | Make a folder default to an org and environment (`--use <connection>` prefers an account per tool); no target lists links |
 | `reckon unlink [<folder>]` | Remove a folder's link |
@@ -55,6 +57,9 @@ Commands the agent runs (you can too):
 | `reckon preflight` | Context, ready connections, knowledge, open sessions, warnings; no network |
 | `reckon status` | Context and every connection with its state |
 | `reckon verify [<connection>...]` | One live read per connection |
+| `reckon secrets status [--org <org>]` | Local 1Password store and reference readiness |
+| `reckon secrets check <connection>` | Check 1Password references without displaying values or contacting the provider |
+| `reckon secrets benchmark <connection> --samples 5` | Compare per-field and batched lookup latency using the configured reader |
 | `reckon run <connection-or-tool> -- <args>` | Run a CLI read-only with one connection's credentials |
 | `reckon task --question <q>` | Start a session for any piece of work |
 | `reckon task --workflow <id> --param k=v` | Start a session from a workflow recipe; `reckon check` judges it done, including a follow-up of the last run's actions |

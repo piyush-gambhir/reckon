@@ -21,6 +21,8 @@
 __pycache__/
 *.pyc
 /bin/
+/target/
+/.tools/
 
 # Cloudflare local cache
 .wrangler/

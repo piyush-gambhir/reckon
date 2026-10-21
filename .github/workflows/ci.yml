@@ -22,6 +22,16 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Rust
+        run: rustup toolchain install 1.99.1 --profile minimal --component clippy --component rustfmt
+
+      - name: Check native CLI
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+          cargo build --locked
+
       - name: Validate shell scripts
         run: |
           bash -n scripts/reckon
@@ -100,3 +110,22 @@ jobs:
       - name: Verify exported search index
         working-directory: web
         run: pnpm test:search
+
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15, macos-15-intel, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Rust
+        run: rustup toolchain install 1.99.1 --profile minimal
+      - name: Native tests
+        run: cargo test --locked
+      - name: Build release executable
+        run: cargo build --locked --release

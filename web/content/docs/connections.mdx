@@ -193,7 +193,7 @@ Fill it in with your editor. Never paste credentials into the agent's chat.
 - Values like `replace_me`, `example.com` or `<...>` count as not configured.
 - A value can point at a secret store instead of holding the secret:
   `keychain:<item>` (macOS Keychain, or `secret-tool` on Linux) or
-  `op://vault/item/field` (1Password CLI). Reckon reads it only when a run needs
+  `op://vault/item/field` ([restricted 1Password store](/docs/secrets)). Reckon reads it only when a run needs
   it, and the agent's settings deny calling `security`, `secret-tool` or `op read`
   directly.
 

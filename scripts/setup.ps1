@@ -75,7 +75,7 @@ function Test-Preflight {
     Write-Warn '  - kcat    (no Windows binary)'
     Write-Warn '  - rpk     (no Windows binary)'
     Write-Warn 'For the full experience, use WSL2 + scripts/setup.sh.'
-    Write-Warn 'After install, create an org: python3 .\scripts\reckon.py org add <org>'
+    Write-Warn 'After install, create an org: .\scripts\reckon.ps1 org add <org>'
 }
 
 # ---------------------------------------------------------------------------
@@ -230,6 +230,9 @@ function Setup-Workspace {
     # Business data lives here, never in this checkout. reckon org add and
     # reckon connect create orgs, connections and their credential files.
     New-Item -ItemType Directory -Path $home_ -Force | Out-Null
+    $reckonBin = Join-Path $home_ 'bin'
+    New-Item -ItemType Directory -Path $reckonBin -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../target/release/reckon.exe') -Destination (Join-Path $reckonBin 'reckon.exe') -Force
     Write-Ok "Reckon home: $home_"
     Write-Warn 'Native Windows is experimental: reckon open needs symlink rights (Developer Mode).'
 }
@@ -238,13 +241,13 @@ function Show-NextSteps {
     Write-Header 'Next steps'
     @'
   1. Create an org for each business:
-       python3 .\scripts\reckon.py org add acme --envs 'prod,uat,dev'
+       .\scripts\reckon.ps1 org add acme --envs 'prod,uat,dev'
   2. Connect its tools (credentials go in the file it prints, never in chat):
-       python3 .\scripts\reckon.py connect jenkins-prod --org acme --provider jenkins --for-env prod
+       .\scripts\reckon.ps1 connect jenkins-prod --org acme --provider jenkins --for-env prod
   3. Check them, then start the agent pinned to one environment:
-       python3 .\scripts\reckon.py use acme/prod
-       python3 .\scripts\reckon.py verify
-       python3 .\scripts\reckon.py open
+       .\scripts\reckon.ps1 use acme/prod
+       .\scripts\reckon.ps1 verify
+       .\scripts\reckon.ps1 open
   4. For Kafka tools (kcat, rpk), use WSL2:
        wsl --install
        # then inside WSL: bash scripts/setup.sh
@@ -267,16 +270,11 @@ function Main {
 
     Test-Preflight
 
-    if (Get-Command python3 -ErrorAction SilentlyContinue) {
-        & python3 -c 'import sys; sys.exit(sys.version_info < (3, 9))'
-        if ($LASTEXITCODE -ne 0) {
-            Write-Err 'Python 3.9+ is required for investigations; upgrade python3 on PATH'
-            $Script:Failed++
-        }
-    } else {
-        Write-Warn 'Install Python 3.9+ and expose it as python3 for investigations and bounded verification'
-        $Script:Failed++
+    if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+        throw 'Rust is required to build Reckon from source. Install it from https://rustup.rs, then rerun setup.'
     }
+    & cargo build --locked --release
+    if ($LASTEXITCODE -ne 0) { throw 'Reckon build failed' }
 
     Write-Header 'Observability & CI/CD'
     Install-Winget -Id 'jqlang.jq'         -Bin 'jq'

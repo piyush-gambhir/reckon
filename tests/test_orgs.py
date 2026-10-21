@@ -890,9 +890,9 @@ class WorkspaceTests(OrgCase):
     def test_reckon_command_symlink_points_at_the_script(self):
         link = self.home / "bin" / "reckon"
         self.assertTrue(link.is_symlink())
-        self.assertEqual(os.readlink(link), str(SOURCE / "scripts" / "reckon.py"))
+        self.assertEqual(os.readlink(link), str(SOURCE / "scripts" / "reckon"))
         workspace.ensure(self.home, self.ctx_, self.registry)
-        self.assertEqual(os.readlink(link), str(SOURCE / "scripts" / "reckon.py"))
+        self.assertEqual(os.readlink(link), str(SOURCE / "scripts" / "reckon"))
 
     def test_knowledge_templates_are_seeded_without_overwriting(self):
         shared = sorted((self.root / "knowledge" / "_shared").glob("*.md"))

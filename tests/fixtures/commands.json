@@ -1,0 +1,305 @@
+{
+  "org": [
+    "--help"
+  ],
+  "use": [
+    "--help",
+    "--json"
+  ],
+  "link": [
+    "--help",
+    "--use",
+    "--json"
+  ],
+  "unlink": [
+    "--help",
+    "--json"
+  ],
+  "connect": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--provider",
+    "--for-env",
+    "--label",
+    "--list",
+    "--allow",
+    "--allow-any",
+    "--account",
+    "--remove"
+  ],
+  "login": [
+    "--help",
+    "--org",
+    "--env",
+    "--json"
+  ],
+  "migrate": [
+    "--help",
+    "--org",
+    "--name",
+    "--from",
+    "--rename",
+    "--share",
+    "--dry-run",
+    "--json"
+  ],
+  "open": [
+    "--help",
+    "--runtime"
+  ],
+  "status": [
+    "--help",
+    "--org",
+    "--env",
+    "--json"
+  ],
+  "preflight": [
+    "--help",
+    "--org",
+    "--env",
+    "--json"
+  ],
+  "doctor": [
+    "--help",
+    "--org",
+    "--env",
+    "--json"
+  ],
+  "verify": [
+    "--help",
+    "--org",
+    "--env",
+    "--json"
+  ],
+  "run": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--session",
+    "--label",
+    "--timeout",
+    "--max-bytes",
+    "--stdin",
+    "--cache"
+  ],
+  "debug": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--service",
+    "--question",
+    "--from",
+    "--to",
+    "--playbook",
+    "--collect"
+  ],
+  "investigate": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--service",
+    "--question",
+    "--from",
+    "--to",
+    "--playbook",
+    "--collect"
+  ],
+  "monitor": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--service",
+    "--question",
+    "--from",
+    "--to",
+    "--playbook",
+    "--collect"
+  ],
+  "analyze": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--service",
+    "--question",
+    "--from",
+    "--to",
+    "--playbook",
+    "--collect"
+  ],
+  "task": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--question",
+    "--workflow",
+    "--param",
+    "--area",
+    "--budget",
+    "--from",
+    "--to"
+  ],
+  "workflows": [
+    "--help",
+    "--org",
+    "--env",
+    "--json"
+  ],
+  "watch": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--connection",
+    "--items",
+    "--key",
+    "--title",
+    "--production"
+  ],
+  "inbox": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--days",
+    "--all-envs"
+  ],
+  "spend": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--days",
+    "--all-orgs",
+    "--set-budget",
+    "--budget-days"
+  ],
+  "routine": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--workflow",
+    "--param",
+    "--at",
+    "--production",
+    "--timeout-minutes"
+  ],
+  "services": [
+    "--help",
+    "--org",
+    "--env",
+    "--json"
+  ],
+  "capabilities": [
+    "--help",
+    "--org",
+    "--env",
+    "--json"
+  ],
+  "collect": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--operation",
+    "--params",
+    "--refresh",
+    "--timeout",
+    "--max-bytes"
+  ],
+  "check": [
+    "--help",
+    "--org",
+    "--env",
+    "--json"
+  ],
+  "resume": [
+    "--help",
+    "--org",
+    "--env",
+    "--json"
+  ],
+  "report": [
+    "--help",
+    "--org",
+    "--env",
+    "--json"
+  ],
+  "note": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--kind",
+    "--text",
+    "--withdraw",
+    "--evidence",
+    "--next-check",
+    "--follows"
+  ],
+  "history": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--service",
+    "--query",
+    "--all-envs",
+    "--limit"
+  ],
+  "promote": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--slug"
+  ],
+  "close": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--outcome"
+  ],
+  "act": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--params",
+    "--body-stdin",
+    "--session"
+  ],
+  "brief": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--days",
+    "--save",
+    "--all-envs",
+    "--all-orgs"
+  ],
+  "log": [
+    "--help",
+    "--org",
+    "--env",
+    "--json",
+    "--days",
+    "--event",
+    "--all-envs",
+    "--limit"
+  ],
+  "demo": [
+    "--help",
+    "--json"
+  ]
+}

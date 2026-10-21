@@ -131,4 +131,4 @@ provenance, evaluations and briefings.
 ## Deferred
 
 Team accounts, a hosted agent, MCP writes, a web dashboard and autonomous
-remediation. (Local schedules exist: `reckon routine` runs a recipe with headless Claude Code.) The Python 3.9 standard-library core stays.
+remediation. (Local schedules exist: `reckon routine` runs a recipe with headless Claude Code.) The central CLI uses Rust; provider CLIs remain separate executables.

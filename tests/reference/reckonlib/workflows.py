@@ -16,7 +16,7 @@ import re
 from . import connectors, orgs
 from .store import local_path, read_json, session_path
 
-BUILTIN = Path(__file__).resolve().parents[2] / "skills" / "reckon" / "workflows"
+BUILTIN = Path(__file__).resolve().parents[3] / "skills" / "reckon" / "workflows"
 SKIP = re.compile(r"skip(?:ped)? ([a-z0-9][a-z0-9-]*):\s*\S", re.I)
 
 

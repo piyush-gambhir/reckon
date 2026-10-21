@@ -9,7 +9,7 @@ import unittest
 from unittest import mock
 
 SOURCE = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(SOURCE / "scripts"))
+sys.path.insert(0, str(SOURCE / "tests/reference"))
 from reckonlib import orgs  # noqa: E402
 
 REGISTRY = orgs.providers()
@@ -71,7 +71,8 @@ class OrgCase(unittest.TestCase):
         return env
 
     def cli(self, *args, stdin=None, **extra):
-        return subprocess.run([sys.executable, "-B", str(SOURCE / "scripts/reckon.py"), *args], capture_output=True, text=True,
+        binary = os.environ.get("RECKON_TEST_BIN", str(SOURCE / "target/debug/reckon"))
+        return subprocess.run([binary, *args], capture_output=True, text=True,
                               input=stdin, env=self.cli_env(**extra))
 
 

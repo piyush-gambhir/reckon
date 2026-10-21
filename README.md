@@ -35,6 +35,10 @@ reckon run gsc -- top queries --site sc-domain:acme.com --last 28d -o json
   into one command. `reckon open` strips tool credentials from the agent's environment.
   Settings can point at the macOS Keychain or 1Password (`keychain:<item>`, `op://...`)
   instead of holding the secret.
+  1Password uses service accounts restricted to a single vault, with one item per
+  connection and nested org/environment tags. Run `reckon secrets setup`, then
+  `reckon secrets set <connection> <KEY>` in your own terminal. See
+  [setup, migration and recovery](web/content/docs/secrets.mdx).
 - **Reads are read-only.** Reckon forces each CLI's read-only and no-prompt modes and
   refuses arguments that would change the target or switch safety off.
 - **Writes are yours to apply.** The agent prepares one (`reckon act prepare
@@ -90,7 +94,10 @@ Try one offline: `reckon demo`.
 
 ## Setup
 
-Requires Python 3.9+ (no packages). macOS and Linux:
+Reckon is a native Rust executable. Building from this checkout requires
+[Rust](https://rustup.rs/) (the toolchain is pinned in `rust-toolchain.toml`).
+The installed executable does not require Python or Rust. The ten tool CLIs
+remain separate Go executables. macOS and Linux:
 
 ```bash
 git clone https://github.com/piyush-gambhir/reckon.git
@@ -99,9 +106,20 @@ bash scripts/setup.sh        # installs missing tools, links ~/.reckon/bin/recko
 export PATH="$HOME/.reckon/bin:$PATH"
 ```
 
-`setup.sh` uses Homebrew on macOS and apt or dnf on Linux, verifies checksums for
+`setup.sh` builds Reckon with `cargo build --locked --release`, uses Homebrew on macOS and apt or dnf on Linux, verifies checksums for
 downloaded binaries, and is idempotent. Windows: use WSL2 and the same script;
 native PowerShell (`scripts\setup.ps1`, `scripts\reckon.ps1`) is experimental.
+
+For Reckon alone, run `cargo build --locked --release` and use
+`target/release/reckon`, or install it with `cargo install --locked --path .`.
+Provider definitions, workflow recipes, knowledge templates and the workspace
+guide are embedded in the executable. Existing `$RECKON_HOME` data keeps its
+version 1 formats.
+The old executable path `scripts/reckon.py` is a symlink to the release binary,
+so existing Unix installations linked to that path continue to run after building.
+
+Development checks: `make check` and `make test`. Python is used only by the
+compatibility test suite, whose command tests invoke the Rust executable.
 
 **Coming from an older checkout** (`.env.production`, `infra-knowledge/`,
 `incidents/` in this folder)? Copy it into an org, then delete the old files once

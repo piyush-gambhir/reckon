@@ -117,7 +117,7 @@ class DoctorVersionTests(OrgCase):
     def test_doctor_says_when_reckon_is_not_on_path(self):
         link = self.home / "bin" / "reckon"
         link.parent.mkdir(parents=True, exist_ok=True)
-        link.symlink_to(SOURCE / "scripts" / "reckon.py")
+        link.symlink_to(SOURCE / "scripts" / "reckon")
         checks = json.loads(self.cli("doctor", "--json").stdout)["checks"]
         self.assertIn("reckon command: " + str(link) + " is not on PATH; add to your shell rc: export PATH=\"" + str(link.parent) + ":$PATH\"", checks)
         on_path = self.cli("doctor", "--json", PATH=str(link.parent) + os.pathsep + os.environ["PATH"])

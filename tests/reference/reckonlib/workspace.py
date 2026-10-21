@@ -117,7 +117,7 @@ def ensure(h, ctx, registry):
     command = local_path(h, "bin")
     private_dir(command)
     link = command / "reckon"
-    target = code / "scripts" / "reckon.py"
+    target = code / "scripts" / "reckon"
     if not (link.is_symlink() and os.readlink(link) == str(target)):
         if link.is_symlink() or link.exists():
             link.unlink()

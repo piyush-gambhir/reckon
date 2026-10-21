@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# reckon: entry point for this checkout. All logic lives in scripts/reckon.py.
-# `reckon open` also links $RECKON_HOME/bin/reckon so the command works anywhere.
+# Run the native executable built from this checkout.
 set -euo pipefail
-command -v python3 >/dev/null 2>&1 || { printf 'reckon: Python 3.9+ (python3) is required\n' >&2; exit 1; }
-exec python3 "$(cd "$(dirname "$0")" && pwd)/reckon.py" "$@"
+reckon_root="$(cd "$(dirname "$0")/.." && pwd)"
+for reckon_binary in "$reckon_root/target/release/reckon" "$reckon_root/target/debug/reckon"; do
+    if [ -x "$reckon_binary" ]; then
+        exec "$reckon_binary" "$@"
+    fi
+done
+printf 'reckon: build the native CLI first: cargo build --locked --release\n' >&2
+exit 1

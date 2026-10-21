@@ -17,7 +17,7 @@ def demo(h):
     # A throwaway Reckon home: the demo never sees your orgs or credentials.
     home = local_path(h, "demos", uuid.uuid4().hex[:10])
     private_dir(local_path(home, "bin"))
-    tool = (code / "examples/demo/tool.py").read_text()
+    tool = (code / "tests/reference/tool.py").read_text()
     for binary in ("cubeapm", "grafana", "jenkins"):
         write(home / "bin" / binary, "#!" + sys.executable + "\n" + tool)
         (home / "bin" / binary).chmod(0o700)

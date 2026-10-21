@@ -3,7 +3,9 @@ title: Setup
 description: Install Reckon and its CLIs on macOS or Linux, put the reckon command on your PATH, and migrate an older checkout.
 ---
 
-Reckon needs Python 3.9 or newer (no packages) and Claude Code or Codex. The
+Reckon is a native executable and needs Claude Code or Codex to open an agent.
+Building from source requires [Rust](https://rustup.rs/), using the pinned
+`rust-toolchain.toml`. Python is used only by compatibility tests. The
 checkout holds Reckon's code only. Orgs, credentials, knowledge and saved work
 live under `~/.reckon` (or `$RECKON_HOME`).
 
@@ -19,7 +21,8 @@ export PATH="$HOME/.reckon/bin:$PATH"     # add this to your shell profile
 `setup.sh` installs missing tools with Homebrew on macOS and `apt` or `dnf` on
 Debian, Ubuntu, Fedora and RHEL-family systems. Downloaded binaries such as
 `rpk` and `kubectl` are checksum-verified. It then creates `~/.reckon` (mode
-0700) and links `~/.reckon/bin/reckon` to `scripts/reckon.py` in the checkout.
+0700), builds Reckon with `cargo build --locked --release`, and links
+`~/.reckon/bin/reckon` to `target/release/reckon` in the checkout.
 Other Linux distributions get manual-install guidance.
 
 <Callout type="info">
@@ -27,7 +30,11 @@ Other Linux distributions get manual-install guidance.
   existing tools and orgs alone.
 </Callout>
 
-Once you have created an org, `reckon doctor` reports the Python version,
+For Reckon alone, run `cargo install --locked --path .`. Provider definitions,
+workspace guides, templates and built-in recipes are embedded in the executable;
+running the installed binary does not require the checkout or a language runtime.
+
+Once you have created an org, `reckon doctor` reports the Reckon version,
 whether `~/.reckon` is private, your orgs, connections without credentials or
 without their CLI, and the default context.
 
@@ -46,7 +53,7 @@ Native PowerShell (`scripts\setup.ps1`, `scripts\reckon.ps1`) is experimental.
 
 ```text
 ~/.reckon/
-  bin/reckon                  link to the checkout's scripts/reckon.py
+  bin/reckon                  native executable, or link to the source build
   context                     default org/env for the next launch (reckon use)
   links.json                  folders linked to an org/env and preferred connections (reckon link)
   orgs/<org>/

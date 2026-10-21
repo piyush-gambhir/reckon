@@ -76,7 +76,7 @@ class ProcessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory) / "pid"
             child = "import os,time; from pathlib import Path; Path(" + repr(str(marker)) + ").write_text(str(os.getpid())); time.sleep(10)"
-            parent = "import sys; sys.path.insert(0," + repr(str(SOURCE / "scripts")) + "); from reckonlib.process import run; print(run([sys.executable,'-c'," + repr(child) + "] )['status'])"
+            parent = "import sys; sys.path.insert(0," + repr(str(SOURCE / "tests/reference")) + "); from reckonlib.process import run; print(run([sys.executable,'-c'," + repr(child) + "] )['status'])"
             proc = subprocess.Popen([sys.executable, "-B", "-c", parent], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
                 deadline = time.monotonic() + 3

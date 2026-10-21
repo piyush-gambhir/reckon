@@ -35,7 +35,7 @@ def home():
 
 
 def code_root():
-    return Path(__file__).resolve().parents[2]
+    return Path(__file__).resolve().parents[3]
 
 
 def name(value, kind):

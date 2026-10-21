@@ -1,0 +1,592 @@
+[
+  {
+    "operation": "cubeapm.metrics.range",
+    "params": {
+      "query": "up"
+    },
+    "bounds": {
+      "from": "2026-09-08T14:00:00Z",
+      "to": "2026-09-08T14:30:00Z"
+    },
+    "expected": {
+      "argv": [
+        "cubeapm",
+        "metrics",
+        "query-range",
+        "up",
+        "--from",
+        "2026-09-08T14:00:00Z",
+        "--to",
+        "2026-09-08T14:30:00Z",
+        "--step",
+        "8s",
+        "-o",
+        "json"
+      ],
+      "provider": "cubeapm",
+      "capability": "metrics.range",
+      "format": "json",
+      "window": {
+        "from": "2026-09-08T14:00:00Z",
+        "to": "2026-09-08T14:30:00Z"
+      },
+      "limit": 20,
+      "temporal_scope": "requested_window",
+      "stdin": null
+    }
+  },
+  {
+    "operation": "cubeapm.logs.search",
+    "params": {
+      "query": "up",
+      "service": "checkout"
+    },
+    "bounds": {
+      "from": "2026-09-08T14:00:00Z",
+      "to": "2026-09-08T14:30:00Z"
+    },
+    "expected": {
+      "argv": [
+        "cubeapm",
+        "logs",
+        "query",
+        "up",
+        "--service",
+        "checkout",
+        "--from",
+        "2026-09-08T14:00:00Z",
+        "--to",
+        "2026-09-08T14:30:00Z",
+        "--limit",
+        "100",
+        "-o",
+        "json"
+      ],
+      "provider": "cubeapm",
+      "capability": "logs.search",
+      "format": "ndjson",
+      "window": {
+        "from": "2026-09-08T14:00:00Z",
+        "to": "2026-09-08T14:30:00Z"
+      },
+      "limit": 100,
+      "temporal_scope": "requested_window",
+      "stdin": null
+    }
+  },
+  {
+    "operation": "cubeapm.traces.search",
+    "params": {
+      "service": "checkout"
+    },
+    "bounds": {
+      "from": "2026-09-08T14:00:00Z",
+      "to": "2026-09-08T14:30:00Z"
+    },
+    "expected": {
+      "argv": [
+        "cubeapm",
+        "traces",
+        "search",
+        "--service",
+        "checkout",
+        "--from",
+        "2026-09-08T14:00:00Z",
+        "--to",
+        "2026-09-08T14:30:00Z",
+        "--limit",
+        "20",
+        "-o",
+        "json"
+      ],
+      "provider": "cubeapm",
+      "capability": "traces.search",
+      "format": "json",
+      "window": {
+        "from": "2026-09-08T14:00:00Z",
+        "to": "2026-09-08T14:30:00Z"
+      },
+      "limit": 20,
+      "temporal_scope": "requested_window",
+      "stdin": null
+    }
+  },
+  {
+    "operation": "cubeapm.trace.get",
+    "params": {
+      "trace_id": "abc123"
+    },
+    "bounds": {
+      "from": "2026-09-08T14:00:00Z",
+      "to": "2026-09-08T14:30:00Z"
+    },
+    "expected": {
+      "argv": [
+        "cubeapm",
+        "traces",
+        "get",
+        "abc123",
+        "--from",
+        "2026-09-08T14:00:00Z",
+        "--to",
+        "2026-09-08T14:30:00Z",
+        "-o",
+        "json"
+      ],
+      "provider": "cubeapm",
+      "capability": "trace.get",
+      "format": "json",
+      "window": {
+        "from": "2026-09-08T14:00:00Z",
+        "to": "2026-09-08T14:30:00Z"
+      },
+      "limit": 20,
+      "temporal_scope": "requested_window",
+      "stdin": null
+    }
+  },
+  {
+    "operation": "grafana.metrics.range",
+    "params": {
+      "query": "up",
+      "datasource": "prometheus"
+    },
+    "bounds": {
+      "from": "2026-09-08T14:00:00Z",
+      "to": "2026-09-08T14:30:00Z"
+    },
+    "expected": {
+      "argv": [
+        "grafana",
+        "datasource",
+        "query",
+        "prometheus",
+        "--expr",
+        "up",
+        "--query-type",
+        "range",
+        "--from",
+        "2026-09-08T14:00:00Z",
+        "--to",
+        "2026-09-08T14:30:00Z",
+        "--step",
+        "8s",
+        "-o",
+        "json"
+      ],
+      "provider": "grafana",
+      "capability": "metrics.range",
+      "format": "json",
+      "window": {
+        "from": "2026-09-08T14:00:00Z",
+        "to": "2026-09-08T14:30:00Z"
+      },
+      "limit": 20,
+      "temporal_scope": "requested_window",
+      "stdin": null
+    }
+  },
+  {
+    "operation": "grafana.annotations",
+    "params": {},
+    "bounds": {
+      "from": "2026-09-08T14:00:00Z",
+      "to": "2026-09-08T14:30:00Z"
+    },
+    "expected": {
+      "argv": [
+        "grafana",
+        "annotation",
+        "list",
+        "--from",
+        "1788876000000",
+        "--to",
+        "1788877800000",
+        "--limit",
+        "20",
+        "-o",
+        "json"
+      ],
+      "provider": "grafana",
+      "capability": "changes.list",
+      "format": "json",
+      "window": {
+        "from": "2026-09-08T14:00:00Z",
+        "to": "2026-09-08T14:30:00Z"
+      },
+      "limit": 20,
+      "temporal_scope": "requested_window",
+      "stdin": null
+    }
+  },
+  {
+    "operation": "jenkins.builds",
+    "params": {
+      "job": "deploy/api"
+    },
+    "bounds": {
+      "from": "2026-09-08T14:00:00Z",
+      "to": "2026-09-08T14:30:00Z"
+    },
+    "expected": {
+      "argv": [
+        "jenkins",
+        "build",
+        "list",
+        "deploy/api",
+        "--limit",
+        "20",
+        "-o",
+        "json"
+      ],
+      "provider": "jenkins",
+      "capability": "deployments.list",
+      "format": "json",
+      "window": {
+        "from": "2026-09-08T14:00:00Z",
+        "to": "2026-09-08T14:30:00Z"
+      },
+      "limit": 20,
+      "temporal_scope": "recent_builds_not_window_filtered",
+      "stdin": null
+    }
+  },
+  {
+    "operation": "jenkins.build.get",
+    "params": {
+      "job": "deploy/api",
+      "number": "42"
+    },
+    "bounds": {
+      "from": "2026-09-08T14:00:00Z",
+      "to": "2026-09-08T14:30:00Z"
+    },
+    "expected": {
+      "argv": [
+        "jenkins",
+        "build",
+        "get",
+        "deploy/api",
+        "42",
+        "-o",
+        "json"
+      ],
+      "provider": "jenkins",
+      "capability": "deployment.get",
+      "format": "json",
+      "window": {
+        "from": "2026-09-08T14:00:00Z",
+        "to": "2026-09-08T14:30:00Z"
+      },
+      "limit": 20,
+      "temporal_scope": "requested_window",
+      "stdin": null
+    }
+  },
+  {
+    "operation": "github.runs",
+    "params": {
+      "repo": "acme/api"
+    },
+    "bounds": {
+      "from": "2026-09-08T14:00:00Z",
+      "to": "2026-09-08T14:30:00Z"
+    },
+    "expected": {
+      "argv": [
+        "gh",
+        "run",
+        "list",
+        "--repo",
+        "acme/api",
+        "--created",
+        "2026-09-08T14:00:00Z..2026-09-08T14:30:00Z",
+        "--limit",
+        "20",
+        "--json",
+        "databaseId,headSha,displayTitle,status,conclusion,createdAt,updatedAt,url"
+      ],
+      "provider": "github",
+      "capability": "deployments.list",
+      "format": "json",
+      "window": {
+        "from": "2026-09-08T14:00:00Z",
+        "to": "2026-09-08T14:30:00Z"
+      },
+      "limit": 20,
+      "temporal_scope": "requested_window",
+      "stdin": null
+    }
+  },
+  {
+    "operation": "github.run.get",
+    "params": {
+      "repo": "acme/api",
+      "number": "42"
+    },
+    "bounds": {
+      "from": "2026-09-08T14:00:00Z",
+      "to": "2026-09-08T14:30:00Z"
+    },
+    "expected": {
+      "argv": [
+        "gh",
+        "run",
+        "view",
+        "42",
+        "--repo",
+        "acme/api",
+        "--json",
+        "databaseId,headSha,displayTitle,status,conclusion,createdAt,updatedAt,url,jobs"
+      ],
+      "provider": "github",
+      "capability": "deployment.get",
+      "format": "json",
+      "window": {
+        "from": "2026-09-08T14:00:00Z",
+        "to": "2026-09-08T14:30:00Z"
+      },
+      "limit": 20,
+      "temporal_scope": "requested_window",
+      "stdin": null
+    }
+  },
+  {
+    "operation": "elasticsearch.logs.search",
+    "params": {
+      "index": "logs-*",
+      "query": "up"
+    },
+    "bounds": {
+      "from": "2026-09-08T14:00:00Z",
+      "to": "2026-09-08T14:30:00Z"
+    },
+    "expected": {
+      "argv": [
+        "es",
+        "search",
+        "query",
+        "logs-*",
+        "-f",
+        "-",
+        "--size",
+        "100",
+        "-o",
+        "json"
+      ],
+      "provider": "elasticsearch",
+      "capability": "logs.search",
+      "format": "json",
+      "window": {
+        "from": "2026-09-08T14:00:00Z",
+        "to": "2026-09-08T14:30:00Z"
+      },
+      "limit": 100,
+      "temporal_scope": "requested_window",
+      "stdin": "{\"query\": {\"bool\": {\"filter\": [{\"range\": {\"@timestamp\": {\"gte\": \"2026-09-08T14:00:00Z\", \"lte\": \"2026-09-08T14:30:00Z\"}}}], \"must\": [{\"simple_query_string\": {\"query\": \"up\"}}]}}, \"sort\": [{\"@timestamp\": \"desc\"}]}"
+    }
+  },
+  {
+    "operation": "kubernetes.pods",
+    "params": {
+      "namespace": "staging",
+      "selector": "app=api"
+    },
+    "bounds": {
+      "from": "2026-09-08T14:00:00Z",
+      "to": "2026-09-08T14:30:00Z"
+    },
+    "expected": {
+      "argv": [
+        "kubectl",
+        "get",
+        "pods",
+        "--namespace",
+        "staging",
+        "--request-timeout=15s",
+        "-o",
+        "json",
+        "--selector",
+        "app=api"
+      ],
+      "provider": "kubernetes",
+      "capability": "workload.state",
+      "format": "json",
+      "window": {
+        "from": "2026-09-08T14:00:00Z",
+        "to": "2026-09-08T14:30:00Z"
+      },
+      "limit": 20,
+      "temporal_scope": "current_snapshot",
+      "stdin": null
+    }
+  },
+  {
+    "operation": "kubernetes.events",
+    "params": {
+      "namespace": "staging"
+    },
+    "bounds": {
+      "from": "2026-09-08T14:00:00Z",
+      "to": "2026-09-08T14:30:00Z"
+    },
+    "expected": {
+      "argv": [
+        "kubectl",
+        "get",
+        "events",
+        "--namespace",
+        "staging",
+        "--request-timeout=15s",
+        "-o",
+        "json"
+      ],
+      "provider": "kubernetes",
+      "capability": "workload.events",
+      "format": "json",
+      "window": {
+        "from": "2026-09-08T14:00:00Z",
+        "to": "2026-09-08T14:30:00Z"
+      },
+      "limit": 20,
+      "temporal_scope": "current_snapshot",
+      "stdin": null
+    }
+  },
+  {
+    "operation": "jira.search",
+    "params": {
+      "query": "up"
+    },
+    "bounds": {
+      "from": "2026-09-08T14:00:00Z",
+      "to": "2026-09-08T14:30:00Z"
+    },
+    "expected": {
+      "argv": [
+        "jira",
+        "issue",
+        "search",
+        "--jql",
+        "up",
+        "--limit",
+        "20",
+        "--fields",
+        "summary,status,updated,labels",
+        "-o",
+        "json"
+      ],
+      "provider": "jira",
+      "capability": "history.tickets",
+      "format": "json",
+      "window": {
+        "from": "2026-09-08T14:00:00Z",
+        "to": "2026-09-08T14:30:00Z"
+      },
+      "limit": 20,
+      "temporal_scope": "current_snapshot",
+      "stdin": null
+    }
+  },
+  {
+    "operation": "nginxpm.proxy.get",
+    "params": {
+      "number": "42"
+    },
+    "bounds": {
+      "from": "2026-09-08T14:00:00Z",
+      "to": "2026-09-08T14:30:00Z"
+    },
+    "expected": {
+      "argv": [
+        "nginxpm",
+        "proxy",
+        "get",
+        "42",
+        "-o",
+        "json"
+      ],
+      "provider": "nginxpm",
+      "capability": "routing.config",
+      "format": "json",
+      "window": {
+        "from": "2026-09-08T14:00:00Z",
+        "to": "2026-09-08T14:30:00Z"
+      },
+      "limit": 20,
+      "temporal_scope": "current_snapshot",
+      "stdin": null
+    }
+  },
+  {
+    "operation": "nginxpm.cert.get",
+    "params": {
+      "number": "42"
+    },
+    "bounds": {
+      "from": "2026-09-08T14:00:00Z",
+      "to": "2026-09-08T14:30:00Z"
+    },
+    "expected": {
+      "argv": [
+        "nginxpm",
+        "cert",
+        "get",
+        "42",
+        "-o",
+        "json"
+      ],
+      "provider": "nginxpm",
+      "capability": "certificate.config",
+      "format": "json",
+      "window": {
+        "from": "2026-09-08T14:00:00Z",
+        "to": "2026-09-08T14:30:00Z"
+      },
+      "limit": 20,
+      "temporal_scope": "current_snapshot",
+      "stdin": null
+    }
+  },
+  {
+    "operation": "aws.logs.search",
+    "params": {
+      "group": "/api",
+      "query": "up"
+    },
+    "bounds": {
+      "from": "2026-09-08T14:00:00Z",
+      "to": "2026-09-08T14:30:00Z"
+    },
+    "expected": {
+      "argv": [
+        "aws",
+        "logs",
+        "filter-log-events",
+        "--log-group-name",
+        "/api",
+        "--filter-pattern",
+        "up",
+        "--start-time",
+        "1788876000000",
+        "--end-time",
+        "1788877800000",
+        "--limit",
+        "100",
+        "--no-paginate",
+        "--output",
+        "json"
+      ],
+      "provider": "aws",
+      "capability": "logs.search",
+      "format": "json",
+      "window": {
+        "from": "2026-09-08T14:00:00Z",
+        "to": "2026-09-08T14:30:00Z"
+      },
+      "limit": 100,
+      "temporal_scope": "requested_window",
+      "stdin": null
+    }
+  }
+]
