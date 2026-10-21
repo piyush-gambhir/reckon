@@ -310,7 +310,10 @@ fn child_environment_contains_only_the_selected_connection() -> Result<()> {
         env.get("JENKINS_READ_ONLY").map(String::as_str),
         Some("true")
     );
-    assert!(env["HOME"].contains("runtime/jenkins-staging/home"));
+    assert!(
+        Path::new(&env["HOME"])
+            .ends_with(Path::new("runtime").join("jenkins-staging").join("home"))
+    );
     assert_eq!(env["RECKON_ENV"], "staging");
     assert!(!env.contains_key("CODEX_HOME"));
     Ok(())
@@ -355,6 +358,29 @@ fn persisted_files_are_private_and_atomically_replaced() -> Result<()> {
     }
     assert!(read_bytes(&p, 2).is_err());
     assert!(local_path(dir.path(), "../outside").is_err());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn private_state_creation_preserves_existing_parent_permissions() -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir()?;
+    let shared = dir.path().join("shared");
+    fs::create_dir(&shared)?;
+    fs::set_permissions(&shared, fs::Permissions::from_mode(0o755))?;
+    let state = shared.join("reckon/new/state.json");
+    write_json(&state, &json!({"fixture":true}))?;
+    assert_eq!(shared.metadata()?.permissions().mode() & 0o777, 0o755);
+    assert_eq!(
+        shared.join("reckon").metadata()?.permissions().mode() & 0o777,
+        0o700
+    );
+    assert_eq!(
+        shared.join("reckon/new").metadata()?.permissions().mode() & 0o777,
+        0o700
+    );
+    assert_eq!(state.metadata()?.permissions().mode() & 0o777, 0o600);
     Ok(())
 }
 

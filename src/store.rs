@@ -73,7 +73,14 @@ pub fn private_dir(path: &Path) -> Result<()> {
     );
     if !path.exists() {
         if let Some(parent) = path.parent() {
-            private_dir(parent)?;
+            ensure!(
+                !redirected(parent),
+                "local state directories must not be symlinks"
+            );
+            // Existing parents can be shared system directories such as /tmp.
+            if !parent.exists() {
+                private_dir(parent)?;
+            }
         }
         fs::create_dir(path).or_else(|e| if path.is_dir() { Ok(()) } else { Err(e) })?;
     }
