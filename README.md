@@ -1,11 +1,12 @@
 # reckon
 
-One workspace for running several businesses with a coding agent.
+One workspace for development across orgs and environments, with any coding agent.
 
-Each business is an **org**. An org has its own environments (prod, uat, dev),
-tool connections, company knowledge and saved work. You open one org in one
-environment, and Claude Code or Codex works on that business through the tools
-you already use: development, product, growth and operations.
+Each **org** is one company or team you work in. An org has its own environments
+(prod, uat, dev), tool connections, knowledge and saved work. You open one org in
+one environment, and Claude Code or Codex works there with that org's connections,
+context and memory, through the tools you already use: development, product,
+growth and operations.
 
 📖 **Docs site:** [`web/`](web/) (Next.js + Fumadocs, static export to Cloudflare Workers Assets).
 Plan and status: [docs/PRODUCT-PLAN.md](docs/PRODUCT-PLAN.md); long view: [docs/ROADMAP.md](docs/ROADMAP.md).
@@ -49,7 +50,7 @@ reckon run gsc -- top queries --site sc-domain:acme.com --last 28d -o json
   environment's label on a shared server like CubeAPM. `reckon connect --account`
   pins the login a connection must use; `reckon verify` and every write check it.
 - **Each org has its own folder** (`~/.reckon/orgs/<org>/workspace`), so Claude Code
-  and Codex keep each business's memory and conversations apart, and
+  and Codex keep each org's memory and conversations apart, and
   `claude --continue` resumes the right one.
 
 These rules stop mistakes, not a hostile process running as your user. Database
@@ -64,7 +65,7 @@ reckon note <id> --kind finding --text "..." --evidence <evidence-id>
 reckon report <id>
 reckon history
 reckon log                 # every run and refusal, with or without a session
-reckon brief --all-orgs    # one morning digest across every business
+reckon brief --all-orgs    # one morning digest across every org
 ```
 
 Repeatable work comes as workflow recipes with required checks (`reckon workflows`,

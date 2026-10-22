@@ -584,7 +584,7 @@ setup_workspace() {
 print_next_steps() {
     header "Next steps"
     cat <<'NEXT'
-  1. Create an org for each business, or bring this checkout's old layout over:
+  1. Create an org for each company or team, or bring this checkout's old layout over:
        reckon org add acme --envs prod,uat,dev
        reckon migrate --org acme --rename production=prod --dry-run
   2. Connect its tools (credentials go in the file it prints, never in chat):

@@ -1,7 +1,8 @@
 # Reckon (developing this repository)
 
-Reckon is one workspace for running several businesses with a coding agent. Each
-business is an org with environments, tool connections, knowledge and saved work.
+Reckon is one workspace for development across orgs and environments, with any
+coding agent. Each org (one company or team) has environments, tool connections,
+knowledge and saved work.
 This file is for working on Reckon's own code. The guide for an agent working
 inside an org is [WORKSPACE.md](WORKSPACE.md); the plan is
 [docs/PRODUCT-PLAN.md](docs/PRODUCT-PLAN.md).

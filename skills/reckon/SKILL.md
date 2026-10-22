@@ -13,7 +13,7 @@ It is generic on purpose, in two directions. **Tenant-agnostic:** the *methodolo
 
 ## 0. Org and environment: state them before you query anything
 
-Reckon serves several businesses (orgs), each with its own environments (for example prod, uat, dev). Credentials, service inventory and quirks differ for each. The agent is pinned to one org and one environment when it starts; `reckon preflight` reports both.
+Reckon serves several orgs (companies or teams), each with its own environments (for example prod, uat, dev). Credentials, service inventory and quirks differ for each. The agent is pinned to one org and one environment when it starts; `reckon preflight` reports both.
 
 The failure this rule exists to prevent is querying production while believing you are on staging, or one business while believing you are on another. It is silent, it is easy, and no tool will catch it for you.
 

@@ -8,7 +8,7 @@ export const revalidate = false;
 
 export async function GET() {
   const agentPreamble =
-    'reckon is an independent, personal open-source, agent-ready RCA workspace for any coding agent or agent harness that can run shell commands. It uses structured JSON output from wired CLIs, YAML where supported, read-only credentials and safety guidance, and runtime flag passthrough for automation across observability, CI/CD, and infrastructure.';
+    'reckon is an independent, personal open-source agent workspace for development across orgs and environments, for any coding agent or agent harness that can run shell commands. Each org has its own environments, tool connections, knowledge and saved work. Every tool call goes through reckon run, which adds that connection\'s credentials, keeps reads read-only and passes through the wired CLIs\' structured JSON output.';
   // index() returns a Promise since fumadocs-core 16.15.17. Its links are
   // root-relative, so make them absolute to keep the /reckon prefix.
   const index = (await llms(source).index()).replace(

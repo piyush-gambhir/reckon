@@ -240,7 +240,7 @@ function Setup-Workspace {
 function Show-NextSteps {
     Write-Header 'Next steps'
     @'
-  1. Create an org for each business:
+  1. Create an org for each company or team:
        .\scripts\reckon.ps1 org add acme --envs 'prod,uat,dev'
   2. Connect its tools (credentials go in the file it prints, never in chat):
        .\scripts\reckon.ps1 connect jenkins-prod --org acme --provider jenkins --for-env prod

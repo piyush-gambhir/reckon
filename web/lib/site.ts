@@ -55,10 +55,10 @@ export const site: SiteConfig = {
   name: 'reckon',
   binary: 'reckon',
   repo: 'piyush-gambhir/reckon',
-  tagline: 'One agent workspace for every business you run.',
+  tagline: 'One agent workspace for every org and environment you work in.',
   description:
     'Reckon gives a coding agent one org at a time: its environments, tool connections, knowledge and saved work. Every tool call goes through Reckon, with the right account and read-only.',
-  badge: 'Multi-business agent workspace',
+  badge: 'Multi-org agent workspace',
   accent: 'oklch(0.85 0.21 150)',
   accentName: 'phosphor',
   accentHex: '#45f27f',
@@ -68,7 +68,7 @@ export const site: SiteConfig = {
     {
       icon: GitBranch,
       title: 'Orgs and environments',
-      body: 'Each business keeps its own environments, connections, knowledge and sessions. An agent opens one org in one environment and cannot step outside it.',
+      body: 'Each org keeps its own environments, connections, knowledge and sessions. An agent opens one org in one environment and cannot step outside it.',
     },
     {
       icon: Zap,
@@ -96,7 +96,7 @@ export const site: SiteConfig = {
       body: 'Move from an alert to traces, metrics, logs, deployment history and infrastructure state with a disciplined RCA workflow.',
     },
   ],
-  exampleTitle: 'One business, one environment',
+  exampleTitle: 'One org, one environment',
   example: `# Start the agent on one org, pinned to production
 reckon open acme/prod
 # Inside it, every tool goes through Reckon
@@ -106,7 +106,7 @@ reckon run gsc -- top queries --site sc-domain:acme.com --last 28d -o json
 # Keep the evidence with the work
 reckon task --question "Why did signups drop last week?" --area gtm`,
   featuresTitle: "Everything, in one workspace",
-  featuresSubtitle: "Development, operations, product and growth tools for a coding agent, one business at a time.",
+  featuresSubtitle: "Development, operations, product and growth tools for a coding agent, one org at a time.",
   ctaBody: "Clone the workspace, run the setup script, add an org and its connections, and open it.",
   compatible: [
     'Grafana',
@@ -133,6 +133,6 @@ reckon task --question "Why did signups drop last week?" --area gtm`,
 export const repositoryUrl = `https://github.com/${site.repo}`;
 export const licenseUrl = `${repositoryUrl}/blob/main/LICENSE`;
 export const projectDescription =
-  'reckon is an independent, personal open-source agent workspace for running several businesses: orgs, environments, tool connections and saved work, read-only.';
+  'reckon is an independent, personal open-source agent workspace for development across orgs: environments, tool connections and saved work per org, read-only.';
 export const siteMetadataDescription =
   'Independent personal open-source agent workspace: one org at a time, every tool through reckon run, read-only, with saved sessions and incident investigations.';

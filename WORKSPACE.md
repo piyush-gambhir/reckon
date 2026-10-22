@@ -1,6 +1,6 @@
 # Working in a Reckon org
 
-You are running inside one org's Reckon workspace. An org is one business; it has
+You are running inside one org's Reckon workspace. An org is one company or team; it has
 environments (for example prod, uat, dev), tool connections, company knowledge and
 saved work. `RECKON.md` in this folder lists this org's environments and
 connections. This guide applies to every org.
@@ -27,7 +27,7 @@ cannot switch it (`--org` and `--env` naming anything else are refused), and you
 `migrate` are the operator's commands). To work on another environment or org,
 the operator starts a new agent.
 
-**The rule the design exists to enforce:** never act on one environment or business
+**The rule the design exists to enforce:** never act on one environment or org
 while believing you are on another. In production, prefer the cheapest signal,
 bound every query, and escalate to the operator sooner.
 

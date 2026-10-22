@@ -3,7 +3,7 @@ use clap::{Arg, ArgAction, Command};
 
 pub fn command() -> Command {
     Command::new("reckon")
-    .about("Reckon: one workspace for several businesses.\n\nOrgs hold environments, tool connections, knowledge and saved work. The agent\nworks in one org and environment at a time and reaches every tool through\nreckon run, which adds that connection's credentials and keeps reads read-only.\n")
+    .about("Reckon: one workspace for development across orgs and environments.\n\nOrgs hold environments, tool connections, knowledge and saved work. The agent\nworks in one org and environment at a time and reaches every tool through\nreckon run, which adds that connection's credentials and keeps reads read-only.\n")
     .subcommand_required(true)
     .subcommand(secret_commands())
     .subcommand(

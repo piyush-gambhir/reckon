@@ -7,10 +7,10 @@ not dropped.
 
 ## What Reckon is
 
-Reckon is one workspace for running several businesses with a coding agent.
-Each business is an **org**. Each org has its own environments, tool
-connections, company knowledge and saved work. You open an org, and Claude Code
-or Codex works on that business only: development, product, GTM, sales and ops,
+Reckon is one workspace for development across orgs and environments, with any
+coding agent. Each **org** is one company or team. Each org has its own
+environments, tool connections, company knowledge and saved work. You open an
+org, and Claude Code or Codex works in that org only: development, product, GTM, sales and ops,
 through the CLIs you already use.
 
 Decisions taken on 2026-10-13:
@@ -26,7 +26,7 @@ Decisions taken on 2026-10-13:
 
 | Concept | Meaning |
 | --- | --- |
-| Org | One business. Has a name, a list of environments, connections, knowledge and work. |
+| Org | One company or team. Has a name, a list of environments, connections, knowledge and work. |
 | Environment | Per org, for example `prod`, `uat`, `dev`. One is marked production. |
 | Connection | One configured account of one tool: a Jenkins server, a CubeAPM tenant, a Search Console login. |
 | Context | The org and environment an agent works in. Pinned when the agent starts. |
@@ -74,8 +74,8 @@ code checkout:
 
 A separate workspace folder per org matters for more than tidiness. Claude Code
 and Codex key their memory, conversation history and project settings by
-folder, so one folder per org keeps one business's facts out of another's
-conversations and lets `claude --continue` resume the right business.
+folder, so one folder per org keeps one org's facts out of another's
+conversations and lets `claude --continue` resume the right org.
 
 ## Safety rules
 
