@@ -19,6 +19,7 @@ overrides:
   compression@>=1.0.0 <1.8.2: 1.8.2
   sharp@>=0.35.0 <0.35.5: 0.35.5
   undici@>=7.0.0 <7.30.1: 7.30.1
+  fast-uri@>=3.0.0 <3.1.9: 3.1.9
 minimumReleaseAgeExclude:
   - next@16.4.3
   - eslint-config-next@16.4.3
@@ -34,3 +35,4 @@ minimumReleaseAgeExclude:
   - "@next/swc-win32-arm64-msvc@16.4.3"
   - "@next/swc-win32-x64-msvc@16.4.3"
   - undici@7.30.1
+  - fast-uri@3.1.9
