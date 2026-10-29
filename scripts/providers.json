@@ -511,6 +511,26 @@
       "isolated_cwd": true,
       "resolver": ["commands", "resolve", "--"],
       "_note": "Our read-only CLI (whatsapp-cli): every command is a GET; the token comes only from the environment. WHATSAPP_GRAPH_URL is forced empty so a connection cannot send the token to another host."
+    },
+    "freshdesk": {
+      "title": "Freshdesk",
+      "binary": "freshdesk",
+      "mode": "own",
+      "prefixes": ["FRESHDESK_"],
+      "required": ["FRESHDESK_DOMAIN", "FRESHDESK_API_KEY"],
+      "config_files": ["freshdesk-cli/config.yaml", "freshdesk-cli/secrets.yaml"],
+      "real_home": false,
+      "always": {"FRESHDESK_PROFILE": "", "FRESHDESK_CONFIG": ""},
+      "read_only": {"FRESHDESK_READ_ONLY": "1", "FRESHDESK_NO_INPUT": "1"},
+      "deny_args": ["--api-key", "--domain", "--profile", "--read-only", "--no-input", "--yes", "-y", "--expect-plan"],
+      "deny_commands": [["auth", "login"], ["auth", "logout"], ["auth", "use"], ["config"], ["update"], ["completion"]],
+      "verify": ["auth", "status", "--verify", "-o", "json"],
+      "identity": ["agent.contact.email", "agent.id"],
+      "login": [],
+      "short_values": "o",
+      "isolated_cwd": true,
+      "resolver": ["commands", "resolve", "--"],
+      "_note": "Our CLI (freshdesk-cli). The API key and domain come only from the connection: profiles and config files are blanked and the home is isolated, so a saved keychain profile is never used. FRESHDESK_READ_ONLY is sticky in the CLI (it cannot be undone with --read-only=false) and commands resolve classifies every call, including raw api request routes (unknown routes count as writes)."
     }
   }
 }

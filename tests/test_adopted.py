@@ -51,6 +51,19 @@ class WhatsAppTests(unittest.TestCase):
             connectors.check("whatsapp", spec, args)
 
 
+class FreshdeskTests(unittest.TestCase):
+    def test_entry_reads_only_and_ignores_saved_profiles(self):
+        spec = REGISTRY["freshdesk"]
+        self.assertEqual(spec["always"], {"FRESHDESK_PROFILE": "", "FRESHDESK_CONFIG": ""})
+        self.assertEqual(spec["read_only"]["FRESHDESK_READ_ONLY"], "1")
+        for args in (["tickets", "get", "25651", "-o", "json"], ["tickets", "conversations", "25651", "--all"], spec["verify"]):
+            connectors.check("freshdesk", spec, args)
+        for args in (["auth", "login"], ["auth", "use", "x"], ["update", "--yes"], ["tickets", "get", "1", "--api-key", "x"],
+                     ["tickets", "get", "1", "--domain", "other"], ["tickets", "update", "1", "--yes"], ["config", "set"]):
+            with self.assertRaises(ValueError, msg=args):
+                connectors.check("freshdesk", spec, args)
+
+
 @unittest.skipUnless(os.environ.get("RECKON_ADOPTED_BIN"), "set RECKON_ADOPTED_BIN to a folder of release binaries")
 class RealBinaryTests(unittest.TestCase):
     def test_every_allowed_command_exists(self):

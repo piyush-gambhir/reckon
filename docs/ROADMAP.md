@@ -12,7 +12,7 @@ holds the model and the current milestone; this file is the long view.
 | M1 Orgs, environments, connections | Built (PR #38): every CLI through `reckon run`, per-org folders, pinned agents, sessions, migration |
 | M2 Workflows | First slices built: recipes with required checks, review series, cache, read budgets, quotas (details below) |
 | M3 Approved writes | Built for `github.issue.create`, `jira.issue.create` and `gsc.sitemap.submit`, with expiry, account pins and reconcile |
-| M4 Agent CLI contract | All ten of our CLIs ship `commands resolve` (released 2026-10-20) and `reckon run` consults it |
+| M4 Agent CLI contract | All eleven of our CLIs ship `commands resolve` (released 2026-10-20) and `reckon run` consults it |
 | M5-M9 | First slices: adopted CLIs, resource binding, knowledge snapshots, brief, routines and watches |
 
 ## What the research says
@@ -177,7 +177,7 @@ same day and matched). Adopt in this order, each only when a business uses it:
 
 Trial before adopting (official but alpha, closed or quiet): HubSpot agent-cli,
 Xero, QuickBooks (`intuit-cli`), Zoho Books (`zb`, community), Loops, Mailchimp
-(`mcapi`), Freshdesk, UptimeRobot, Checkly, Vercel, Netlify, Turso, Lemon Squeezy,
+(`mcapi`), UptimeRobot, Checkly, Vercel, Netlify, Turso, Lemon Squeezy,
 Paddle. Skip: GST portal (needs a licensed intermediary; read GST from Zoho Books
 or Tally), Mixpanel and Amplitude (no CLI, no current user), Discord (only user-token
 CLIs exist, against its terms).
@@ -191,6 +191,8 @@ this order (each a Go CLI with `commands resolve` from day one):
    First version built 2026-10-14 as `whatsapp-cli`, published 2026-10-20 (v0.1.0):
    GET-only, `commands resolve`, Graph v25.0, reviewed; not yet run against a live
    account. Conversation analytics left out (that pricing ended 2025-07-01).
+   Freshdesk has no first-party CLI either; `freshdesk-cli` (ours, published
+   2026-10-29) covers the full REST reference and is the `freshdesk` provider.
 2. Zoho CRM: no CLI anywhere; records, search and COQL share Zoho Books' OAuth.
 3. Tally (TallyPrime): XML over a local HTTP port; ledgers, vouchers, trial balance.
 4. Plausible: one Stats API v2 endpoint and a sites list; a one-day build.

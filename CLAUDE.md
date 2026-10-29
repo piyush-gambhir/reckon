@@ -25,13 +25,13 @@ inside an org is [WORKSPACE.md](WORKSPACE.md); the plan is
 | `scripts/providers.json` | Every supported tool: binary, setting prefixes, required settings, safety switches, denied arguments, read commands, live check, login |
 | `skills/reckon/` | The ops method (investigate, monitor, analyze) and knowledge templates |
 | `WORKSPACE.md` | Imported by every org's `CLAUDE.md`; the agent-facing rules and recipes |
-| `scripts/setup.sh`, `setup.ps1`, `cli-releases.csv` | Tool installation; pins for the ten sibling CLIs |
+| `scripts/setup.sh`, `setup.ps1`, `cli-releases.csv` | Tool installation; pins for the eleven sibling CLIs |
 | `web/` | Documentation site (Next.js + Fumadocs, static export to Cloudflare) |
 
 ## Rules
 
 - **Work directly on `main`.** Do not create feature branches or worktrees.
-- **Rust core, one Cargo package.** Keep CLI parsing separate from domain logic. Bash and PowerShell files are thin entry points. The ten tool CLIs stay in Go. Python is for compatibility tests only.
+- **Rust core, one Cargo package.** Keep CLI parsing separate from domain logic. Bash and PowerShell files are thin entry points. The eleven tool CLIs stay in Go. Python is for compatibility tests only.
 - **No business data in this repo.** Orgs, credentials, knowledge, sessions and incidents live under `$RECKON_HOME` (default `~/.reckon`). Tests and examples use synthetic data only. Old checkouts may still hold ignored `.env.*`, `.config/`, `infra-knowledge/`, `incidents/`: never stage them; add files explicitly.
 - **Credentials never reach the agent.** Only `orgs.child_env` puts secrets into a process, and only for one connection. Never print or log a secret value, including in error messages.
 - **Reads stay read-only.** A new provider needs its read-only switches in `read_only`, target and auth flags in `deny_args`, local-state commands in `deny_commands`, and either `mode: own` (the CLI enforces read-only itself), `allowlist` (`read_commands`) or `approval` (the agent must ask each time).
