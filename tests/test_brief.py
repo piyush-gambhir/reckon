@@ -107,12 +107,12 @@ class DoctorVersionTests(OrgCase):
 
     def test_the_version_line_wins_over_the_latest_release(self):
         # gsc prints the newest release it knows of above its own version.
-        self.fake("print('latest  0.1.6\\nversion 0.1.8')", "gsc")
+        self.fake("print('latest  0.1.6\\nversion 0.1.9')", "gsc")
         checks = json.loads(self.cli("doctor", "--json").stdout)["checks"]
         self.assertFalse(any(c.startswith("gsc") for c in checks), checks)
-        self.fake("print('latest  0.1.8\\nversion 0.1.6')", "gsc")
+        self.fake("print('latest  0.1.9\\nversion 0.1.6')", "gsc")
         checks = json.loads(self.cli("doctor", "--json").stdout)["checks"]
-        self.assertTrue(any(c.startswith("gsc 0.1.6 is older than the pinned v0.1.8") for c in checks), checks)
+        self.assertTrue(any(c.startswith("gsc 0.1.6 is older than the pinned v0.1.9") for c in checks), checks)
 
     def test_doctor_says_when_reckon_is_not_on_path(self):
         link = self.home / "bin" / "reckon"
