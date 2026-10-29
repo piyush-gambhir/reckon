@@ -177,7 +177,10 @@ pub fn pick<'a>(data: &'a Value, path: &str) -> &'a Value {
     item
 }
 pub fn sha256(bytes: impl AsRef<[u8]>) -> String {
-    format!("{:x}", Sha256::digest(bytes.as_ref()))
+    Sha256::digest(bytes.as_ref())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 // Python's canonical JSON encoding is retained for existing cache and action hashes.
 pub fn canonical(value: &Value) -> String {
@@ -467,4 +470,21 @@ pub fn evidence(path: &Path) -> Result<Vec<Value>> {
         )
     });
     Ok(records)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sha256;
+
+    #[test]
+    fn sha256_preserves_lowercase_zero_padded_digests() {
+        assert_eq!(
+            sha256(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_eq!(
+            sha256(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
 }
