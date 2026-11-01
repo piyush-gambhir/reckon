@@ -6,6 +6,7 @@ import select
 import subprocess
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from helpers import BOUNDS, CUBEAPM, OrgCase, SOURCE
@@ -198,7 +199,9 @@ class NativeApprovalTests(OrgCase):
     def test_a_write_that_cannot_start_has_a_definite_failure(self):
         action = self.prepare()
         (self.bin / "gh").unlink()
-        code, out, err = self.apply_in_terminal(action)
+        # Hide any system gh (CI runners ship one) so the write truly cannot start.
+        with mock.patch.dict(os.environ, PATH=str(self.bin)):
+            code, out, err = self.apply_in_terminal(action)
         self.assertEqual(code, 1, err)
         record = json.loads(out)
         self.assertEqual(record["status"], "failed")
