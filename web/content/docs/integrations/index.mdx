@@ -57,6 +57,13 @@ Each provider has one of three modes:
 | `gsc` | `gsc` | own | Google Search performance, trends, opportunities, URL inspection |
 | `bing` | `bwt` | own | Bing traffic, queries, pages, crawl health |
 
+## Voice
+
+| Provider | CLI | Mode | What it covers |
+| --- | --- | --- | --- |
+| `livekit` | `lk` | allowlist | LiveKit Cloud agents, versions, logs, rooms, participants, dispatches |
+| `pipecat` | `pipecat` | allowlist | Pipecat Cloud agents, deployments, sessions, logs, builds |
+
 <Callout type="warn">
   Read-only is a combination of the CLI's own mode, Reckon's argument checks,
   approval prompts and the account's permissions on the server. Give every
@@ -102,4 +109,10 @@ Each provider has one of three modes:
 <Cards>
   <Card title="Google Search Console" href="/docs/integrations/gsc" description="Search performance, trends, opportunities and indexing." />
   <Card title="Bing Webmaster Tools" href="/docs/integrations/bing" description="Bing traffic, queries, pages and crawl health." />
+</Cards>
+
+### Voice
+
+<Cards>
+  <Card title="LiveKit and Pipecat Cloud" href="/docs/integrations/voice" description="Voice agent deployments, sessions and logs, one vendor login per connection." />
 </Cards>

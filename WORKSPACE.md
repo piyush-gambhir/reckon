@@ -274,6 +274,8 @@ numbers are not complete history.
 | Supabase projects and advisors | `supabase -- projects list -o json`, `db advisors --linked` |
 | WhatsApp numbers and quality | `whatsapp -- numbers list`, `templates list --status rejected` |
 | WhatsApp spend per category | `whatsapp -- analytics pricing --from <date> --to <date> --dimension pricing_category` |
+| LiveKit agents and rooms | `livekit -- agent list`, `agent status --id <agent-id>`, `agent logs --id <agent-id>` (streams until the timeout), `room list` |
+| Pipecat Cloud agents | `pipecat -- cloud agent list`, `cloud agent status <agent>`, `cloud agent logs <agent> -n 100 -l ERROR`, `cloud agent sessions <agent>` |
 | Freshdesk tickets and threads | `freshdesk -- tickets get <id> --include stats -o json`, `tickets conversations <id> --all -o json`, `tickets search --query 'status:2' -o json` |
 
 These CLIs run as allowlists: `reckon run <tool> -- <command> --help` shows a command's flags, and a refused
