@@ -155,3 +155,22 @@ reckon run whatsapp -- analytics pricing --from 2026-10-01 --to 2026-10-08 --dim
 
 Settings: `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_BUSINESS_ACCOUNT_ID`; optional `WHATSAPP_API_VERSION` (default `v25.0`).
 Reckon forces the Graph host, so a connection cannot send the token elsewhere.
+
+## Freshdesk
+
+Tickets, conversations, contacts, companies, agents and the rest of the Freshdesk
+REST reference. CLI: `freshdesk`, our own CLI. Through Reckon it is read-only:
+`FRESHDESK_READ_ONLY` is set and cannot be undone, and `commands resolve` classifies
+every call (an unknown `api request` route counts as a write). Use the API key from
+Freshdesk's Profile settings.
+
+```bash
+reckon connect freshdesk --org acme --provider freshdesk   # then set FRESHDESK_DOMAIN and FRESHDESK_API_KEY
+reckon secrets set freshdesk FRESHDESK_API_KEY             # in your own terminal, to keep the key in 1Password
+reckon verify freshdesk   # runs: freshdesk auth status --verify -o json (one GET /agents/me)
+reckon run freshdesk -- tickets get 123 --include stats -o json
+```
+
+Settings: `FRESHDESK_DOMAIN` (account slug, e.g. `acme`), `FRESHDESK_API_KEY`.
+Saved `freshdesk auth login` profiles are ignored: the key comes only from the
+connection. `reckon verify` records the agent's email as the connection's account.

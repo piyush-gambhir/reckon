@@ -1,0 +1,92 @@
+---
+title: LiveKit and Pipecat Cloud
+description: Read voice agent deployments, rooms, sessions and logs on LiveKit Cloud and Pipecat Cloud, with one vendor login per connection.
+---
+
+## What it covers
+
+Voice agent infrastructure: which agents are deployed and in what state, their
+versions, sessions and logs, and (on LiveKit) the rooms and participants they are
+serving. Both CLIs are the vendors' own and run as allowlists.
+
+Each connection keeps its own vendor login. `reckon login <connection>` runs the
+vendor's browser login with that connection's private config folder as the home
+for credentials, so `livekit-personal` and `livekit-work` can hold different
+accounts side by side and neither touches your own `~/.livekit` or
+`~/.config/pipecatcloud`.
+
+## LiveKit
+
+CLI: [`lk`](https://github.com/livekit/livekit-cli) (checked against 2.18.1).
+Install it with `brew install livekit-cli`.
+
+```bash
+reckon connect livekit-personal --org acme --env production --provider livekit
+reckon login livekit-personal --org acme --env production   # runs: lk cloud auth
+reckon verify livekit-personal --org acme --env production  # runs: lk room list
+reckon run livekit-personal -- agent list
+```
+
+`lk cloud auth` asks for a device name, opens a confirmation page in your browser
+and saves the project's URL, API key and secret to
+`<connection config>/home/.livekit/cli-config.yaml`. Reckon points `HOME` (and
+`USERPROFILE` on Windows) at that folder because `lk` finds its config through
+the home directory. The first project you authorize becomes the connection's
+default; the target is fixed to it, so a second project or account is a second
+connection.
+
+Settings: instead of logging in, set `LIVEKIT_URL`, `LIVEKIT_API_KEY` and
+`LIVEKIT_API_SECRET` (for a self-hosted server, or one project's keys). Set keys win
+over the saved project.
+
+Read commands: `room list`, `room participants list`, `room participants get`,
+`agent list`, `agent status`, `agent versions`, `agent logs`,
+`agent private-link list`, `agent private-link health-status`, `dispatch list`,
+`dispatch get`, `number list`, `number get`.
+
+Refused: `--url`, `--api-key`, `--api-secret`, `--dev`, `--project`,
+`--subdomain`, `--config`, `--curl`, `--verbose` and `--yes` in every spelling lk
+accepts (`-name`, `--name`, `--y`, with surrounding spaces). `--json` is refused too: `project list --json`
+prints API secrets and agent responses carry a secrets field. `project`, `cloud`,
+`token`, `agent secrets`, SIP trunks, ingress (stream keys) and egress (upload
+credentials) are left out. `agent logs` streams until `reckon run`'s timeout.
+
+## Pipecat Cloud
+
+CLI: `pipecat` from [`pipecat-ai-cli`](https://pypi.org/project/pipecat-ai-cli/),
+which bundles `pipecatcloud` (checked against 1.3.0 with pipecatcloud 1.4.0).
+Install it with `uv tool install pipecat-ai-cli`.
+
+```bash
+reckon connect pipecat-personal --org acme --env production --provider pipecat
+reckon login pipecat-personal --org acme --env production   # runs: pipecat cloud auth login
+reckon verify pipecat-personal --org acme --env production  # runs: pipecat cloud organizations list
+reckon run pipecat-personal -- cloud agent status my-agent
+```
+
+`pipecat cloud auth login` opens a browser sign-in with a callback on localhost and
+writes the access token, refresh token and active organization to
+`PIPECAT_CONFIG_PATH`, which Reckon sets to
+`<connection config>/pipecatcloud/pipecatcloud.toml`. Token refreshes rewrite the
+same file.
+
+Settings: optional `PIPECAT_ORG` to read an organization other than the login's
+active one. `--organization` is refused, so another account is another connection.
+For JSON output set `PIPECAT_OUTPUT=json` in the secrets file (`--output` has to
+come before the subcommand, so it cannot pass through `reckon run`). A connection
+that has only `PIPECAT_TOKEN` and no saved login is not supported.
+
+Read commands: `cloud organizations list`, `cloud agent list`, `cloud agent status`,
+`cloud agent deployments`, `cloud agent sessions`, `cloud agent logs`,
+`cloud agent profiles list`, `cloud build list`, `cloud build status`,
+`cloud build logs`, `cloud regions list`, `cloud spend-limit show`.
+
+Refused: `--organization`/`-o`, `--output`, `--show-cli-config` and
+`--config-file`. Agent names and IDs go into API URL paths, so arguments with
+`/`, `..`, `%`, `?`, `#`, backslashes or spaces are refused. `cloud auth whoami` is left out because it prints the Daily API
+key, as are `cloud secrets`, `cloud organizations keys` and `registry-keys`.
+
+## Links
+
+- [LiveKit CLI source](https://github.com/livekit/livekit-cli)
+- [pipecat-ai-cli on PyPI](https://pypi.org/project/pipecat-ai-cli/) and [pipecatcloud on PyPI](https://pypi.org/project/pipecatcloud/)

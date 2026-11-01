@@ -78,6 +78,34 @@ pub fn flag_problem(arg: &str, spec: &Value) -> Option<String> {
     }
     None
 }
+// urfave/cli (lk) trims each argument, reads -name as --name and --x as -x.
+fn spellings(arg: &str, spec: &Value) -> Vec<String> {
+    if !truth(&spec["single_dash_long"]) {
+        return vec![arg.into()];
+    }
+    let arg = arg.trim();
+    let mut out = vec![arg.to_owned()];
+    if let Some(bare) = arg.strip_prefix("--") {
+        if bare
+            .split('=')
+            .next()
+            .is_some_and(|n| n.chars().count() == 1)
+        {
+            out.push(format!("-{bare}"));
+        }
+    } else if arg.starts_with('-') && arg.len() > 2 {
+        out.push(format!("-{arg}"));
+    }
+    out
+}
+// For CLIs that put names and IDs into API URL paths (pipecat): no path tricks.
+fn path_safe(arg: &str) -> bool {
+    arg != "."
+        && !arg.contains("..")
+        && !arg
+            .chars()
+            .any(|c| c.is_whitespace() || "/\\%?#".contains(c))
+}
 pub fn operands(
     args: &[String],
     spec: &Value,
@@ -145,9 +173,15 @@ pub fn check(provider: &str, spec: &Value, args: &[String]) -> Result<()> {
             !arg.contains('\0') && arg.len() <= 65536,
             "invalid argument"
         );
-        if let Some(flag) = flag_problem(arg, &spec) {
-            bail!("{flag} is fixed by the connection and cannot be passed through reckon run");
+        for spelling in spellings(arg, &spec) {
+            if let Some(flag) = flag_problem(&spelling, &spec) {
+                bail!("{flag} is fixed by the connection and cannot be passed through reckon run");
+            }
         }
+        ensure!(
+            !truth(&spec["path_safe_args"]) || path_safe(arg),
+            "{provider} arguments cannot contain '/', '..', '%', '?', '#', '\\' or spaces"
+        );
     }
     let help = args.len() == 1 && ["--help", "-h", "--version"].contains(&args[0].as_str());
     if (truth(&spec["deny_commands"]) || truth(&spec["read_commands"]))

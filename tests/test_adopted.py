@@ -28,6 +28,10 @@ CASES = {
                                                                             ["app", "deploy"], ["store", "execute", "--query-file", "q.graphql"]]),
     "supabase": (["projects", "list", "-o", "json"], [["projects", "api-keys"], ["db", "push"], ["inspect", "db", "bloat", "--linked"],
                                                       ["migration", "list"], ["functions", "list", "--project-ref", "x"], ["link"]]),
+    "livekit": (["room", "list"], [["project", "list"], ["cloud", "auth"], ["agent", "secrets"], ["agent", "deploy"], ["room", "list", "--json"],
+                                   ["room", "list", "--url", "http://x.invalid"], ["room", "list", "--project", "x"], ["room", "delete", "r"]]),
+    "pipecat": (["cloud", "agent", "logs", "bot", "-n", "50"], [["cloud", "auth", "whoami"], ["cloud", "secrets", "list"], ["cloud", "agent", "deploy", "bot"],
+                                                             ["cloud", "agent", "list", "--organization", "x"], ["cloud", "organizations", "keys", "list"]]),
 }
 
 
@@ -49,6 +53,19 @@ class WhatsAppTests(unittest.TestCase):
         self.assertEqual(spec["always"]["WHATSAPP_GRAPH_URL"], "")
         for args in (["numbers", "list"], ["analytics", "pricing", "--from", "2026-10-01"], spec["verify"]):
             connectors.check("whatsapp", spec, args)
+
+
+class FreshdeskTests(unittest.TestCase):
+    def test_entry_reads_only_and_ignores_saved_profiles(self):
+        spec = REGISTRY["freshdesk"]
+        self.assertEqual(spec["always"], {"FRESHDESK_PROFILE": "", "FRESHDESK_CONFIG": ""})
+        self.assertEqual(spec["read_only"]["FRESHDESK_READ_ONLY"], "1")
+        for args in (["tickets", "get", "25651", "-o", "json"], ["tickets", "conversations", "25651", "--all"], spec["verify"]):
+            connectors.check("freshdesk", spec, args)
+        for args in (["auth", "login"], ["auth", "use", "x"], ["update", "--yes"], ["tickets", "get", "1", "--api-key", "x"],
+                     ["tickets", "get", "1", "--domain", "other"], ["tickets", "update", "1", "--yes"], ["config", "set"]):
+            with self.assertRaises(ValueError, msg=args):
+                connectors.check("freshdesk", spec, args)
 
 
 @unittest.skipUnless(os.environ.get("RECKON_ADOPTED_BIN"), "set RECKON_ADOPTED_BIN to a folder of release binaries")

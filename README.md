@@ -87,17 +87,18 @@ Try one offline: `reckon demo`.
 | Product | `jira`, `clarity`, `linear` |
 | Growth | `gsc` (Google Search Console), `bing` (bwt), `gog` (Google Workspace, GA4, YouTube) |
 | Revenue and reliability | `stripe`, `razorpay`, `shopify`, `resend`, `sentry`, `cloudflare` (cf), `supabase`; adopted CLIs, read-only lists |
-| Sales and support | `whatsapp` (WhatsApp Business: numbers, templates, message and pricing analytics; ours, read-only) |
+| Voice agents | `livekit` (lk: LiveKit Cloud agents, rooms, logs), `pipecat` (Pipecat Cloud agents, sessions, logs); vendor CLIs, read-only lists, one browser login per connection |
+| Sales and support | `whatsapp` (WhatsApp Business: numbers, templates, message and pricing analytics; ours, read-only), `freshdesk` (tickets, conversations, contacts; ours, read-only through Reckon) |
 
-`reckon connect --list` shows them all. The ten CLIs above that are ours
-(grafana, jenkins, cubeapm, es, jira, nginxpm, gsc, bwt, clarity, whatsapp) are pinned in
+`reckon connect --list` shows them all. The eleven CLIs above that are ours
+(grafana, jenkins, cubeapm, es, jira, nginxpm, gsc, bwt, clarity, whatsapp, freshdesk) are pinned in
 [scripts/cli-releases.csv](scripts/cli-releases.csv) and installed by setup.
 
 ## Setup
 
 Reckon is a native Rust executable. Building from this checkout requires
 [Rust](https://rustup.rs/) (the toolchain is pinned in `rust-toolchain.toml`).
-The installed executable does not require Python or Rust. The ten tool CLIs
+The installed executable does not require Python or Rust. The eleven tool CLIs
 remain separate Go executables. macOS and Linux:
 
 ```bash
