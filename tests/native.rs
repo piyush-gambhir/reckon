@@ -192,6 +192,137 @@ fn provider_parsers_reject_alternative_spellings_of_denied_flags() -> Result<()>
 }
 
 #[test]
+fn voice_providers_read_only_and_keep_the_login_target() -> Result<()> {
+    let r = orgs::providers()?;
+    for (provider, allowed, refused) in [
+        (
+            "livekit",
+            vec![
+                words(&["room", "list"]),
+                words(&["agent", "list"]),
+                words(&["a", "status", "--id", "CA_x"]),
+                words(&["agent", "logs", "--id", "CA_x", "-d", "production"]),
+                words(&["room", "participants", "get", "-r", "room", "-i", "p1"]),
+            ],
+            vec![
+                words(&["project", "list"]),
+                words(&["cloud", "auth"]),
+                words(&["agent", "secrets"]),
+                words(&["a", "deploy"]),
+                words(&["room", "delete", "r1"]),
+                words(&["token", "create"]),
+                words(&["room", "list", "--json"]),
+                words(&["room", "list", "-jq"]),
+                words(&["room", "list", "--project", "other"]),
+                // lk reads -name as --name.
+                words(&["room", "list", "-url", "http://elsewhere.invalid"]),
+                words(&["room", "list", "-api-key=x"]),
+                words(&["room", "list", "-json"]),
+                words(&["agent", "list", "-subdomain", "other"]),
+                // lk trims arguments and reads --j as -j.
+                words(&["room", "list", " --url=http://elsewhere.invalid"]),
+                words(&["room", "list", "--project=x "]),
+                words(&["agent", "list", "--j"]),
+                words(&["agent", "list", "--j=true"]),
+            ],
+        ),
+        (
+            "pipecat",
+            vec![
+                words(&["cloud", "organizations", "list"]),
+                words(&["cloud", "agent", "logs", "bot", "-n", "50", "-l", "ERROR"]),
+                words(&["cloud", "agent", "status", "bot"]),
+                words(&["cloud", "build", "list", "-s", "failed"]),
+            ],
+            vec![
+                words(&["cloud", "auth", "whoami"]),
+                words(&["cloud", "auth", "login"]),
+                words(&["cloud", "agent", "deploy", "bot"]),
+                words(&["cloud", "agent", "start", "bot"]),
+                words(&["cloud", "secrets", "list"]),
+                words(&["cloud", "organizations", "keys", "list"]),
+                words(&["cloud", "agent", "status", "bot", "--organization", "other"]),
+                words(&["cloud", "agent", "status", "bot", "-oother"]),
+                words(&["cloud", "agent", "sessions", "--config-file", "x.toml"]),
+                words(&["--output", "json", "cloud", "agent", "list"]),
+                // Names and IDs go into API URL paths.
+                words(&[
+                    "cloud",
+                    "agent",
+                    "sessions",
+                    "bot",
+                    "--id",
+                    "../../../daily",
+                ]),
+                words(&["cloud", "agent", "status", "../../other/services/bot"]),
+                words(&["cloud", "agent", "logs", "bot", "-s", "%2e%2e"]),
+                words(&["cloud", "build", "status", "."]),
+            ],
+        ),
+    ] {
+        let spec = &r[provider];
+        connectors::check(provider, spec, &strings(&spec["verify"]))?;
+        for args in allowed {
+            connectors::check(provider, spec, &args)
+                .map_err(|e| anyhow!("{provider} {args:?}: {e}"))?;
+        }
+        for args in refused {
+            assert!(
+                connectors::check(provider, spec, &args).is_err(),
+                "{provider} {args:?}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn voice_provider_logins_live_in_each_connection_config() -> Result<()> {
+    let (dir, r, mut ctx) = fixture()?;
+    ctx.data["connections"] = json!({"lk-one":{"provider":"livekit"},"lk-two":{"provider":"livekit"},"pc-one":{"provider":"pipecat"}});
+    let config = |name: &str| -> Result<PathBuf> {
+        Ok(orgs::org_path(dir.path(), "acme")?
+            .join("config")
+            .join(name))
+    };
+    for (name, key, file) in [
+        ("lk-one", "HOME", "home"),
+        ("lk-two", "HOME", "home"),
+        (
+            "pc-one",
+            "PIPECAT_CONFIG_PATH",
+            "pipecatcloud/pipecatcloud.toml",
+        ),
+    ] {
+        let conn = &ctx.data["connections"][name];
+        let spec = &r[text(&conn["provider"])];
+        let (env, _) = orgs::child_env(dir.path(), &ctx, name, conn, spec, true, None)?;
+        assert_eq!(Path::new(&env[key]), config(name)?.join(file));
+        if key == "HOME" {
+            assert_eq!(env["USERPROFILE"], env["HOME"]);
+        }
+        assert!(!orgs::configured(dir.path(), "acme", name, spec, None)?);
+    }
+    let saved = config("lk-one")?.join("home/.livekit/cli-config.yaml");
+    write(&saved, "default_project: one\n")?;
+    assert!(orgs::configured(
+        dir.path(),
+        "acme",
+        "lk-one",
+        &r["livekit"],
+        None
+    )?);
+    assert!(!orgs::configured(
+        dir.path(),
+        "acme",
+        "lk-two",
+        &r["livekit"],
+        None
+    )?);
+    Ok(())
+}
+
+#[test]
 fn shared_backends_cannot_escape_the_environment_label() -> Result<()> {
     let registry = orgs::providers()?;
     let spec = &registry["cubeapm"];

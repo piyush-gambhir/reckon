@@ -28,6 +28,10 @@ CASES = {
                                                                             ["app", "deploy"], ["store", "execute", "--query-file", "q.graphql"]]),
     "supabase": (["projects", "list", "-o", "json"], [["projects", "api-keys"], ["db", "push"], ["inspect", "db", "bloat", "--linked"],
                                                       ["migration", "list"], ["functions", "list", "--project-ref", "x"], ["link"]]),
+    "livekit": (["room", "list"], [["project", "list"], ["cloud", "auth"], ["agent", "secrets"], ["agent", "deploy"], ["room", "list", "--json"],
+                                   ["room", "list", "--url", "http://x.invalid"], ["room", "list", "--project", "x"], ["room", "delete", "r"]]),
+    "pipecat": (["cloud", "agent", "logs", "bot", "-n", "50"], [["cloud", "auth", "whoami"], ["cloud", "secrets", "list"], ["cloud", "agent", "deploy", "bot"],
+                                                             ["cloud", "agent", "list", "--organization", "x"], ["cloud", "organizations", "keys", "list"]]),
 }
 
 
