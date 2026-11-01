@@ -319,6 +319,7 @@ pub fn prepare(
         .collect::<process::Environment>();
     let values = orgs::references(h, &values)?;
     let mut record = json!({"schema_version":SCHEMA,"id":id,"org":ctx.org,"environment":ctx.env,"connection":cname,"operation":operation,"params":params,"status":"prepared","prepared_at":now(),"receipt":null,"target_sha256":target(&conn,&values)});
+    record["configuration_sha256"] = json!(orgs::config_fingerprint(h, &ctx.org, &cname)?);
     if let Some(session) = session {
         record["session"] = json!(identifier(session)?);
     }
@@ -344,14 +345,39 @@ pub fn load(root: &Path, id: &str) -> Result<(PathBuf, Value)> {
         record.is_object() && record["schema_version"] == SCHEMA && text(&record["id"]) == id,
         "unsupported or inconsistent action metadata"
     );
+    ensure!(
+        ["org", "environment", "connection"]
+            .iter()
+            .all(|field| orgs::valid_name(text(&record[*field])))
+            && [
+                "prepared",
+                "running",
+                "unknown",
+                "applied",
+                "failed",
+                "cancelled",
+                "expired"
+            ]
+            .contains(&text(&record["status"]))
+            && instant(text(&record["prepared_at"])).is_ok()
+            && (record["receipt"].is_null() || record["receipt"].is_object())
+            && record
+                .get("session")
+                .is_none_or(|v| v.is_null() || identifier(text(v)).is_ok()),
+        "invalid action identity, status, preparation time or receipt"
+    );
+    validate(text(&record["operation"]), &record["params"])
+        .map_err(|_| anyhow!("invalid action operation or payload"))?;
     Ok((path, record))
 }
 pub fn listing(root: &Path) -> Result<Vec<Value>> {
     let mut rows = vec![];
     for dir in entries(&local_path(root, "actions")?)?.into_iter().rev() {
+        let dir = local_path(root, dir.strip_prefix(root)?)?;
         let p = local_path(&dir, "action.json")?;
         if p.is_file() {
-            let r = read_json(&p)?;
+            let id = dir.file_name().unwrap_or_default().to_string_lossy();
+            let (_, r) = load(root, &id)?;
             let mut row = json!({});
             for k in [
                 "id",
@@ -421,6 +447,32 @@ fn link(operation: &str, out: &str, params: &Value) -> Option<String> {
             .map(|m| m.as_str().into()),
     }
 }
+fn executable_fingerprint(binary: &str) -> Result<Option<(PathBuf, String)>> {
+    which(binary)
+        .map(|path| {
+            let path = path.canonicalize()?;
+            let fingerprint = file_sha256(&path)?;
+            Ok((path, fingerprint))
+        })
+        .transpose()
+}
+fn check_expiry(path: &Path, record: &mut Value) -> Result<()> {
+    let age = chrono::Utc::now() - instant(text(&record["prepared_at"]))?;
+    ensure!(
+        age >= chrono::Duration::zero(),
+        "action preparation time is in the future; check the saved action and system clock"
+    );
+    if age >= chrono::Duration::hours(24) {
+        record["status"] = json!("expired");
+        record["decided_at"] = json!(now());
+        write_json(&path.join("action.json"), record)?;
+        bail!(
+            "action {} was prepared at least 24 hours ago; prepare it again",
+            text(&record["id"])
+        );
+    }
+    Ok(())
+}
 pub fn apply(h: &Path, ctx: &Context, root: &Path, id: &str, registry: &Registry) -> Result<Value> {
     ensure!(
         !activity::pinned(),
@@ -440,12 +492,7 @@ pub fn apply(h: &Path, ctx: &Context, root: &Path, id: &str, registry: &Registry
         "action {id} is {}; each action runs once",
         text(&record["status"])
     );
-    if (chrono::Utc::now() - instant(text(&record["prepared_at"]))?).num_seconds() > 24 * 3600 {
-        record["status"] = json!("expired");
-        record["decided_at"] = json!(now());
-        write_json(&path.join("action.json"), &record)?;
-        bail!("action {id} was prepared over 24 hours ago; prepare it again");
-    }
+    check_expiry(&path, &mut record)?;
     ensure!(
         text(&record["payload_sha256"]) == digest(&record),
         "action {id} changed after it was prepared; prepare it again"
@@ -457,6 +504,11 @@ pub fn apply(h: &Path, ctx: &Context, root: &Path, id: &str, registry: &Registry
         text(&record["target_sha256"]) == target(&conn, &values),
         "connection {cname} changed after action {id} was prepared (its environment, resource limits, account or target settings); prepare it again"
     );
+    ensure!(
+        text(&record["configuration_sha256"]) == orgs::config_fingerprint(h, &ctx.org, &cname)?,
+        "connection {cname}'s saved configuration changed after preparation; prepare the action again"
+    );
+    let executable = executable_fingerprint(text(&spec["binary"]))?;
     let account = connectors::whoami(h, &ctx, &cname, &conn, registry, Some(&values))?;
     let live = is_live(&ctx, &conn);
     eprintln!("{}", preview(&record, live, true, account.as_deref()));
@@ -471,6 +523,21 @@ pub fn apply(h: &Path, ctx: &Context, root: &Path, id: &str, registry: &Registry
         write_json(&path.join("action.json"), &record)?;
         return Ok(record);
     }
+    check_expiry(&path, &mut record)?;
+    ensure!(
+        text(&record["configuration_sha256"]) == orgs::config_fingerprint(h, &ctx.org, &cname)?,
+        "connection {cname}'s saved configuration changed while awaiting approval; prepare the action again"
+    );
+    let current = orgs::context(h, Some(&ctx.org), Some(&ctx.env), registry)?;
+    let (_, current_conn) = connection(&current, &record)?;
+    ensure!(
+        current_conn == conn && is_live(&current, &current_conn) == live,
+        "connection {cname} or its production policy changed while awaiting approval; prepare the action again"
+    );
+    ensure!(
+        executable_fingerprint(text(&spec["binary"]))? == executable,
+        "provider executable changed while awaiting approval; retry after reviewing the installed CLI"
+    );
     let (mut env, values) = orgs::child_env(h, &ctx, &cname, &conn, spec, true, Some(&values))?;
     for (k, v) in [
         ("NO_COLOR", "1"),
@@ -479,7 +546,10 @@ pub fn apply(h: &Path, ctx: &Context, root: &Path, id: &str, registry: &Registry
     ] {
         env.insert(k.into(), v.into());
     }
-    let (command, body) = argv(text(&record["operation"]), &record["params"], id);
+    let (mut command, body) = argv(text(&record["operation"]), &record["params"], id);
+    if let Some((binary, _)) = &executable {
+        command[0] = binary.to_string_lossy().into_owned();
+    }
     record["status"] = json!("running");
     record["approved_at"] = json!(now());
     write_json(&path.join("action.json"), &record)?;
@@ -491,15 +561,16 @@ pub fn apply(h: &Path, ctx: &Context, root: &Path, id: &str, registry: &Registry
         262144,
         body.as_deref(),
     )?;
-    let out = orgs::redact(&String::from_utf8_lossy(&result.stdout), &values)
+    let out = orgs::redact_output(&result.stdout, &values, result.status)
         .trim()
         .to_owned();
-    let err = orgs::redact(&String::from_utf8_lossy(&result.stderr), &values)
+    let err = orgs::redact_output(&result.stderr, &values, result.status)
         .trim()
         .to_owned();
     record["status"] = json!(match result.status {
         process::Status::Ok => "applied",
-        process::Status::Failed => "failed",
+        process::Status::Unavailable => "failed",
+        // A CLI can exit nonzero after the server has accepted its write.
         _ => "unknown",
     });
     record["completed_at"] = json!(now());
@@ -546,16 +617,23 @@ pub fn reconcile(
         "action {id} is {}; only unknown outcomes need reconciling",
         text(&record["status"])
     );
+    ensure!(
+        text(&record["payload_sha256"]) == digest(&record),
+        "action {id} changed after it was prepared; restore its original payload before reconciling"
+    );
     let (cname, conn) = connection(ctx, &record)?;
-    let (env, _values) = orgs::child_env(
-        h,
-        ctx,
-        &cname,
-        &conn,
-        &registry[text(&conn["provider"])],
-        false,
-        None,
-    )?;
+    let spec = &registry[text(&conn["provider"])];
+    let values = orgs::references(h, &orgs::secrets(h, &ctx.org, &cname, spec)?)?;
+    ensure!(
+        text(&record["target_sha256"]) == target(&conn, &values),
+        "connection {cname} changed after action {id} was prepared; restore its original target before reconciling"
+    );
+    ensure!(
+        text(&record["configuration_sha256"]) == orgs::config_fingerprint(h, &ctx.org, &cname)?,
+        "connection {cname}'s saved configuration changed after preparation; verify and restore its original configuration before reconciling"
+    );
+    connectors::whoami(h, ctx, &cname, &conn, registry, Some(&values))?;
+    let (env, _values) = orgs::child_env(h, ctx, &cname, &conn, spec, false, Some(&values))?;
     let params = &record["params"];
     let op = text(&record["operation"]);
     let tag = marker(id, op);

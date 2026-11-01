@@ -2,7 +2,7 @@ use crate::store::*;
 use crate::*;
 pub fn tool(name: &str, args: &[String]) -> Result<Value> {
     if args.first().is_some_and(|v| v == "commands") {
-        return Ok(json!({"effect":"read","command":name}));
+        return Ok(json!({"effect":"read","command":name,"secret_output":false}));
     }
     let get = |flag: &str| {
         args.iter()

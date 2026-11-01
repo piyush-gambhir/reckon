@@ -81,6 +81,12 @@ reckon run gsc -- sitemaps list --site sc-domain:example.com -o json
 
 Dates are inclusive Pacific-time days, and the last two or three days are
 preliminary (`reckon run gsc -- freshness --site <site> -o json` shows which).
+
+With `--session`, JSON reads preserve pagination, source periods and preliminary
+data markers in the evidence metadata, including comparison and insight sources.
+Session checks and reports warn about missing pages and data that can change.
+Complete pagination covers the rows Google exposed for the request, and does
+not establish data finality or inclusion of anonymized queries.
 Google withholds anonymized queries, so query rows do not add up to the site
 totals.
 

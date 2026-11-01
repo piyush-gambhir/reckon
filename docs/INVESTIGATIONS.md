@@ -85,6 +85,28 @@ reckon collect SESSION_ID \
 
 Only registered operation shapes are accepted. For any other read, use `reckon run <connection> --session SESSION_ID -- <arguments>`: the output is saved as evidence in the same session, with its command and connection.
 
+Typed JSON and JSON-stream operations also validate the provider's output structure. A range metric read needs a successful matrix envelope; list and detail reads check their expected containers and required identifying fields. A wrong structure is failed evidence and `collect` exits 2. Provider renderers that emit JSON `null` for empty lists remain supported.
+
+Detail reads also match the returned build, run, proxy, certificate or trace ID to the requested ID. Trace IDs support hexadecimal case and leading-zero normalization; a span explicitly naming a different trace is rejected.
+
+Saved successful typed records are validated against their hashed artifacts when read. An invalid historical record appears failed, cannot be reused or cited as successful evidence, and can be retried within the session's remaining budget. These reads preserve the original record and artifacts. Updated metric summaries retain existing partial-coverage qualifiers.
+
+Evidence validation checks that the operation, provider, capability and command agree. Reuse also requires the same typed operation, provider and capability as the current request. These are consistency checks on local files, not authentication against changes by their owner.
+
+Briefs and session reports recheck citations before displaying recorded findings. Failed or missing citations are marked `Unsupported`; partial coverage and source-quality warnings appear beside the claim. Brief JSON includes each finding's `citations` object (`ok`, `problems`, `warnings`). Summaries of the previous review retain its recorded findings and copied actions, with citation warnings in `previous.warnings`. Validation does not rewrite the notes or source artifacts.
+
+The previous review is the matching run that finished most recently, using timezone-aware timestamps. Older records without a finish time use their creation time; legacy UTC finish dates remain supported. A previous session whose org or environment changed is shown as unavailable while its copied actions remain follow-up duties. Its write summaries require valid action metadata in the same org and environment.
+
+If saved action receipts cannot be read or validated, `previous.warnings` marks
+the write history as potentially incomplete. Reports show the warning, while
+copied follow-up actions remain available.
+
+Session history orders creation timestamps before applying the result limit and ignores foreign-org records or invalid creation times. Session commands reject an org mismatch. Incident narratives with explicit foreign-org metadata or malformed metadata are excluded from history; narratives without org metadata retain their unverified legacy label.
+
+The combined stdout and stderr cap also applies after redaction and UTF-8 replacement. Truncated output is saved as partial evidence and `run` exits 3. With `--session`, invalid declared JSON or a provider error payload from an otherwise successful subprocess saves failed evidence and returns exit status 2. Subprocess failures retain their own exit codes.
+
+When an output cap, timeout or cancellation interrupts a read, a trailing prefix of a known secret is redacted before UTF-8 decoding and saving. This includes partial UTF-8 characters and JSON-escaped values.
+
 ## Record the explanation
 
 ```bash
@@ -104,6 +126,16 @@ Findings and rejected explanations must cite successful evidence from the same s
 
 `resume --json` returns the snapshotted service context, operation plan, evidence metadata, recorded notes, related same-environment sessions, knowledge paths, and next-check guidance. Read the artifacts, not just their descriptive summaries. Summaries of metric samples are not traffic-weighted aggregates and do not establish causality.
 
+Metric matrices validate sample pairs, timestamps, numeric values, labels and histogram structure across every series. Malformed samples are failed evidence. Valid non-finite floats and native histograms are counted separately, so their presence is not described as empty data. Means use finite float samples only. Summaries show at most 20 series and 20 labels per series, with shortened labels marked; artifacts retain the captured data.
+
+A series without float or histogram sample fields is partial, with unknown coverage. Adapter normalization can omit those fields, so the output cannot establish an empty result.
+
+Search Console JSON evidence also records source periods, the Pacific reporting timezone, pagination completeness, and preliminary-data markers in `data_quality`. Comparisons retain both periods; insights retain their source headers. A source with missing pages is marked partial. `check` and reports surface those limits and preliminary-data warnings. Complete pagination describes the rows Google exposed for that request; it does not establish that anonymized queries are included or that data is final.
+
+Review evidence also preserves Bing's days with data, Clarity sampling and export caps, Jenkins recent-build scope, GitHub list limits and metric-provider warnings. Sampled or capped results and missing Bing days are partial. Running builds and runs are labeled as changing. An empty Bing crawl list or Clarity recording sample does not establish health. Provider errors remain failed evidence.
+
+GitHub's `--json=fields` form is recognized. Reads using `--jq` or `--template` save their projected output as text with qualified coverage, so valid titles or tables are not rejected as malformed JSON. Flag values such as search expressions are parsed separately from formatting options.
+
 ## History and incident promotion
 
 ```bash
@@ -121,6 +153,11 @@ Promotion creates a preliminary snapshot at `incidents/<incident-date>-<slug>/` 
 Sessions live in the org folder's `sessions/<id>/`. Each evidence record includes operation, source, connection, org, environment, requested/observed times, temporal scope, sanitized arguments/body, status, limits, artifact hashes, and completeness. Known credential values and common bearer/URL credentials are redacted from collected artifacts. Logs can still contain customer data; local evidence is not automatically safe to publish. No upload or notification is performed.
 
 State files are written atomically with restrictive permissions, and an OS lock prevents concurrent session writers. A stopped collection leaves completed evidence intact; interrupted in-flight records are marked on the next collection. Current-state snapshots and recent Jenkins builds are labelled explicitly instead of being represented as historical window-filtered data.
+
+Missing optional directories are treated as empty. Invalid directory types and
+metadata I/O errors are reported by history, briefs and preflight. Preflight's
+knowledge counts include regular local `.md` and `.json` files, excluding linked
+files and directories with those extensions.
 
 State paths below the workspace reject symlinks/junctions. Evidence reads verify
 artifact paths, byte counts and hashes before reuse, citation, reporting or

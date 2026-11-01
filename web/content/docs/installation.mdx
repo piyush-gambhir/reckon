@@ -94,7 +94,19 @@ reckon migrate --org acme --rename production=prod --rename staging=dev --share 
 - `--from PATH` reads another checkout (default: this one). `--name` sets the
   org's display name.
 - Settings that use shell expansion (`$(...)`, `${...}`) are skipped and listed
-  by name. Copy those by hand into the new secrets files.
+  by name. Settings without a matching tool are listed by name and environment.
+  Copy skipped settings by hand into the new secrets files.
+- Environment files must be valid UTF-8 without NUL bytes. Config considered for
+  a connection must be readable and contain only regular files and directories,
+  including config that would otherwise be shared.
+- Saved incident snapshots receive the new org and renamed environment, along
+  with their evidence metadata. Their source files and evidence artifacts stay
+  unchanged. Invalid session or evidence metadata fails the import and removes
+  the incomplete destination org.
+- Saved work must name an environment found in the old layout. Evidence must
+  belong to its original session and environment, and artifact hashes must
+  match. Mismatches fail the import and preserve the source files.
+  Session and snapshot metadata must also pass the normal session-read checks.
 
 A shared CubeAPM connection still needs its environment labels:
 

@@ -573,7 +573,7 @@ class OnePasswordTests(OrgCase):
         data = orgs.load(self.home, "acme", self.registry)
         data["connections"].pop("shared")
         orgs.save(self.home, data, self.registry)
-        self.fake("import json,os\nprint(json.dumps([{'id':'one','user':os.environ['JENKINS_USER']}]))", "jenkins")
+        self.fake("import json,os\nprint(json.dumps([{'number':1,'user':os.environ['JENKINS_USER']}]))", "jenkins")
         task = self.success(self.cli("task", "--question", "Synthetic collection", "--org", "acme", "--env", "staging",
                                      "--from", "2026-10-21T10:00:00Z", "--to", "2026-10-21T10:10:00Z", "--json"))
         collected = self.cli("collect", task["session"], "--operation", "jenkins.builds", "--params", json.dumps({"job":"deploy-api"}),

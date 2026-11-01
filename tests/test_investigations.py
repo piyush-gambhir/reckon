@@ -17,6 +17,7 @@ from reckonlib.operations import build
 from reckonlib.process import run
 from reckonlib.store import create, evidence, lock, read_json, resolve_service, services, session_path, window, write, write_json
 
+EMPTY_METRICS = '{"status":"success","data":{"resultType":"matrix","result":[]}}'
 
 class Fixture(OrgCase):
     """Org "acme" (staging, uat) with one shared CubeAPM connection and a mapped checkout service."""
@@ -97,6 +98,75 @@ class ProcessTests(unittest.TestCase):
 
 
 class WorkflowTests(Fixture):
+    def test_native_reused_collection_needs_no_additional_budget(self):
+        calls = self.dir / "calls"
+        self.fake("from pathlib import Path\np=Path(" + repr(str(calls)) + ")\np.write_text((p.read_text() if p.exists() else '') + 'x')\nprint(" + repr(EMPTY_METRICS) + ")\n")
+        path, data = self.session()
+        data["budget"] = 2
+        write_json(path / "session.json", data)
+        args = ("collect", data["id"], "--org", "acme", "--env", "staging", "--json")
+        first = self.cli(*args)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(calls.read_text(), "xx")
+        reused = self.cli(*args)
+        self.assertEqual(reused.returncode, 0, reused.stderr)
+        self.assertTrue(all(r["status"] == "reused" for r in json.loads(reused.stdout)))
+        self.assertEqual(calls.read_text(), "xx")
+        refreshed = self.cli(*args, "--refresh")
+        self.assertEqual(refreshed.returncode, 1, refreshed.stderr)
+        self.assertIn("budget of 2 reads reached", refreshed.stderr)
+        self.assertEqual(calls.read_text(), "xx")
+
+    def test_native_mixed_collection_checks_only_the_new_reads_before_execution(self):
+        calls = self.dir / "calls"
+        self.fake("from pathlib import Path\np=Path(" + repr(str(calls)) + ")\np.write_text((p.read_text() if p.exists() else '') + 'x')\nprint(" + repr(EMPTY_METRICS) + ")\n")
+        path, data = self.session()
+        data["budget"] = 3
+        write_json(path / "session.json", data)
+        args = ("collect", data["id"], "--org", "acme", "--env", "staging", "--json")
+        first = self.cli(*args)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        records = json.loads(first.stdout)
+        record_path = path / "evidence" / records[0]["id"] / "record.json"
+        failed = json.loads(record_path.read_text())
+        failed["status"] = "failed"
+        write_json(record_path, failed)
+        other_path = path / "evidence" / records[1]["id"] / "record.json"
+        other = json.loads(other_path.read_text())
+        other["status"] = "failed"
+        write_json(other_path, other)
+        refused = self.cli(*args)
+        self.assertEqual(refused.returncode, 1, refused.stderr)
+        self.assertEqual(calls.read_text(), "xx")
+        self.assertEqual(len(evidence(path)), 2)
+        other["status"] = "ok"
+        write_json(other_path, other)
+        mixed = self.cli(*args)
+        self.assertEqual(mixed.returncode, 0, mixed.stderr)
+        self.assertEqual(sorted(r["status"] for r in json.loads(mixed.stdout)), ["ok", "reused"])
+        self.assertEqual(calls.read_text(), "xxx")
+        self.assertEqual(len(evidence(path)), 3)
+
+    def test_native_collection_reuse_is_bound_to_the_current_source(self):
+        self.fake("print(" + repr(EMPTY_METRICS) + ")\n")
+        _, data = self.session()
+        args = ("collect", data["id"], "--org", "acme", "--env", "staging", "--json")
+        first = self.cli(*args)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertTrue(all(r["status"] == "ok" for r in json.loads(first.stdout)))
+        second = self.cli(*args)
+        self.assertTrue(all(r["status"] == "reused" for r in json.loads(second.stdout)))
+        self.secret("acme", "cubeapm", [line.replace("fixture.invalid", "other.invalid") for line in CUBEAPM])
+        changed = self.cli(*args)
+        self.assertEqual(changed.returncode, 0, changed.stderr)
+        self.assertTrue(all(r["status"] == "ok" for r in json.loads(changed.stdout)))
+        profile = self.home / "orgs/acme/config/cubeapm/cubeapm-cli/config.yaml"
+        profile.parent.mkdir(parents=True, exist_ok=True)
+        profile.write_text("server: another.fixture.invalid\n")
+        changed = self.cli(*args)
+        self.assertEqual(changed.returncode, 0, changed.stderr)
+        self.assertTrue(all(r["status"] == "ok" for r in json.loads(changed.stdout)))
+
     def test_offline_demo_exercises_real_collection_and_resume(self):
         output = demo(self.home)
         self.assertTrue(output["synthetic"])
@@ -454,7 +524,7 @@ class WorkflowTests(Fixture):
         self.assertIn("fixture.invalid", (path / record["artifacts"]["stdout"]["path"]).read_text())
 
     def test_cli_start_collect_and_close(self):
-        self.fake('print("[]")')
+        self.fake("print(" + repr(EMPTY_METRICS) + ")\n")
         result = self.cli_staging("debug", "--service", "checkout", "--question", "Why slow?", "--from", BOUNDS["from"], "--to", BOUNDS["to"], "--collect", "--json")
         self.assertEqual(result.returncode, 0, result.stderr)
         started = json.loads(result.stdout)
@@ -597,6 +667,9 @@ class TaskTests(Fixture):
         self.assertEqual(self.cli_staging("close", sid, "--outcome", "diagnosed").returncode, 1)
         self.assertEqual(self.cli_staging("close", sid, "--outcome", "done").returncode, 0)
         self.assertEqual(session_path(self.root, sid)[1]["status"], "done")
+        checked = self.cli_staging("check", sid, "--json")
+        self.assertEqual(checked.returncode, 0, checked.stdout)
+        self.assertTrue(json.loads(checked.stdout)["ok"])
 
     def test_task_from_another_environment_is_not_usable_here(self):
         sid = self.start()["session"]
