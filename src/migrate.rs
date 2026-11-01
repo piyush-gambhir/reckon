@@ -3,14 +3,21 @@ use crate::{orgs::Registry, store::*};
 use std::collections::{BTreeMap, BTreeSet};
 fn parse(path: &Path) -> Result<(BTreeMap<String, String>, Vec<String>)> {
     let (mut values, mut skipped) = (BTreeMap::new(), vec![]);
-    if !path.is_file() {
+    ensure!(
+        !redirected(path),
+        "legacy environment files must not be symlinks"
+    );
+    if !path.try_exists()? {
         return Ok((values, skipped));
     }
     let re = regex::Regex::new(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$")?;
-    for (n, raw) in String::from_utf8_lossy(&read_bytes(path, 1048576)?)
-        .lines()
-        .enumerate()
-    {
+    let content = String::from_utf8(read_bytes(path, 1048576)?)
+        .map_err(|_| anyhow!("legacy environment files must be valid UTF-8"))?;
+    ensure!(
+        !content.contains('\0'),
+        "legacy environment files must not contain NUL bytes"
+    );
+    for (n, raw) in content.lines().enumerate() {
         let line = raw.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
@@ -61,24 +68,96 @@ fn config_dirs(spec: &Value) -> BTreeSet<String> {
         })
         .collect()
 }
+fn config_present(root: &Path, spec: &Value) -> Result<bool> {
+    let files = strings(&spec["config_files"]);
+    let directories = files.is_empty();
+    let paths = if directories {
+        object(&spec["paths"])
+            .values()
+            .map(|value| text(value).to_owned())
+            .collect()
+    } else {
+        files
+    };
+    let mut present = false;
+    for relative in paths {
+        let path = local_path(root, relative)?;
+        if path.try_exists()? {
+            ensure!(
+                if directories {
+                    path.is_dir()
+                } else {
+                    path.is_file()
+                },
+                "legacy CLI config has an unexpected file type"
+            );
+            present = true;
+        }
+    }
+    Ok(present)
+}
 fn digest(path: &Path) -> Result<Option<String>> {
-    if !path.is_dir() {
+    ensure!(
+        !redirected(path),
+        "migrated CLI config must not be redirected"
+    );
+    if !path.try_exists()? {
         return Ok(None);
     }
-    let mut content = vec![];
-    for p in walkdir::WalkDir::new(path)
-        .sort_by_file_name()
-        .into_iter()
-        .filter_map(std::result::Result::ok)
-        .filter(|e| e.file_type().is_file())
-        .map(|e| e.into_path())
-    {
-        content.extend(p.strip_prefix(path)?.to_string_lossy().as_bytes());
-        content.push(0);
-        content.extend(read_bytes(&p, 8 * 1048576)?);
-        content.push(0);
+    ensure!(path.is_dir(), "migrated CLI config must be a directory");
+    let mut files = vec![];
+    for entry in walkdir::WalkDir::new(path).sort_by_file_name() {
+        let entry = entry?;
+        let relative = entry.path().strip_prefix(path)?;
+        local_path(path, relative)?;
+        ensure!(
+            !redirected(entry.path())
+                && (entry.file_type().is_file() || entry.file_type().is_dir()),
+            "migrated CLI config requires regular files and directories"
+        );
+        if entry.file_type().is_file() {
+            let name = relative
+                .to_str()
+                .ok_or_else(|| anyhow!("migrated CLI config filenames must be UTF-8"))?;
+            // Hash each file separately so its bytes cannot mimic file boundaries.
+            files.push(json!([
+                name,
+                sha256(read_bytes(entry.path(), 8 * 1048576)?)
+            ]));
+        }
     }
-    Ok(Some(sha256(content)))
+    Ok(Some(hash_json(&json!(files))))
+}
+fn migrate_session(path: &Path, org: &str, names: &BTreeMap<String, String>) -> Result<String> {
+    let mut session = read_json(&path.join("session.json"))?;
+    let id = identifier(text(&session["id"]))?.to_owned();
+    validate_session(&session, &id)?;
+    let old = text(&session["environment"]).to_owned();
+    let environment = names
+        .get(&old)
+        .ok_or_else(|| anyhow!("migrated session environment is absent from the legacy layout"))?;
+    session["org"] = json!(org);
+    session["environment"] = json!(environment);
+    write_json(&path.join("session.json"), &session)?;
+    for dir in entries(&path.join("evidence"))? {
+        let record = dir.join("record.json");
+        if record.try_exists()? {
+            let mut data = read_json(&record)?;
+            ensure!(
+                data.is_object(),
+                "migrated evidence metadata must be an object"
+            );
+            ensure!(
+                data["environment"] == old && data["session"] == session["id"],
+                "migrated evidence does not belong to its source session and environment"
+            );
+            data["org"] = json!(org);
+            data["environment"] = session["environment"].clone();
+            write_json(&record, &data)?;
+        }
+    }
+    evidence(path)?;
+    Ok(id)
 }
 pub struct MigrationOptions<'a> {
     pub display: Option<&'a str>,
@@ -144,12 +223,7 @@ pub fn migrate(
                 g.split('/')
                     .any(|k| values.get(k).is_some_and(|v| !v.is_empty()))
             });
-            let has_config = strings(&spec["config_files"])
-                .iter()
-                .any(|p| source.join(".config").join(env).join(p).is_file())
-                || object(&spec["paths"])
-                    .values()
-                    .any(|p| source.join(".config").join(env).join(text(p)).is_file());
+            let has_config = config_present(&source.join(".config").join(env), spec)?;
             if has_keys || has_config {
                 present
                     .entry(provider.clone())
@@ -188,7 +262,7 @@ pub fn migrate(
                 .filter(|(k, _)| prefixes.iter().any(|p| k.starts_with(p)))
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect::<BTreeMap<_, _>>();
-            claimed.extend(values.keys().cloned());
+            claimed.extend(values.keys().map(|key| (env.clone(), key.clone())));
             per_env.insert(env.clone(), values);
             let digests = config_dirs(spec)
                 .iter()
@@ -216,8 +290,8 @@ pub fn migrate(
     }
     for env in &envs {
         for k in settings[env].keys() {
-            if !claimed.contains(k) && k != "PATH" {
-                skipped.push(format!("{k} (no matching tool)"));
+            if !claimed.contains(&(env.clone(), k.clone())) && k != "PATH" {
+                skipped.push(format!("{k} in {env} (no matching tool)"));
             }
         }
     }
@@ -249,20 +323,21 @@ pub fn migrate(
         !dest.exists(),
         "org already exists (or its folder does): {org}"
     );
+    // Failed creation must never enter cleanup for another process's org.
+    let mut data = orgs::create(
+        h,
+        org,
+        display,
+        envs.iter().map(|e| names[e].clone()).collect(),
+        Some(
+            envs.iter()
+                .filter(|e| e.as_str() == "production")
+                .map(|e| names[e].clone())
+                .collect(),
+        ),
+        registry,
+    )?;
     let result = (|| -> Result<()> {
-        let mut data = orgs::create(
-            h,
-            org,
-            display,
-            envs.iter().map(|e| names[e].clone()).collect(),
-            Some(
-                envs.iter()
-                    .filter(|e| e.as_str() == "production")
-                    .map(|e| names[e].clone())
-                    .collect(),
-            ),
-            registry,
-        )?;
         for (cname, conn) in object(&connections) {
             let mut c = json!({"provider":conn["provider"]});
             if !conn["env"].is_null() {
@@ -288,11 +363,20 @@ pub fn migrate(
             write(
                 &orgs::secrets_path(h, org, &cname)?,
                 format!(
-                    "# Migrated from {} ({})\n{lines}",
-                    source.display(),
+                    "# Migrated from {:?} ({})\n{lines}",
+                    source,
                     text(&conn["from_env"])
                 ),
             )?;
+            ensure!(
+                json!(orgs::secrets(
+                    h,
+                    org,
+                    &cname,
+                    &registry[text(&conn["provider"])]
+                )?) == conn["values"],
+                "migrated settings for {cname} did not round-trip"
+            );
             for d in strings(&conn["config"]) {
                 copy_tree(
                     &source
@@ -324,29 +408,21 @@ pub fn migrate(
                 Path::new("sessions").join(entry.file_name().unwrap_or_default()),
             )?;
             copy_tree(&entry, &target)?;
-            let mut session = read_json(&target.join("session.json"))?;
-            session["org"] = json!(org);
-            let old = text(&session["environment"]);
-            session["environment"] = json!(names.get(old).map(String::as_str).unwrap_or(old));
-            write_json(&target.join("session.json"), &session)?;
-            for d in entries(&target.join("evidence"))? {
-                let p = d.join("record.json");
-                if p.is_file() {
-                    let mut r = read_json(&p)?;
-                    r["org"] = json!(org);
-                    r["environment"] = session["environment"].clone();
-                    write_json(&p, &r)?;
-                }
-            }
+            let id = migrate_session(&target, org, &names)?;
+            ensure!(
+                entry.file_name().and_then(|name| name.to_str()) == Some(id.as_str()),
+                "migrated session ID does not match its directory"
+            );
         }
         for entry in incidents {
-            copy_tree(
-                &entry,
-                &local_path(
-                    &root,
-                    Path::new("incidents").join(entry.file_name().unwrap_or_default()),
-                )?,
+            let target = local_path(
+                &root,
+                Path::new("incidents").join(entry.file_name().unwrap_or_default()),
             )?;
+            copy_tree(&entry, &target)?;
+            if target.join("session.json").try_exists()? {
+                migrate_session(&target, org, &names)?;
+            }
         }
         Ok(())
     })();

@@ -73,6 +73,15 @@ ignore links. Watches and prepared writes keep the connection chosen when they
 were created, and saved sessions ignore preferences, so they read the same
 accounts from any folder. Links live in `~/.reckon/links.json`.
 
+Link and unlink updates hold a shared registry lock. A concurrent edit may return
+a locked error and can be retried; successful updates preserve the other links.
+Malformed registries stop context selection without rewriting the file. Path
+keys must be absolute, contain no parent traversal, and identify distinct paths
+after separator and `.` normalization. An existing directory or FIFO at the
+registry path is an error rather than an empty registry.
+Folder paths and resolved targets must be valid UTF-8 so distinct paths cannot
+collapse into the same saved key. NUL bytes are invalid in saved path keys.
+
 ## Connections
 
 A connection is one configured account of one tool. It takes one of three
@@ -264,8 +273,20 @@ asks you to fix it instead of trying it.
   read commands.
   Each integration page lists the exact rules.
 - **Bounds.** A 60 second deadline by default (`--timeout`, at most 120) and an
-  8 MiB output cap (`--max-bytes`). Known secret values are redacted from the
-  output.
+  8 MiB combined stdout and stderr cap (`--max-bytes`). The cap also applies
+  after secret redaction and UTF-8 replacement, including cached output and
+  saved evidence. Truncation returns exit status 3.
+
+Output caps, timeouts and cancellation can interrupt a credential mid-value.
+Reckon also redacts trailing prefixes of known secrets in those incomplete
+streams before decoding or saving them, including JSON-escaped values. The same
+protection applies to verification error details and action receipts.
+
+For CLIs with a command resolver, Reckon requires a valid read classification
+and a boolean flag saying whether the command prints credentials. Malformed
+responses and resolver failures stop the read. Registry fallback is reserved for
+an explicit error saying the resolver entry point is unsupported. Resolver
+errors do not echo child-supplied diagnostics or command names.
 
 | Mode | Providers |
 | --- | --- |

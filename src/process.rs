@@ -47,14 +47,7 @@ pub struct Output {
     pub duration_ms: u128,
 }
 pub type Environment = BTreeMap<String, String>;
-pub fn run(
-    argv: &[String],
-    env: Option<&Environment>,
-    cwd: Option<&Path>,
-    timeout: f64,
-    max_bytes: usize,
-    stdin: Option<&[u8]>,
-) -> Result<Output> {
+pub fn validate_limits(timeout: f64, max_bytes: usize) -> Result<()> {
     ensure!(
         timeout.is_finite()
             && timeout > 0.0
@@ -63,6 +56,17 @@ pub fn run(
             && max_bytes <= 8 * 1048576,
         "timeout must be 0–120 seconds; output limit 1–8388608 bytes"
     );
+    Ok(())
+}
+pub fn run(
+    argv: &[String],
+    env: Option<&Environment>,
+    cwd: Option<&Path>,
+    timeout: f64,
+    max_bytes: usize,
+    stdin: Option<&[u8]>,
+) -> Result<Output> {
+    validate_limits(timeout, max_bytes)?;
     run_bounded(argv, env, cwd, timeout, max_bytes, stdin)
 }
 pub fn run_bounded(
@@ -103,6 +107,16 @@ pub fn run_bounded(
     {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x00000200);
+    }
+    // Cancellation can arrive while the operator is still at an approval prompt.
+    if CANCELLED.load(Ordering::SeqCst) {
+        return Ok(Output {
+            status: Status::Cancelled,
+            exit_code: None,
+            stdout: vec![],
+            stderr: vec![],
+            duration_ms: started.elapsed().as_millis(),
+        });
     }
     let mut child = match command.spawn() {
         Ok(c) => c,

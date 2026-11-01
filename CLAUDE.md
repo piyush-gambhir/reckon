@@ -18,7 +18,7 @@ inside an org is [WORKSPACE.md](WORKSPACE.md); the plan is
 | `src/workspace.rs` | Each org's agent folder, its generated files and permissions, `reckon open` |
 | `src/migrate.rs` | Copies a pre-org checkout's layout into an org |
 | `src/{activity,brief,actions}.rs` | The per-org activity log, briefs (one org or all), approved writes |
-| `src/{store,investigation,operations,process}.rs` | Sessions, evidence, typed operations, bounded subprocesses |
+| `src/{store,investigation,operations,contracts,metrics,quality,process}.rs` | Sessions, evidence, typed operations and output contracts, metric summaries, source quality, bounded subprocesses |
 | `src/assets.rs` | Embedded workspace guide, recipes, skill and knowledge templates |
 | `scripts/reckon.py` | Legacy executable alias to `target/release/reckon`; contains no Python |
 | `tests/reference/` | Frozen Python reference used by compatibility tests; never part of the runtime |
@@ -53,6 +53,8 @@ bash -n scripts/reckon scripts/setup.sh
 RECKON_HOME="$(mktemp -d)" target/debug/reckon demo
 # Optional: check adopted CLIs' allowed commands against real release binaries (no account needed)
 RECKON_ADOPTED_BIN=/path/to/binaries python3 -B -m unittest discover -s tests -p 'test_adopted.py'
+# Optional native resolver check against all ten pinned first-party CLIs (no account needed)
+RECKON_REAL_BIN_DIR=/path/to/binaries cargo test --locked real_cli_resolvers -- --ignored
 ```
 
 The web site: `cd web && pnpm install && pnpm types:check && pnpm build:cloudflare && pnpm test:search`.

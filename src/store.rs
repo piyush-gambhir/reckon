@@ -82,8 +82,25 @@ pub fn private_dir(path: &Path) -> Result<()> {
                 private_dir(parent)?;
             }
         }
-        fs::create_dir(path).or_else(|e| if path.is_dir() { Ok(()) } else { Err(e) })?;
+        let mut builder = fs::DirBuilder::new();
+        builder.recursive(false);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
+        builder.create(path).or_else(|e| {
+            if path.is_dir() && !redirected(path) {
+                Ok(())
+            } else {
+                Err(e)
+            }
+        })?;
     }
+    ensure!(
+        path.is_dir() && !redirected(path),
+        "local state directory must be a directory without symlinks"
+    );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -109,8 +126,64 @@ pub fn write(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
     temp.persist(path).map_err(|e| e.error)?;
     Ok(())
 }
+pub(crate) fn json_content(value: &Value) -> Result<String> {
+    let content = format!("{}\n", serde_json::to_string_pretty(value)?);
+    ensure!(
+        content.len() <= 8 * 1048576,
+        "local JSON state exceeds its readable size limit"
+    );
+    // Serialization permits deeper values than our reader can reopen.
+    serde_json::from_str::<Value>(&content)
+        .map_err(|_| anyhow!("local JSON state exceeds its readable nesting limit"))?;
+    Ok(content)
+}
 pub fn write_json(path: &Path, value: &Value) -> Result<()> {
-    write(path, format!("{}\n", serde_json::to_string_pretty(value)?))
+    write(path, json_content(value)?)
+}
+pub fn append_file(path: &Path) -> Result<File> {
+    let parent = path.parent().ok_or_else(|| anyhow!("missing parent"))?;
+    local_path(
+        parent,
+        Path::new(
+            path.file_name()
+                .ok_or_else(|| anyhow!("missing filename"))?,
+        ),
+    )?;
+    private_dir(parent)?;
+    let mut opts = OpenOptions::new();
+    // Windows locks need read access as well as an append-only handle.
+    opts.read(true).append(true).create(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    let file = opts.open(path)?;
+    ensure!(
+        file.metadata()?.is_file(),
+        "local log must be a private regular file"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        // Check the link count before changing permissions or writing through this inode.
+        ensure!(
+            file.metadata()?.nlink() == 1,
+            "local log must be a private regular file"
+        );
+        file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(file)
+}
+pub fn append_json(path: &Path, value: &Value) -> Result<()> {
+    let mut bytes = serde_json::to_vec(value)?;
+    bytes.push(b'\n');
+    let mut file = append_file(path)?;
+    // Separate watches and CLI processes share these logs.
+    file.lock()?;
+    file.write_all(&bytes)?;
+    Ok(())
 }
 fn open_read(path: &Path) -> Result<File> {
     local_path(
@@ -177,7 +250,37 @@ pub fn pick<'a>(data: &'a Value, path: &str) -> &'a Value {
     item
 }
 pub fn sha256(bytes: impl AsRef<[u8]>) -> String {
-    format!("{:x}", Sha256::digest(bytes.as_ref()))
+    Sha256::digest(bytes.as_ref())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+pub fn file_sha256(path: &Path) -> Result<String> {
+    let file = open_read(path)?;
+    let metadata = file.metadata()?;
+    ensure!(metadata.is_file(), "configuration must be a regular file");
+    let length = metadata.len();
+    let mut reader = file.take(length.saturating_add(1));
+    let mut digest = Sha256::new();
+    let mut bytes = [0; 8192];
+    let mut read = 0u64;
+    loop {
+        let count = reader.read(&mut bytes)?;
+        if count == 0 {
+            break;
+        }
+        digest.update(&bytes[..count]);
+        read += count as u64;
+    }
+    ensure!(
+        read == length,
+        "configuration changed while it was being fingerprinted; retry"
+    );
+    Ok(digest
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 // Python's canonical JSON encoding is retained for existing cache and action hashes.
 pub fn canonical(value: &Value) -> String {
@@ -223,6 +326,9 @@ impl Drop for Lock {
     }
 }
 pub fn lock(path: &Path) -> Result<Lock> {
+    try_lock(path)?.ok_or_else(|| anyhow!("session is locked by another process"))
+}
+pub fn try_lock(path: &Path) -> Result<Option<Lock>> {
     private_dir(path)?;
     let target = local_path(path, ".lock")?;
     let mut opts = OpenOptions::new();
@@ -247,9 +353,11 @@ pub fn lock(path: &Path) -> Result<Lock> {
         );
         file.set_permissions(fs::Permissions::from_mode(0o600))?;
     }
-    file.try_lock()
-        .map_err(|_| anyhow!("session is locked by another process"))?;
-    Ok(Lock { _file: file })
+    match file.try_lock() {
+        Ok(()) => Ok(Some(Lock { _file: file })),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+        Err(std::fs::TryLockError::Error(error)) => Err(error.into()),
+    }
 }
 pub fn validate_tree(root: &Path) -> Result<()> {
     for entry in walkdir::WalkDir::new(root).follow_links(false) {
@@ -264,6 +372,16 @@ pub fn validate_tree(root: &Path) -> Result<()> {
 }
 pub fn copy_tree(source: &Path, target: &Path) -> Result<()> {
     validate_tree(source)?;
+    let source_root = source.canonicalize()?;
+    let absolute_target = crate::orgs::absolute(target)?;
+    let existing_parent = absolute_target
+        .ancestors()
+        .find(|p| p.exists())
+        .ok_or_else(|| anyhow!("copy target has no existing parent"))?;
+    ensure!(
+        !existing_parent.canonicalize()?.starts_with(&source_root),
+        "a directory cannot be copied into itself or its descendants"
+    );
     for entry in walkdir::WalkDir::new(source) {
         let e = entry?;
         let dest = local_path(target, e.path().strip_prefix(source)?)?;
@@ -276,9 +394,12 @@ pub fn copy_tree(source: &Path, target: &Path) -> Result<()> {
     Ok(())
 }
 pub fn entries(path: &Path) -> Result<Vec<PathBuf>> {
-    if !path.is_dir() {
-        return Ok(vec![]);
-    }
+    let metadata = match path.metadata() {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+        Err(error) => return Err(error.into()),
+    };
+    ensure!(metadata.is_dir(), "local state path must be a directory");
     let mut items = fs::read_dir(path)?
         .map(|e| e.map(|v| v.path()))
         .collect::<std::io::Result<Vec<_>>>()?;
@@ -290,6 +411,10 @@ pub fn session_path(root: &Path, id: &str) -> Result<(PathBuf, Value)> {
     let p = local_path(&path, "session.json")?;
     ensure!(p.is_file(), "unknown session: {id}");
     let data = read_json(&p)?;
+    validate_session(&data, id)?;
+    Ok((path, data))
+}
+pub(crate) fn validate_session(data: &Value, id: &str) -> Result<()> {
     ensure!(
         data.is_object()
             && data["schema_version"] == SCHEMA
@@ -297,7 +422,69 @@ pub fn session_path(root: &Path, id: &str) -> Result<(PathBuf, Value)> {
             && orgs::valid_name(text(&data["environment"])),
         "unsupported or inconsistent session metadata"
     );
-    Ok((path, data))
+    ensure!(
+        data["budget"].is_null()
+            || data["budget"]
+                .as_u64()
+                .is_some_and(|n| (1..=1000).contains(&n)),
+        "invalid session budget: expected null or a whole number 1-1000"
+    );
+    let mut notes = std::collections::BTreeSet::new();
+    ensure!(
+        ["open", "done", "diagnosed", "inconclusive"].contains(&text(&data["status"]))
+            && data["notes"].is_array()
+            && array(&data["notes"]).iter().all(|n| {
+                n.is_object()
+                    && identifier(text(&n["id"])).is_ok()
+                    && notes.insert(text(&n["id"]))
+                    && ["finding", "action", "hypothesis", "rejected", "question"]
+                        .contains(&text(&n["kind"]))
+                    && n["text"].is_string()
+                    && !text(&n["text"]).trim().is_empty()
+                    && n.get("evidence")
+                        .is_none_or(|v| v.is_array() && array(v).iter().all(Value::is_string))
+                    && n.get("follows")
+                        .is_none_or(|v| v.is_array() && array(v).iter().all(Value::is_string))
+                    && n.get("withdrawn_at").is_none_or(Value::is_string)
+            }),
+        "invalid session status or notes"
+    );
+    if let Some(workflow) = data.get("workflow").filter(|v| !v.is_null()) {
+        crate::workflows::validate_snapshot(workflow)?;
+    }
+    if let Some(previous) = data.get("previous").filter(|v| !v.is_null()) {
+        let mut actions = std::collections::BTreeSet::new();
+        ensure!(
+            previous.is_object()
+                && identifier(text(&previous["session"])).is_ok()
+                && previous["actions"].is_array()
+                && array(&previous["actions"]).iter().all(|a| {
+                    a.is_object()
+                        && identifier(text(&a["id"])).is_ok()
+                        && actions.insert(text(&a["id"]))
+                        && a["text"].is_string()
+                }),
+            "invalid session previous review or actions"
+        );
+    }
+    Ok(())
+}
+pub fn finished_at(data: &Value) -> Result<DateTime<Utc>> {
+    let stamp = data
+        .get("closed_at")
+        .filter(|value| !value.is_null())
+        .unwrap_or(&data["created_at"]);
+    let stamp = stamp
+        .as_str()
+        .ok_or_else(|| anyhow!("invalid session finish time"))?;
+    instant(stamp).or_else(|_| {
+        // Older review summaries can store a UTC date without a time.
+        chrono::NaiveDate::parse_from_str(stamp, "%Y-%m-%d")
+            .ok()
+            .and_then(|date| date.and_hms_opt(0, 0, 0))
+            .map(|date| date.and_utc())
+            .ok_or_else(|| anyhow!("invalid session finish time"))
+    })
 }
 pub fn services(root: &Path, env: &str) -> Result<Vec<Value>> {
     let path = local_path(root, format!("knowledge/{env}/services.json"))?;
@@ -401,12 +588,13 @@ pub fn create(
         &uuid::Uuid::new_v4().simple().to_string()[..10]
     );
     let path = local_path(root, format!("sessions/{id}"))?;
-    private_dir(&path.join("evidence"))?;
     let mut data = json!({"schema_version":SCHEMA,"id":id,"org":org,"environment":env,"mode":mode,"service":null,"service_context":null,"question":question,"window":null,"playbook":null,"area":null,"created_at":now(),"status":"open","notes":[],"knowledge":knowledge_snapshot(root,env)?,"budget":null});
     for (k, v) in object(&extra) {
         data[k] = v;
     }
-    write_json(&path.join("session.json"), &data)?;
+    let content = json_content(&data)?;
+    private_dir(&path.join("evidence"))?;
+    write(&path.join("session.json"), content)?;
     Ok((path, data))
 }
 pub fn evidence(path: &Path) -> Result<Vec<Value>> {
@@ -420,7 +608,7 @@ pub fn evidence(path: &Path) -> Result<Vec<Value>> {
         if !p.exists() && entries(&dir)?.is_empty() {
             continue;
         }
-        let record = read_json(&p)?;
+        let mut record = read_json(&p)?;
         ensure!(
             record.is_object() && record["schema_version"] == SCHEMA,
             "unsupported evidence metadata"
@@ -444,6 +632,7 @@ pub fn evidence(path: &Path) -> Result<Vec<Value>> {
             text(&record["status"]) != "ok" || object(artifacts).len() == 2,
             "evidence integrity check failed: successful record lacks artifacts"
         );
+        let mut stdout = None;
         for (stream, artifact) in object(artifacts) {
             let expected = format!("evidence/{id}/{stream}.txt");
             ensure!(
@@ -457,6 +646,12 @@ pub fn evidence(path: &Path) -> Result<Vec<Value>> {
                     && text(&artifact["sha256"]) == sha256(&content),
                 "evidence integrity check failed: {id}/{stream}"
             );
+            if stream == "stdout" {
+                stdout = Some(content);
+            }
+        }
+        if let Some(stdout) = stdout {
+            crate::contracts::apply(&mut record, &stdout);
         }
         records.push(record);
     }

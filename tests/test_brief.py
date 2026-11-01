@@ -1,6 +1,7 @@
 """reckon brief and session knowledge snapshots. Offline."""
 import json
 import os
+from pathlib import Path
 import unittest
 
 from helpers import JENKINS, SOURCE, OrgCase
@@ -10,6 +11,169 @@ from reckonlib.store import create, write, write_json
 
 
 class BriefTests(OrgCase):
+    def test_native_history_and_brief_reject_non_directory_state(self):
+        commands = {
+            "sessions": (("history", "--all-envs"), ("brief",), ("preflight",)),
+            "actions": (("brief",),),
+            "incidents": (("history", "--all-envs"), ("preflight",)),
+        }
+        for name, probes in commands.items():
+            path = self.root / name
+            if path.exists():
+                path.rmdir()
+            path.write_text("preserved state")
+            for command in probes:
+                with self.subTest(directory=name, command=command):
+                    result = self.cli(*command, "--org", "acme", "--env", "staging", "--json")
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertEqual(path.read_text(), "preserved state")
+            path.unlink()
+            if os.name != "nt":
+                outside = self.dir / ("outside-" + name)
+                outside.mkdir()
+                path.symlink_to(outside, target_is_directory=True)
+                for command in probes:
+                    with self.subTest(directory=name, command=command, redirected=True):
+                        result = self.cli(*command, "--org", "acme", "--env", "staging", "--json")
+                        self.assertEqual(result.returncode, 1, result.stderr)
+                        self.assertEqual(list(outside.iterdir()), [])
+                path.unlink()
+            path.mkdir()
+
+    def test_native_preflight_reports_knowledge_directory_errors(self):
+        for layer in ("staging", "_shared"):
+            path = self.root / "knowledge" / layer
+            if path.exists():
+                path.rmdir()
+            write(path, "preserved knowledge state")
+            result = self.cli("preflight", "--org", "acme", "--env", "staging", "--json")
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertEqual(path.read_text(), "preserved knowledge state")
+            path.unlink()
+            path.mkdir()
+
+    def test_native_preflight_counts_only_regular_knowledge_documents(self):
+        path = self.root / "knowledge/staging"
+        (path / "directory.md").mkdir(parents=True)
+        (path / "directory.json").mkdir()
+        result = self.cli("preflight", "--org", "acme", "--env", "staging", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["knowledge"]["staging"], 0)
+        write(path / "fact.md", "A synthetic fact.")
+        write_json(path / "fixture.json", {"fixture": True})
+        write(path / "ignored.txt", "Not a knowledge document.")
+        if os.name != "nt":
+            outside = self.dir / "outside.md"
+            outside.write_text("An outside document.")
+            (path / "linked.md").symlink_to(outside)
+        result = self.cli("preflight", "--org", "acme", "--env", "staging", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["knowledge"]["staging"], 2)
+
+    def test_native_previous_review_qualifies_unreadable_action_history(self):
+        _, prior = create(self.root, "acme", "staging", "Prior review", "task")
+        followups = [{"id": "a-follow", "text": "Follow up on the prior finding."}]
+        _, current = create(self.root, "acme", "staging", "Current review", "task", previous={"session": prior["id"], "actions": followups})
+        path = self.root / "actions"
+        path.write_text("preserved action history")
+        for regular_file in (True, False):
+            if not regular_file:
+                path.unlink()
+                write(path / "a-damaged/action.json", "{invalid JSON")
+            result = self.cli("resume", current["id"], "--org", "acme", "--env", "staging", "--json")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            previous = json.loads(result.stdout)["previous"]
+            self.assertEqual(previous["actions"], followups)
+            self.assertEqual(previous["writes"], [])
+            self.assertIn("action receipts", " ".join(previous["warnings"]))
+            report = self.cli("report", current["id"], "--org", "acme", "--env", "staging", "--json")
+            self.assertEqual(report.returncode, 0, report.stderr)
+            self.assertIn("action receipts", Path(json.loads(report.stdout)["report"]).read_text())
+            if regular_file:
+                self.assertEqual(path.read_text(), "preserved action history")
+            else:
+                self.assertEqual((path / "a-damaged/action.json").read_text(), "{invalid JSON")
+
+    def test_native_findings_keep_citation_failures_visible(self):
+        path, session = create(self.root, "acme", "staging", "Citation integrity", "task")
+        record = work.record_run(self.root, session["id"], self.ctx(), {
+            "argv": ["jenkins", "job", "list"], "connection": "jenkins-staging", "provider": "jenkins", "values": {},
+            "result": {"status": "ok", "exit_code": 0, "stdout": b"[]", "stderr": b"", "duration_ms": 1}})
+        work.note(self.root, session["id"], "finding", "A recorded conclusion", [record["id"]])
+        record_path = path / "evidence" / record["id"] / "record.json"
+        record_path.write_text(json.dumps(dict(record, status="failed")))
+        scope = ("--org", "acme", "--env", "staging")
+        for arguments in (("brief",), ("report", session["id"])):
+            with self.subTest(arguments=arguments):
+                result = self.cli(*arguments, *scope, "--json")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                data = json.loads(result.stdout)
+                if arguments[0] == "brief":
+                    finding = data["recent_findings"][0]
+                    self.assertFalse(finding["citations"]["ok"])
+                    self.assertIn("failed", " ".join(finding["citations"]["problems"]))
+                    rendered = self.cli("brief", *scope).stdout
+                else:
+                    rendered = Path(data["report"]).read_text()
+                self.assertIn("A recorded conclusion", rendered)
+                self.assertIn("Unsupported", rendered)
+                self.assertIn("failed", rendered)
+        # Artifact damage must qualify a brief rather than validate an old claim.
+        record_path.write_text(json.dumps(record))
+        (record_path.parent / "stdout.txt").write_text("[{}]")
+        result = self.cli("brief", *scope, "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        finding = json.loads(result.stdout)["recent_findings"][0]
+        self.assertFalse(finding["citations"]["ok"])
+        self.assertIn("integrity", " ".join(finding["citations"]["problems"]))
+
+    def test_native_findings_qualify_missing_and_partial_evidence(self):
+        path, session = create(self.root, "acme", "staging", "Coverage integrity", "task")
+        record = work.record_run(self.root, session["id"], self.ctx(), {
+            "argv": ["jenkins", "job", "list"], "connection": "jenkins-staging", "provider": "jenkins", "values": {},
+            "result": {"status": "ok", "exit_code": 0, "stdout": b"[]", "stderr": b"", "duration_ms": 1}})
+        work.note(self.root, session["id"], "finding", "A limited conclusion", [record["id"]])
+        record_path = path / "evidence" / record["id"] / "record.json"
+        record_path.write_text(json.dumps(dict(record, completeness="partial", data_quality={"warnings": ["Synthetic sampling warning."]})))
+        scope = ("--org", "acme", "--env", "staging")
+        result = self.cli("brief", *scope, "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        citations = json.loads(result.stdout)["recent_findings"][0]["citations"]
+        self.assertTrue(citations["ok"])
+        self.assertIn("partial", " ".join(citations["warnings"]))
+        self.assertIn("sampling", " ".join(citations["warnings"]))
+        result = self.cli("report", session["id"], *scope, "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for rendered in (self.cli("brief", *scope).stdout, Path(json.loads(result.stdout)["report"]).read_text()):
+            self.assertIn("Coverage:", rendered)
+            self.assertIn("sampling", rendered)
+            self.assertNotIn("Unsupported", rendered)
+        data = json.loads((path / "session.json").read_text())
+        data["notes"][0]["evidence"] = ["e-missing"]
+        (path / "session.json").write_text(json.dumps(data))
+        result = self.cli("brief", *scope, "--json")
+        self.assertIn("missing evidence", " ".join(json.loads(result.stdout)["recent_findings"][0]["citations"]["problems"]))
+        # A foreign org or mismatched session ID cannot contribute local findings.
+        for changed in (dict(data, org="other"), dict(data, id="s-other")):
+            (path / "session.json").write_text(json.dumps(changed))
+            result = self.cli("brief", *scope, "--json")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["recent_findings"], [])
+
+    @unittest.skipIf(os.name == "nt", "Unix directory symlink fixture")
+    def test_native_brief_refuses_a_redirected_session_folder(self):
+        _, data = create(self.root, "acme", "staging", "A local task", "task")
+        outside = self.dir / "outside"
+        outside.mkdir()
+        content = json.dumps(dict(data, id="s-linked", question="An outside task"))
+        (outside / "session.json").write_text(content)
+        (self.root / "sessions/s-linked").symlink_to(outside, target_is_directory=True)
+        result = self.cli("brief", "--org", "acme", "--env", "staging", "--json")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("symlink", result.stderr)
+        self.assertNotIn("An outside task", result.stdout)
+        self.assertEqual((outside / "session.json").read_text(), content)
+
     def setUp(self):
         super().setUp()
         self.org(connections={"jenkins-staging": {"provider": "jenkins", "env": "staging"}, "grafana": {"provider": "grafana"}},
@@ -24,8 +188,8 @@ class BriefTests(OrgCase):
             "result": {"status": "ok", "exit_code": 0, "stdout": b"[]", "stderr": b"", "duration_ms": 1}})
         work.note(self.root, session["id"], "finding", "Signups fell 12% week on week", [record["id"]])
         for status, aid in (("prepared", "a-1"), ("unknown", "a-2"), ("applied", "a-3")):
-            write_json(self.root / "actions" / aid / "action.json", {"id": aid, "status": status, "operation": "github.issue.create",
-                                                                     "connection": "gh", "environment": "staging", "params": {"repo": "acme/api"}})
+            write_json(self.root / "actions" / aid / "action.json", {"schema_version": 1, "id": aid, "org": "acme", "status": status, "operation": "github.issue.create",
+                                                                     "prepared_at": "2026-10-01T00:00:00Z", "connection": "gh", "environment": "staging", "params": {"repo": "acme/api", "title": "Fixture issue", "body": "Synthetic fixture."}})
         result = self.cli("brief", "--org", "acme", "--env", "staging", "--json")
         self.assertEqual(result.returncode, 0, result.stderr)
         out = json.loads(result.stdout)
@@ -48,9 +212,9 @@ class BriefTests(OrgCase):
         # An unreadable session and a malformed write are passed over.
         write(self.root / "sessions" / "20200101T000000Z-broken0000" / "session.json", "{not json")
         write_json(self.root / "actions" / "a-x" / "action.json", [])
-        write_json(self.root / "actions" / "a-j" / "action.json", {"id": "a-j", "status": "prepared", "operation": "jira.issue.create",
+        write_json(self.root / "actions" / "a-j" / "action.json", {"schema_version": 1, "id": "a-j", "org": "acme", "prepared_at": "2026-10-01T00:00:00Z", "status": "prepared", "operation": "jira.issue.create",
                                                                    "connection": "jira", "environment": "staging",
-                                                                   "params": {"project": "ABC", "summary": "Fix titles"}})
+                                                                   "params": {"project": "ABC", "type": "Task", "summary": "Fix titles"}})
         # Hand-edited workflow data is passed over, dates that cannot be read count as no date, and
         # values that print alike stay separate series.
         for odd in ({"workflow": dict(flow, series=None)}, {"workflow": dict(flow, series="site")}, {"workflow": dict(flow, id=["x"])},

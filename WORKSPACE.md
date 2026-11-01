@@ -95,10 +95,15 @@ Reckon checks this: a selector naming another environment's label or excluding
 the active one (`env!=`) is refused; `traces search` and `traces services` get
 `--env <label>` added when you leave it out; `metrics query`, `metrics query-range`,
 `logs query`, `logs hits` and `logs stats` are refused until they select the
-active label (`{env="<label>"}`, `env:<label>` or `--stream '{env="<label>"}'`);
-and `or`/`unless` are refused unless the label is in `--stream`, which applies to
-the whole query. Put the full command first (`metrics query ...`). These checks
-stop mistakes; keep queries simple so they can do their job.
+active label (`{env="<label>"}`, `env:<label>` or `--stream '{env="<label>"}'`).
+Metrics queries are parsed as PromQL: every selector, including selectors in
+aggregation parameters, must select only the active label. Metrics `or`/`unless`
+can combine selectors when each is scoped. Logs `or`/`unless` need the label in
+`--stream`, which applies to the whole query. Put the full command first
+(`metrics query ...`). Shared metrics queries have a 64 KiB size limit, a
+conservative 1,024-token budget and at most 128 nested delimiters. Backtick strings
+preserve literal backslashes, and the original query is passed to the tool. These
+checks stop mistakes; keep queries simple so they can do their job.
 
 ## Saving work: sessions
 
@@ -126,6 +131,9 @@ investigation into `incidents/<date>-<slug>/` for a full RCA.
 Investigations (`debug`, `investigate`, `monitor`, `analyze`) need the service
 mapped in `knowledge/<env>/services.json`; see `docs/INVESTIGATIONS.md` in the
 Reckon checkout. `reckon collect <id>` runs the mapped typed reads.
+Retries reuse successful evidence from the same source without spending more
+session budget. The remaining budget must cover the whole batch of new records
+before any new read starts; `--refresh` makes every operation a new read.
 
 ## Workflows
 
@@ -155,6 +163,11 @@ actions with this week's evidence:
 closed as done until each is (or `follow-up` is skipped with a reason). Prepare a
 write with `--session <id>` so the next review sees what happened to it.
 
+Read citation warnings in briefs, reports and `previous.warnings` before relying
+on a recorded claim. Failed or missing evidence makes the claim unsupported;
+partial coverage and source warnings still qualify successful citations. Copied
+actions remain follow-up duties even when their old evidence is no longer usable.
+
 Incident work uses the skill's modes (investigate, monitor, analyze).
 
 ## Knowledge
@@ -183,11 +196,21 @@ reckon act list
 Tell the operator the action ID and what it does. They run `reckon act apply <id>`,
 which refuses if the connection changed since you prepared it or is logged in to
 another account than the one pinned, shows the same preview, asks for `yes` (or the org name for production and
-for org-wide accounts), runs it once, and keeps a receipt. If a receipt says `unknown`, run
+for org-wide accounts), runs it once, and keeps a receipt. A nonzero CLI exit,
+timeout or interruption leaves the write `unknown`: a server may already have
+accepted it. A CLI that cannot start is `failed`. If a receipt says `unknown`, run
 `reckon act reconcile <id>`: it marks the action `applied` only when it finds the
 issue carrying the action's marker; otherwise the outcome stays unknown and you must
 not prepare the same write again until the operator has checked. Prepared actions expire after 24 hours. Supported writes:
 `github.issue.create`, `jira.issue.create` and `gsc.sitemap.submit`:
+
+Saved CLI profiles are also pinned when an action is prepared and checked again
+after confirmation. A profile change requires preparing again. Actions from older
+versions without a profile fingerprint cannot be applied; an older unknown outcome
+needs the operator to check its original target manually before another write.
+The apply prompt also rechecks production policy, connection settings and the CLI
+executable before starting the write. An action that expires while awaiting
+confirmation cannot run.
 
 ```bash
 reckon act prepare jira.issue.create --session <id> --body-stdin \

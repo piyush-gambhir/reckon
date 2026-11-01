@@ -45,10 +45,16 @@ this:
 
 - **Traces:** `traces search` and `traces services` get `--env <label>` added
   when you leave it out. Any other value is refused.
-- **Metrics and logs:** `metrics query`, `metrics query-range`, `logs query`,
-  `logs hits` and `logs stats` must select the label with a positive selector:
-  `{env="<label>"}` in PromQL, `env:<label>` or `--stream '{env="<label>"}'` in
-  LogsQL. `or` and `unless` are refused unless `--stream` itself selects the
+- **Metrics:** `metrics query` and `metrics query-range` are parsed as PromQL.
+  Every selector must select only the active label, including selectors inside
+  aggregation parameters and subqueries. For example, use `{env="<label>"}` on
+  both sides of a ratio. Scoped selectors may be combined with `or` or `unless`.
+  Shared queries are limited to 64 KiB, a conservative 1,024-token count and 128
+  nested delimiters before parsing. Quoted content and comments do not add nesting.
+  Backtick strings keep literal backslashes, and the provider receives the
+  original query unchanged.
+- **Logs:** `logs query`, `logs hits` and `logs stats` must select the label with
+  `env:<label>` or `--stream '{env="<label>"}'`. `or` and `unless` are refused unless `--stream` itself selects the
   label and the query has no `|` pipe, so the filter covers the whole query.
   A trailing `--` is refused, because flags after it are ignored.
 - **Anything else:** a selector naming another environment's label, or

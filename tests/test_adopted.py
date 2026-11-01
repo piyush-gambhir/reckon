@@ -54,8 +54,11 @@ class WhatsAppTests(unittest.TestCase):
 @unittest.skipUnless(os.environ.get("RECKON_ADOPTED_BIN"), "set RECKON_ADOPTED_BIN to a folder of release binaries")
 class RealBinaryTests(unittest.TestCase):
     def test_every_allowed_command_exists(self):
-        folder, home = os.environ["RECKON_ADOPTED_BIN"], tempfile.mkdtemp()
-        env = {"HOME": home, "XDG_CONFIG_HOME": home, "CI": "1", "NO_COLOR": "1", "PATH": folder + ":/usr/bin:/bin", "DO_NOT_TRACK": "1",
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        folder, home = os.environ["RECKON_ADOPTED_BIN"], temporary.name
+        env = {"HOME": home, "XDG_CONFIG_HOME": home, "CI": "1", "NO_COLOR": "1", "PATH": folder + os.pathsep + os.environ["PATH"], "DO_NOT_TRACK": "1",
+               "AWS_PAGER": "", "AWS_CLI_AUTO_PROMPT": "off", "AWS_EC2_METADATA_DISABLED": "true",
                "STRIPE_CLI_TELEMETRY_OPTOUT": "1", "SUPABASE_TELEMETRY_DISABLED": "1", "SHOPIFY_CLI_NO_ANALYTICS": "1"}
         checked = 0
         for name, spec in REGISTRY.items():
@@ -65,11 +68,13 @@ class RealBinaryTests(unittest.TestCase):
             for words in spec["read_commands"]:
                 if any("*" in w for w in words):
                     continue
-                done = subprocess.run([binary] + words + ["--help"], env=env, capture_output=True, text=True, timeout=60)
+                done = subprocess.run([binary] + words + (["help"] if name == "aws" else ["--help"]), env=env, capture_output=True, text=True, timeout=60)
                 # Some CLIs print the parent's help for an unknown verb, so the full path must appear.
-                text = " ".join((done.stdout + done.stderr).split()).lower()
+                raw = re.sub(r".\x08", "", done.stdout + done.stderr)
+                text = " ".join(raw.split()).lower()
                 text = re.sub(r" \([a-z0-9, -]+\)", "", text)  # gog prints aliases inline: "gog drive (drv) ls"
-                self.assertTrue(done.returncode == 0 and " ".join([spec["binary"]] + words).lower() in text, (name, words))
+                exists = raw.lstrip().lower().startswith(words[-1].lower() + "()") if name == "aws" else " ".join([spec["binary"]] + words).lower() in text
+                self.assertTrue(done.returncode == 0 and exists, (name, words, done.returncode, text[:300]))
                 checked += 1
         self.assertGreater(checked, 0)
 

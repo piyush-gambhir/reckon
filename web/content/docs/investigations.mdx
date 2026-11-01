@@ -86,8 +86,32 @@ Collection compares metrics with the preceding window of equal length. It runs
 at most 24 operations, each with a 15 second deadline (`--timeout`, at most 120)
 and a 1 MiB output cap (`--max-bytes`, at most 8 MiB), and caps metrics at
 1,000 steps. Missing access, failures and truncation are saved as gaps; exit
-status 2 means collection was partial. A retry reuses successful evidence, and
-`--refresh` reads again.
+status 2 means collection was partial. A retry reuses successful evidence from
+the same source without spending more session budget. The budget must cover all
+new records in the batch before any new read starts. `--refresh` reads again and
+needs the corresponding budget.
+
+Saved review evidence records source limits in `data_quality`. Checks and reports
+surface preliminary search data, missing Bing days, sampled Clarity recordings,
+export and list caps, Jenkins recent-build scope, changing build states and
+metric-provider warnings. Missing data is not treated as zero. GitHub `--jq`
+and `--template` output is saved as projected text with qualified coverage.
+
+Metric summaries validate all captured series, including those outside the
+preview. Invalid sample pairs fail the evidence read. Non-finite floats and
+native histograms are counted separately from finite float statistics. Label
+and series previews are bounded and marked when shortened; the output artifact
+holds the captured data.
+
+Typed collection validates output structures as well as JSON syntax. Unrelated
+JSON or a detail response with a different requested ID is failed evidence and
+returns exit status 2. Saved typed records are
+validated against their hashed artifacts before reuse or citation. Invalid
+historical records appear failed while their original files remain intact;
+retrying uses the session's remaining read budget.
+
+The saved operation, provider, capability and command must agree. Reuse requires
+the same typed operation, provider and capability as the current request.
 
 ## Promote to an RCA
 
@@ -120,6 +144,12 @@ credential values and common bearer and URL credentials are redacted from saved
 output, but logs can still hold customer data: review before sharing. Evidence
 files are hashed, and Reckon refuses to reuse, cite or promote an artifact that
 changed. A nearby deploy alone is not evidence that it caused an incident.
+
+History, briefs and preflight report invalid state-directory types and metadata
+I/O errors instead of treating them as empty. Preflight counts regular local
+knowledge documents. If a previous review's action receipts cannot be read,
+its summary and report warn that the write history may be incomplete; copied
+follow-up actions remain available.
 
 The full reference, including operation parameters, is
 [docs/INVESTIGATIONS.md](https://github.com/piyush-gambhir/reckon/blob/main/docs/INVESTIGATIONS.md)

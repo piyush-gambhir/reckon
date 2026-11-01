@@ -3,7 +3,6 @@ use crate::{
     orgs::{Context, Registry},
     store::*,
 };
-use std::io::Write;
 pub fn pinned() -> bool {
     std::env::var_os("RECKON_ORG").is_some() || std::env::var_os("RECKON_ENV").is_some()
 }
@@ -50,21 +49,7 @@ pub fn record(h: &Path, ctx: &Context, event: &str, fields: Value) -> Value {
     }
     let _ = (|| -> Result<()> {
         let path = local_path(&orgs::org_path(h, &ctx.org)?, "activity.jsonl")?;
-        private_dir(path.parent().ok_or_else(|| anyhow!("missing parent"))?)?;
-        let mut opts = std::fs::OpenOptions::new();
-        opts.append(true).create(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            opts.mode(0o600)
-                .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
-        }
-        let mut file = opts.open(path)?;
-        ensure!(
-            file.metadata()?.is_file(),
-            "activity log must be a regular file"
-        );
-        file.write_all(format!("{}\n", entry).as_bytes())?;
+        append_json(&path, &entry)?;
         Ok(())
     })();
     entry

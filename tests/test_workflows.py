@@ -1,5 +1,7 @@
 """Workflow recipes: parameters, checks judged from evidence, closing rules. Offline, fake gsc."""
 import json
+import os
+from pathlib import Path
 import unittest
 
 from helpers import OrgCase
@@ -8,6 +10,233 @@ from reckonlib.store import write_json
 
 
 class WorkflowTests(OrgCase):
+    def test_native_previous_review_uses_finish_time_and_stays_in_the_org(self):
+        first = self.start("site=sc-domain:acme.com")["session"]
+        second = self.start("site=sc-domain:acme.com")["session"]
+        root = orgs.workspace(self.home, "acme")
+        for sid, created, closed in ((first, "2026-10-01T10:00:00Z", "2026-10-02T23:00:00-05:00"),
+                                     (second, "2026-10-02T12:00:00Z", "2026-10-03T03:30:00Z")):
+            self.finish(sid)
+            result = self.cli("close", sid, "--outcome", "done", *self.scope)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            path = root / "sessions" / sid / "session.json"
+            data = json.loads(path.read_text())
+            path.write_text(json.dumps(dict(data, created_at=created, closed_at=closed)))
+        next_review = self.start("site=sc-domain:acme.com")
+        self.assertEqual(next_review["previous"]["session"], first)
+        for sid in (first, second):
+            path = root / "sessions" / sid / "session.json"
+            saved = json.loads(path.read_text())
+            path.write_text(json.dumps(dict(saved, closed_at="2026-10-05T00:00:00Z")))
+        # Equal recorded finish times use the same deterministic tie in both views.
+        next_review = self.start("site=sc-domain:acme.com")
+        brief = self.cli("brief", *self.scope, "--json")
+        self.assertEqual(brief.returncode, 0, brief.stderr)
+        review = next(row for row in json.loads(brief.stdout)["reviews"] if row["workflow"] == "growth-review")
+        self.assertEqual(next_review["previous"]["session"], max(first, second))
+        self.assertEqual(review["session"], max(first, second))
+        foreign = dict(data, id="s-foreign", org="other", created_at="2026-10-06T00:00:00Z", closed_at="2026-10-06T01:00:00Z")
+        write_json(root / "sessions/s-foreign/session.json", foreign)
+        next_review = self.start("site=sc-domain:acme.com")
+        self.assertEqual(next_review["previous"]["session"], max(first, second))
+
+    def test_native_previous_summary_refuses_changed_context(self):
+        first = self.start("site=sc-domain:acme.com")["session"]
+        self.finish(first)
+        self.assertEqual(self.cli("close", first, "--outcome", "done", *self.scope).returncode, 0)
+        second = self.start("site=sc-domain:acme.com")["session"]
+        path = orgs.workspace(self.home, "acme") / "sessions" / first / "session.json"
+        original = json.loads(path.read_text())
+        action_path = path.parents[2] / "actions/a-outside/action.json"
+        action = {"schema_version": 1, "id": "a-outside", "org": "acme", "environment": "staging", "connection": "gh",
+                  "operation": "github.issue.create", "session": first, "status": "prepared", "prepared_at": "2026-10-01T00:00:00Z",
+                  "params": {"repo": "acme/api", "title": "Fixture issue", "body": "Synthetic fixture."}, "receipt": {"url": "https://outside.fixture.invalid/1"}}
+        write_json(action_path, action)
+        resumed = self.cli("resume", second, *self.scope, "--json")
+        self.assertEqual(len(json.loads(resumed.stdout)["previous"]["writes"]), 1)
+        brief = self.cli("brief", *self.scope, "--json")
+        self.assertEqual(len(json.loads(brief.stdout)["writes_waiting_for_approval"]), 1)
+        for changed in (dict(action, org="other"), dict(action, environment="uat"), dict(action, id="a-wrong")):
+            write_json(action_path, changed)
+            resumed = self.cli("resume", second, *self.scope, "--json")
+            self.assertEqual(resumed.returncode, 0, resumed.stderr)
+            self.assertEqual(json.loads(resumed.stdout)["previous"]["writes"], [])
+            self.assertNotIn("outside.fixture.invalid", resumed.stdout)
+            brief = self.cli("brief", *self.scope, "--json")
+            self.assertEqual(brief.returncode, 0, brief.stderr)
+            self.assertEqual(json.loads(brief.stdout)["writes_waiting_for_approval"], [])
+        for key, value in (("org", "other"), ("environment", "uat")):
+            with self.subTest(key=key):
+                changed = dict(original, **{key: value}, question="foreign-context-marker")
+                changed["notes"] = [dict(note, text="foreign-context-marker") for note in original["notes"]]
+                content = json.dumps(changed)
+                path.write_text(content)
+                resumed = self.cli("resume", second, *self.scope, "--json")
+                self.assertEqual(resumed.returncode, 0, resumed.stderr)
+                previous = json.loads(resumed.stdout)["previous"]
+                self.assertEqual(previous["status"], "unavailable")
+                self.assertTrue(previous["actions"])
+                self.assertNotIn("foreign-context-marker", resumed.stdout)
+                self.assertEqual(path.read_text(), content)
+
+    def test_native_history_orders_instants_and_refuses_foreign_org_sessions(self):
+        root = orgs.workspace(self.home, "acme")
+        for sid, stamp, org in (("20261001T000000Z-ffff", "2026-10-01T23:00:00-05:00", "acme"),
+                                ("20261002T000000Z-0000", "2026-10-02T03:30:00Z", "acme"),
+                                ("20261003T000000Z-ffff", "2026-10-03T00:00:00Z", "other"),
+                                ("20261004T000000Z-ffff", "invalid", "acme")):
+            write_json(root / "sessions" / sid / "session.json", {"schema_version": 1, "id": sid, "org": org,
+                       "environment": "staging", "mode": "task", "status": "open", "created_at": stamp,
+                       "question": "foreign-context-marker" if org == "other" else sid, "notes": []})
+        result = self.cli("history", *self.scope, "--limit", "1", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([row["id"] for row in json.loads(result.stdout)], ["20261001T000000Z-ffff"])
+        incident = root / "incidents/2026-10-03-foreign"
+        for metadata in ({"org": "other"}, [], "invalid"):
+            write_json(incident / "session.json", metadata)
+            (incident / "RCA.md").write_text("# foreign-context-marker\n")
+            result = self.cli("history", *self.scope, "--all-envs", "--query", "foreign-context-marker", "--json")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), [])
+        path = root / "sessions/20261003T000000Z-ffff/session.json"
+        content = path.read_text()
+        for arguments in (("resume",), ("report",), ("note", "--kind", "question", "--text", "local note")):
+            result = self.cli(arguments[0], "20261003T000000Z-ffff", *arguments[1:], *self.scope, "--json")
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertNotIn("foreign-context-marker", result.stdout)
+            self.assertEqual(path.read_text(), content)
+
+    def test_previous_review_marks_claims_with_failed_evidence(self):
+        first = self.start("site=sc-domain:acme.com")["session"]
+        self.finish(first)
+        result = self.cli("close", first, "--outcome", "done", *self.scope)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        second = self.start("site=sc-domain:acme.com")["session"]
+        root = orgs.workspace(self.home, "acme")
+        record_path = next((root / "sessions" / first / "evidence").glob("*/record.json"))
+        content = json.dumps(dict(json.loads(record_path.read_text()), status="failed"))
+        record_path.write_text(content)
+        result = self.cli("resume", second, *self.scope, "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        previous = json.loads(result.stdout)["previous"]
+        self.assertTrue(previous["actions"], previous)
+        self.assertIn("Unsupported", " ".join(previous["warnings"]))
+        self.assertIn("failed", " ".join(previous["warnings"]))
+        report = self.cli("report", second, *self.scope, "--json")
+        self.assertEqual(report.returncode, 0, report.stderr)
+        self.assertIn("Unsupported", Path(json.loads(report.stdout)["report"]).read_text())
+        self.assertEqual(record_path.read_text(), content)
+        (record_path.parent / "stdout.txt").write_text("damaged output")
+        resumed = self.cli("resume", second, *self.scope, "--json")
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        previous = json.loads(resumed.stdout)["previous"]
+        self.assertTrue(previous["actions"], previous)
+        self.assertIn("integrity", " ".join(previous["warnings"]))
+
+    def test_gsc_quality_is_visible_in_saved_evidence_checks_and_reports(self):
+        sid = self.start("site=sc-domain:acme.com")["session"]
+        period = {"start": "2026-10-01", "end": "2026-10-07", "data_state": "final",
+                  "complete": True, "row_count": 1, "metadata_returned": False}
+        payloads = [
+            dict(period, complete=False, rows=[{"clicks": 10}]),
+            {"current": dict(period, data_state="all", first_incomplete_date="2026-10-07"),
+             "previous": dict(period, complete=False), "rows": [{"clicks": 10}]},
+            {"sources": [dict(period, data_state="hourly_all")], "rows": []},
+        ]
+        for label, payload in zip(("result", "comparison", "insight"), payloads):
+            self.fake("print(" + repr(json.dumps(payload)) + ")\n", "gsc")
+            result = self.cli("run", "gsc", "--session", sid, "--label", label, *self.scope, "--", "performance",
+                              "--site", "sc-domain:acme.com", "-o", "json")
+            self.assertEqual(result.returncode, 0, result.stderr)
+        resumed = json.loads(self.cli("resume", sid, *self.scope, "--json").stdout)
+        records = resumed["evidence"]
+        self.assertEqual(len(records), 3)
+        by_output = {r["label"]: r for r in records}
+        self.assertEqual(by_output["result"]["completeness"], "partial")
+        self.assertEqual(by_output["comparison"]["completeness"], "partial")
+        self.assertIn("preliminary", " ".join(by_output["insight"]["data_quality"]["warnings"]))
+        warnings = " ".join(self.check(sid)["warnings"])
+        self.assertIn("pagination", warnings)
+        self.assertIn("preliminary", warnings)
+        report = json.loads(self.cli("report", sid, *self.scope, "--json").stdout)["report"]
+        with open(report) as source:
+            rendered = source.read()
+        self.assertIn("preliminary", rendered)
+        self.assertIn("America/Los_Angeles", rendered)
+
+    @unittest.skipIf(os.name == "nt", "Unix directory symlink fixture")
+    def test_previous_review_summary_does_not_follow_redirected_actions(self):
+        first = self.start("site=sc-domain:acme.com")["session"]
+        self.finish(first, actions=())
+        closed = self.cli("close", first, "--outcome", "done", *self.scope)
+        self.assertEqual(closed.returncode, 0, closed.stderr)
+        second = self.start("site=sc-domain:acme.com")["session"]
+        root = orgs.workspace(self.home, "acme")
+        outside = self.dir / "outside"
+        outside.mkdir()
+        content = json.dumps({"session": first, "id": "a-outside", "status": "applied", "operation": "github.issue.create",
+                              "receipt": {"url": "https://outside.fixture.invalid/issue/1"}})
+        (outside / "action.json").write_text(content)
+        (root / "actions").mkdir(exist_ok=True)
+        (root / "actions/a-outside").symlink_to(outside, target_is_directory=True)
+        result = self.cli("resume", second, *self.scope, "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["previous"]["writes"], [])
+        self.assertIn("action receipts", " ".join(json.loads(result.stdout)["previous"]["warnings"]))
+        self.assertNotIn("outside.fixture.invalid", result.stdout)
+        self.assertEqual((outside / "action.json").read_text(), content)
+
+    def test_damaged_workflow_snapshots_cannot_pass_or_close_a_review(self):
+        sid = self.start("site=sc-domain:acme.com")["session"]
+        path = orgs.workspace(self.home, "acme") / "sessions" / sid / "session.json"
+        original = json.loads(path.read_text())
+        invalid = [False, "invalid", {}, dict(original["workflow"], checks=[]),
+                   dict(original["workflow"], checks=[{"id": "f", "text": "t", "findings": "1"}]),
+                   dict(original["workflow"], report={"min_actions": -1})]
+        for workflow in invalid:
+            with self.subTest(workflow=workflow):
+                content = json.dumps(dict(original, workflow=workflow))
+                path.write_text(content)
+                for args in (("check", sid), ("close", sid, "--outcome", "done")):
+                    result = self.cli(*args, *self.scope, "--json")
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertIn("workflow", result.stderr)
+                    self.assertEqual(path.read_text(), content)
+
+    def test_successful_close_refuses_a_finding_that_fails_integrity_checks(self):
+        sid = self.start("site=sc-domain:acme.com")["session"]
+        self.finish(sid, actions=())
+        path = orgs.workspace(self.home, "acme") / "sessions" / sid / "session.json"
+        data = json.loads(path.read_text())
+        finding = next(note for note in data["notes"] if note["kind"] == "finding")
+        finding["evidence"] = ["e-missing"]
+        content = json.dumps(data)
+        path.write_text(content)
+        checked = self.cli("check", sid, *self.scope, "--json")
+        self.assertEqual(checked.returncode, 1, checked.stderr)
+        for outcome in ("done", "diagnosed"):
+            result = self.cli("close", sid, "--outcome", outcome, *self.scope)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertIn("missing evidence", result.stderr)
+            self.assertEqual(path.read_text(), content)
+
+    def test_damaged_previous_actions_cannot_remove_followup_requirements(self):
+        sid = self.start("site=sc-domain:acme.com")["session"]
+        self.finish(sid, actions=())
+        path = orgs.workspace(self.home, "acme") / "sessions" / sid / "session.json"
+        data = json.loads(path.read_text())
+        for previous in ("invalid", {}, {"session": "prior", "actions": "invalid"},
+                         {"session": "prior", "actions": [{}]}):
+            with self.subTest(previous=previous):
+                content = json.dumps(dict(data, previous=previous))
+                path.write_text(content)
+                checked = self.cli("check", sid, *self.scope, "--json")
+                self.assertEqual(checked.returncode, 1, checked.stderr)
+                self.assertIn("previous", checked.stderr)
+                closed = self.cli("close", sid, "--outcome", "done", *self.scope)
+                self.assertEqual(closed.returncode, 1, closed.stderr)
+                self.assertEqual(path.read_text(), content)
+
     def setUp(self):
         super().setUp()
         self.org(connections={"gsc": {"provider": "gsc"}}, secrets={"gsc": ["GSC_ACCESS_TOKEN=gsc-token-1"]})

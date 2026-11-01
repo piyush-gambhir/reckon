@@ -115,6 +115,20 @@ pub fn operands(
     }
     (pairs, positional)
 }
+pub fn github_format_options(args: &[String], spec: &Value) -> Vec<(String, Option<String>)> {
+    let mut spec = spec.clone();
+    // Run-list shorthands also take values, including values beginning with '-'.
+    let words = tokens(args, &spec);
+    if words.first().is_some_and(|word| word == "run")
+        && words
+            .get(1)
+            .is_some_and(|word| ["list", "ls"].contains(&word.as_str()))
+    {
+        spec["short_values"] = json!(format!("{}bceuw", text(&spec["short_values"])));
+    }
+    let values = "--app --assignee --author --base --head --label --limit --search --state --json --jq --template --repo --branch --commit --created --event --status --user --workflow --job --attempt --hostname".split_whitespace().map(str::to_owned).collect::<Vec<_>>();
+    operands(args, &spec, &values).0
+}
 fn with_command_values(spec: &Value, args: &[String]) -> Value {
     let mut spec = spec.clone();
     let words = tokens(args, &spec);
@@ -268,6 +282,19 @@ pub fn scope(spec: &Value, args: &[String], label: &str) -> Result<Vec<String>> 
     );
     let words = tokens(args, spec);
     let keys = strings(&spec["env_label_keys"]);
+    if patterns(spec, "env_promql_commands", &words) {
+        let flags = "--output --time --from --to --last --step"
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        let positional = operands(args, spec, &flags).1;
+        ensure!(
+            positional.len() == 3,
+            "put the full metric command before its query and flags"
+        );
+        crate::promql::scoped(&positional[2], &keys, label)?;
+        return Ok(args.to_vec());
+    }
     let flag = text(&spec["env_label_flag"]);
     let (mut given, mut positive) = (false, false);
     if words
@@ -577,6 +604,28 @@ pub struct Prepared {
     pub env: Environment,
     pub values: orgs::ResolvedSettings,
 }
+fn source_identity(p: &Prepared, configuration: &str, binary: &Path, executable: &str) -> String {
+    hash_json(&json!({
+        "connection":p.connection,
+        "settings":p.conn,
+        "provider":p.spec,
+        "values":hash_json(&json!(p.values)),
+        "configuration":configuration,
+        "binary":binary,
+        "executable":executable
+    }))
+}
+pub fn source_fingerprint(h: &Path, ctx: &Context, p: &Prepared) -> Result<String> {
+    let binary = which(text(&p.spec["binary"]))
+        .ok_or_else(|| anyhow!("provider executable disappeared"))?
+        .canonicalize()?;
+    Ok(source_identity(
+        p,
+        &orgs::config_fingerprint(h, &ctx.org, &p.connection)?,
+        &binary,
+        &file_sha256(&binary)?,
+    ))
+}
 pub fn prepare(
     h: &Path,
     ctx: &Context,
@@ -638,6 +687,7 @@ pub fn command(h: &Path, ctx: &Context, p: &Prepared, args: &[String]) -> Result
 pub struct Outcome {
     pub connection: String,
     pub provider: String,
+    pub source_sha256: String,
     pub argv: Vec<String>,
     pub values: orgs::ResolvedSettings,
     pub result: process::Output,
@@ -669,30 +719,48 @@ pub fn resolved(spec: &Value, env: &Environment, args: &[String]) -> Result<Valu
     })
     .unwrap_or(Value::Null);
     if result.status != Status::Ok {
-        if combined.contains("unknown command")
-            && (combined.contains("commands") || combined.contains("resolve"))
+        let diagnostic = answer["error"].as_str().unwrap_or(&combined);
+        if result.status == Status::Failed
+            && answer.get("effect").is_none()
+            && regex::Regex::new(
+                r#"^(?:Error: )?(?:unknown command "commands"(?: for "[^"\s]+")?|unknown command "resolve"(?: for "[^"\s]+ commands")?)\r?$"#,
+            )?
+            .is_match(diagnostic.trim().lines().next().unwrap_or(""))
         {
             return Ok(Value::Null);
         }
         bail!(
-            "{} could not resolve these arguments: {}",
+            "{} resolver could not resolve these arguments: {}",
             text(&spec["binary"]),
-            answer["error"].as_str().unwrap_or(result.status.name())
+            result.status.name()
         );
     }
-    if !answer.is_object() || answer.get("effect").is_none() {
-        return Ok(Value::Null);
-    }
     ensure!(
-        !truth(&answer["secret_output"]),
-        "{} prints a credential and is not allowed through reckon run",
-        answer["command"].as_str().unwrap_or("this command")
+        answer.is_object()
+            && answer["command"]
+                .as_str()
+                .is_some_and(|command| !command.trim().is_empty())
+            && answer["effect"].is_string()
+            && answer["secret_output"].is_boolean(),
+        "{} resolver returned an invalid command classification",
+        text(&spec["binary"])
     );
     ensure!(
-        text(&answer["effect"]) == "read",
-        "{} has effect {}; reckon run only reads",
-        answer["command"].as_str().unwrap_or("this command"),
-        text(&answer["effect"])
+        answer["secret_output"] == false,
+        "{} resolver prints a credential and is not allowed through reckon run",
+        text(&spec["binary"])
+    );
+    let effect = text(&answer["effect"]);
+    let effect = if ["read", "remote_write", "local_write", "auth", "interactive"].contains(&effect)
+    {
+        effect
+    } else {
+        "unknown"
+    };
+    ensure!(
+        effect == "read",
+        "{} resolver has effect {effect}; reckon run only reads",
+        text(&spec["binary"])
     );
     Ok(answer)
 }
@@ -720,14 +788,23 @@ pub fn quota(
     let folder = local_path(&orgs::org_path(h, &ctx.org)?, format!("runtime/{cname}"))?;
     let _lock = lock(&folder)?;
     let path = folder.join("quota.json");
-    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let date = chrono::Utc::now().date_naive();
+    let today = date.format("%Y-%m-%d").to_string();
     let data = if path.is_file() {
         read_json(&path)?
     } else {
-        json!({})
+        json!({"day":today,"used":0})
     };
+    ensure!(
+        data.is_object()
+            && data["used"].as_u64().is_some()
+            && chrono::NaiveDate::parse_from_str(text(&data["day"]), "%Y-%m-%d")
+                .is_ok_and(|saved| saved <= date
+                    && saved.format("%Y-%m-%d").to_string() == text(&data["day"])),
+        "invalid quota.json for {cname}: expected a nonnegative request count and a valid UTC day no later than today; check the saved ledger and system clock before retrying"
+    );
     let used = if text(&data["day"]) == today {
-        data["used"].as_u64().unwrap_or(0)
+        data["used"].as_u64().expect("validated request count")
     } else {
         0
     };
@@ -766,6 +843,7 @@ pub fn run(
         stdin,
         cache_seconds,
     } = options;
+    process::validate_limits(timeout, max_bytes)?;
 
     let (_, selected) = orgs::resolve(ctx, target)?;
     check(
@@ -795,38 +873,49 @@ pub fn run(
         Ok((args, argv))
     })()
     .map_err(|e| anyhow!(orgs::redact(&e.to_string(), &p.values)))?;
+    let configuration = orgs::config_fingerprint(h, &ctx.org, &p.connection)?;
+    let binary = which(text(&p.spec["binary"]))
+        .ok_or_else(|| anyhow!("provider executable disappeared"))?
+        .canonicalize()?;
+    let executable_sha256 = file_sha256(&binary)?;
+    let source_sha256 = source_identity(&p, &configuration, &binary, &executable_sha256);
     let key = hash_json(&json!([
         ctx.org,
         ctx.env,
-        p.connection,
-        p.conn,
-        p.values
-            .iter()
-            .map(|(k, v)| json!([k, v]))
-            .collect::<Vec<_>>(),
+        source_sha256,
         argv,
-        String::from_utf8_lossy(stdin.unwrap_or(&[]))
+        stdin.map(sha256)
     ]));
     let cache = local_path(&orgs::org_path(h, &ctx.org)?, format!("cache/{key}.json"))?;
     let mut cached_at = None;
     let mut quota_note = None;
     let hit = if cache_seconds > 0 && cache.is_file() {
-        let entry = read_json(&cache)?;
-        let age = chrono::Utc::now()
-            .signed_duration_since(instant(text(&entry["observed_at"]))?)
-            .num_milliseconds();
-        (age >= 0 && age as u64 <= cache_seconds.saturating_mul(1000)).then_some(entry)
+        read_json(&cache).ok().filter(|entry| {
+            entry["exit_code"] == 0
+                && entry["stdout"].is_string()
+                && entry["stderr"].is_string()
+                && instant(text(&entry["observed_at"])).is_ok_and(|observed| {
+                    let age = chrono::Utc::now()
+                        .signed_duration_since(observed)
+                        .num_milliseconds();
+                    age >= 0 && age as u64 <= cache_seconds.saturating_mul(1000)
+                })
+        })
     } else {
         None
     };
     let result = if let Some(hit) = hit {
         cached_at = Some(text(&hit["observed_at"]).into());
+        let out = text(&hit["stdout"]);
+        let err = text(&hit["stderr"]);
+        // Keep markers intact until presentation and evidence re-redact and bound them.
+        // The cache file itself is bounded by read_json's state-file limit.
         process::Output {
             status: Status::Ok,
             exit_code: hit["exit_code"].as_i64().map(|v| v as i32),
             duration_ms: hit["duration_ms"].as_u64().unwrap_or(0) as u128,
-            stdout: text(&hit["stdout"]).as_bytes().to_vec(),
-            stderr: text(&hit["stderr"]).as_bytes().to_vec(),
+            stdout: out.as_bytes().to_vec(),
+            stderr: err.as_bytes().to_vec(),
         }
     } else {
         quota_note = quota(h, ctx, &p.connection, &p.spec, &args)?;
@@ -835,18 +924,34 @@ pub fn run(
         } else {
             std::env::current_dir()?
         };
-        let result = process::run(&argv, Some(&p.env), Some(&cwd), timeout, max_bytes, stdin)?;
+        let mut execution = argv.clone();
+        execution[0] = binary.to_string_lossy().into_owned();
+        let result = process::run(
+            &execution,
+            Some(&p.env),
+            Some(&cwd),
+            timeout,
+            max_bytes,
+            stdin,
+        )?;
         if result.status == Status::Ok {
-            write_json(
-                &cache,
-                &json!({"observed_at":now(),"exit_code":result.exit_code,"duration_ms":result.duration_ms as u64,"stdout":orgs::redact(&String::from_utf8_lossy(&result.stdout),&p.values),"stderr":orgs::redact(&String::from_utf8_lossy(&result.stderr),&p.values)}),
-            )?;
+            let entry = json!({"observed_at":now(),"exit_code":result.exit_code,"duration_ms":result.duration_ms as u64,"stdout":orgs::redact(&String::from_utf8_lossy(&result.stdout),&p.values),"stderr":orgs::redact(&String::from_utf8_lossy(&result.stderr),&p.values)});
+            let serialized = format!("{}\n", serde_json::to_string_pretty(&entry)?);
+            // Escaping can expand a bounded process result beyond the state file limit.
+            if serialized.len() <= 8 * 1048576
+                && orgs::config_fingerprint(h, &ctx.org, &p.connection)
+                    .is_ok_and(|current| current == configuration)
+                && file_sha256(&binary).is_ok_and(|current| current == executable_sha256)
+            {
+                write(&cache, serialized)?;
+            }
         }
         result
     };
     Ok(Outcome {
         connection: p.connection,
         provider: text(&p.conn["provider"]).into(),
+        source_sha256,
         argv,
         values: p.values,
         result,
@@ -990,7 +1095,7 @@ pub fn verify(
             let detail = if result.status == Status::Ok {
                 String::new()
             } else {
-                let s = orgs::redact(&String::from_utf8_lossy(&result.stderr), &p.values);
+                let s = orgs::redact_output(&result.stderr, &p.values, result.status);
                 s.trim()
                     .chars()
                     .rev()
