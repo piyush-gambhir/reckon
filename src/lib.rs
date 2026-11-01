@@ -5,14 +5,18 @@ pub mod brief;
 pub mod cli;
 mod cli_definition;
 pub mod connectors;
+mod contracts;
 pub mod demo;
 pub mod goals;
 pub mod investigation;
+mod metrics;
 pub mod migrate;
 pub mod onepassword;
 pub mod operations;
 pub mod orgs;
 pub mod process;
+mod promql;
+mod quality;
 pub mod routines;
 pub mod spend;
 pub mod store;
@@ -38,6 +42,9 @@ pub fn number(value: &Value) -> String {
         .as_str()
         .map(str::to_owned)
         .unwrap_or_else(|| value.to_string());
+    if raw.contains(['e', 'E']) {
+        return raw;
+    }
     let (integer, fraction) = raw.split_once('.').unwrap_or((&raw, ""));
     let sign = if integer.starts_with('-') { "-" } else { "" };
     let digits = integer.trim_start_matches('-');

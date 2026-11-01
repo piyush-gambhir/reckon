@@ -1096,6 +1096,248 @@ class MigrationTests(OrgCase):
         self.assertEqual(json.loads(result.stdout)["environments"], ["prod", "uat"])
         self.assertFalse((self.home / "orgs").exists())
 
+    def test_native_migration_copies_evidence_and_preserves_source_and_existing_targets(self):
+        before = tree(self.legacy)
+        args = ("migrate", "--from", str(self.legacy), "--rename", "production=prod", "--share", "cubeapm", "--json")
+        migrated = self.cli(*args, "--org", "acme")
+        self.assertEqual(migrated.returncode, 0, migrated.stderr)
+        root = orgs.workspace(self.home, "acme")
+        records = evidence(root / "sessions" / self.sid)
+        self.assertEqual([(r["org"], r["environment"]) for r in records], [("acme", "prod")])
+        self.assertEqual(tree(self.legacy), before)
+        existing = orgs.org_path(self.home, "existing")
+        existing.mkdir()
+        (existing / "keep.txt").write_text("existing data")
+        refused = self.cli(*args, "--org", "existing")
+        self.assertEqual(refused.returncode, 1, refused.stderr)
+        self.assertEqual((existing / "keep.txt").read_text(), "existing data")
+        self.assertFalse((existing / "org.json").exists())
+        (self.legacy / "sessions" / self.sid / "session.json").write_text("invalid JSON")
+        damaged = tree(self.legacy)
+        failed = self.cli(*args, "--org", "broken")
+        self.assertEqual(failed.returncode, 1, failed.stderr)
+        self.assertFalse(orgs.org_path(self.home, "broken").exists())
+        self.assertEqual(tree(self.legacy), damaged)
+        self.assertEqual(len(evidence(root / "sessions" / self.sid)), 1)
+
+    def test_native_migration_rejects_invalid_environment_bytes_without_copying_them(self):
+        path = self.legacy / ".env.production"
+        original = path.read_bytes()
+        for invalid in (b"JENKINS_TOKEN=fixture-\xff-token\n", b"JENKINS_TOKEN=fixture-\0-token\n"):
+            path.write_bytes(invalid)
+            before = tree(self.legacy)
+            for flags in (("--dry-run",), ()):
+                result = self.cli("migrate", "--org", "acme", "--from", str(self.legacy), *flags, "--json")
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertNotIn("fixture-", result.stderr)
+                self.assertFalse(orgs.org_path(self.home, "acme").exists())
+                self.assertEqual(tree(self.legacy), before)
+        path.write_bytes(original + "JENKINS_TOKEN='valid-\u00e9-\ufffd-token'\n".encode())
+        result = self.cli("migrate", "--org", "acme", "--from", str(self.legacy), "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(orgs.secrets(self.home, "acme", "jenkins-production", self.registry["jenkins"])["JENKINS_TOKEN"], "valid-\u00e9-\ufffd-token")
+
+    def test_native_migration_rejects_nonfile_environment_paths(self):
+        path = self.legacy / ".env.production"
+        path.unlink()
+        path.mkdir()
+        (path / "keep.txt").write_text("existing source data")
+        before = tree(self.legacy)
+        for flags in (("--dry-run",), ()):
+            result = self.cli("migrate", "--org", "acme", "--from", str(self.legacy), *flags, "--json")
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertFalse(orgs.org_path(self.home, "acme").exists())
+            self.assertEqual(tree(self.legacy), before)
+
+    def test_native_migration_rejects_settings_its_secrets_reader_cannot_reopen(self):
+        path = self.legacy / ".env.production"
+        path.write_text("JENKINS_TOKEN=" + "x" * 65536 + "\n")
+        before = tree(self.legacy)
+        result = self.cli("migrate", "--org", "acme", "--from", str(self.legacy), "--json")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertFalse(orgs.org_path(self.home, "acme").exists())
+        self.assertEqual(tree(self.legacy), before)
+
+    @unittest.skipIf(os.name == "nt", "fixture requires a newline in a directory name")
+    def test_native_migration_source_path_cannot_add_secret_settings(self):
+        self.legacy = self.legacy.rename(self.dir / "legacy\nCUBEAPM_EXTRA=path-setting\n# tail")
+        before = tree(self.legacy)
+        result = self.cli("migrate", "--org", "acme", "--from", str(self.legacy), "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        settings = orgs.secrets(self.home, "acme", "cubeapm", self.registry["cubeapm"])
+        self.assertEqual(settings, {"CUBEAPM_SERVER": "cube.invalid", "CUBEAPM_EMAIL": "ops@cube.invalid", "CUBEAPM_PASSWORD": "cube-pass"})
+        self.assertEqual(tree(self.legacy), before)
+
+    def test_native_migration_rejects_nonobject_metadata_and_cleans_its_destination(self):
+        path = self.legacy / "sessions" / self.sid
+        for metadata in (path / "session.json", path / "evidence/e-legacy000001/record.json"):
+            original = metadata.read_bytes()
+            for value in ([], None, "invalid metadata"):
+                metadata.write_text(json.dumps(value))
+                before = tree(self.legacy)
+                result = self.cli("migrate", "--org", "acme", "--from", str(self.legacy), "--json")
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertNotIn("panicked", result.stderr)
+                self.assertFalse(orgs.org_path(self.home, "acme").exists())
+                self.assertEqual(tree(self.legacy), before)
+            metadata.write_bytes(original)
+
+    def test_native_migration_rewrites_incident_scope_and_keeps_source_artifacts(self):
+        import shutil
+        incident = self.legacy / "incidents/2026-01-01-x"
+        shutil.copytree(self.legacy / "sessions" / self.sid, incident, dirs_exist_ok=True)
+        before = tree(self.legacy)
+        result = self.cli("migrate", "--org", "acme", "--from", str(self.legacy), "--rename", "production=prod", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        copied = orgs.workspace(self.home, "acme") / "incidents/2026-01-01-x"
+        session = json.loads((copied / "session.json").read_text())
+        self.assertEqual((session["org"], session["environment"]), ("acme", "prod"))
+        self.assertEqual([(r["org"], r["environment"]) for r in evidence(copied)], [("acme", "prod")])
+        for stream in ("stdout", "stderr"):
+            artifact = Path("evidence/e-legacy000001") / (stream + ".txt")
+            self.assertEqual((copied / artifact).read_bytes(), (incident / artifact).read_bytes())
+        history = self.cli("history", "--org", "acme", "--env", "prod", "--all-envs", "--json")
+        self.assertEqual(history.returncode, 0, history.stderr)
+        self.assertIn("2026-01-01-x", [row["id"] for row in json.loads(history.stdout)])
+        self.assertEqual(tree(self.legacy), before)
+
+    def test_native_migration_config_fingerprints_distinguish_file_boundaries(self):
+        (self.legacy / ".env.production").write_bytes((self.legacy / ".env.uat").read_bytes())
+        first = self.legacy / ".config/production/jenkins-cli"
+        second = self.legacy / ".config/uat/jenkins-cli"
+        second.mkdir(parents=True)
+        (first / "config.yaml").write_bytes(b"x\0z\0y")
+        (second / "config.yaml").write_bytes(b"x")
+        (second / "z").write_bytes(b"y")
+        before = tree(self.legacy)
+        args = ("migrate", "--org", "acme", "--from", str(self.legacy), "--dry-run", "--json")
+        result = self.cli(*args)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(set(json.loads(result.stdout)["connections"]), {"cubeapm", "jenkins-production", "jenkins-uat"})
+        refused = self.cli(*args, "--share", "jenkins")
+        self.assertEqual(refused.returncode, 1, refused.stderr)
+        self.assertFalse(orgs.org_path(self.home, "acme").exists())
+        self.assertEqual(tree(self.legacy), before)
+
+    def test_native_migration_reports_settings_skipped_in_another_environment(self):
+        path = self.legacy / ".env.production"
+        path.write_text(path.read_text().replace("JENKINS_EXTRA=$(cat /etc/passwd)", "JENKINS_EXTRA=production-only-value"))
+        path = self.legacy / ".env.uat"
+        path.write_text(path.read_text() + "JENKINS_EXTRA=unclaimed-uat-value\n")
+        before = tree(self.legacy)
+        for flags in (("--dry-run",), ()):
+            result = self.cli("migrate", "--org", "acme", "--from", str(self.legacy), *flags, "--json")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            skipped = json.loads(result.stdout)["skipped"]
+            self.assertIn("JENKINS_EXTRA in uat (no matching tool)", skipped)
+            self.assertNotIn("unclaimed-uat-value", result.stdout + result.stderr)
+            self.assertNotIn("production-only-value", result.stdout + result.stderr)
+            self.assertEqual(tree(self.legacy), before)
+        values = orgs.secrets(self.home, "acme", "jenkins-production", self.registry["jenkins"])
+        self.assertEqual(values["JENKINS_EXTRA"], "production-only-value")
+        self.assertNotIn("jenkins-uat", orgs.load(self.home, "acme", self.registry)["connections"])
+
+    def test_native_migration_rejects_unknown_session_environments_without_creating_an_org(self):
+        metadata = self.legacy / "sessions" / self.sid / "session.json"
+        original = json.loads(metadata.read_text())
+        for environment in ("staging", "other", "", None, 7):
+            write_json(metadata, dict(original, environment=environment))
+            before = tree(self.legacy)
+            result = self.cli("migrate", "--org", "acme", "--from", str(self.legacy), "--json")
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertFalse(orgs.org_path(self.home, "acme").exists())
+            self.assertEqual(tree(self.legacy), before)
+        write_json(metadata, original)
+        result = self.cli("migrate", "--org", "acme", "--from", str(self.legacy), "--rename", "production=prod", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_native_migration_uses_the_normal_session_metadata_contract(self):
+        import shutil
+        session = self.legacy / "sessions" / self.sid
+        shutil.rmtree(session / "evidence")
+        (session / "evidence").mkdir()
+        incident = self.legacy / "incidents/2026-01-01-x"
+        shutil.copytree(session, incident, dirs_exist_ok=True)
+        for metadata in (session / "session.json", incident / "session.json"):
+            original = json.loads(metadata.read_text())
+            changes = [
+                {"schema_version": 2}, {"budget": 0}, {"budget": "3"},
+                {"notes": {}}, {"status": "invalid"}, {"workflow": {"id": "invalid"}},
+                {"previous": {"session": "earlier", "actions": [{"id": "a", "text": 7}]}},
+                {"id": "../outside"}, {"id": ""},
+            ]
+            if metadata.parent == session:
+                changes.append({"id": "different-session"})
+            for index, changed in enumerate(changes):
+                with self.subTest(location=metadata.parent.name, changed=changed):
+                    org = ("session-" if metadata.parent == session else "snapshot-") + str(index)
+                    write_json(metadata, dict(original, **changed))
+                    before = tree(self.legacy)
+                    result = self.cli("migrate", "--org", org, "--from", str(self.legacy), "--json")
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertNotIn("panicked", result.stderr)
+                    self.assertFalse(orgs.org_path(self.home, org).exists())
+                    self.assertEqual(tree(self.legacy), before)
+            write_json(metadata, original)
+        result = self.cli("migrate", "--org", "acme", "--from", str(self.legacy), "--rename", "production=prod", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        resumed = self.cli("resume", self.sid, "--org", "acme", "--env", "prod", "--json")
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+
+    def test_native_migration_rejects_foreign_or_damaged_evidence_and_preserves_source(self):
+        folder = self.legacy / "sessions" / self.sid / "evidence/e-legacy000001"
+        metadata = folder / "record.json"
+        original = json.loads(metadata.read_text())
+        for changes in ({"environment": "uat"}, {"environment": "other"}, {"session": "foreign-session"}):
+            write_json(metadata, dict(original, **changes))
+            before = tree(self.legacy)
+            result = self.cli("migrate", "--org", "acme", "--from", str(self.legacy), "--json")
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertFalse(orgs.org_path(self.home, "acme").exists())
+            self.assertEqual(tree(self.legacy), before)
+        write_json(metadata, original)
+        (folder / "stdout.txt").write_text("changed artifact bytes")
+        before = tree(self.legacy)
+        result = self.cli("migrate", "--org", "acme", "--from", str(self.legacy), "--json")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertFalse(orgs.org_path(self.home, "acme").exists())
+        self.assertEqual(tree(self.legacy), before)
+
+    def test_native_migration_detects_directory_based_saved_config(self):
+        for env in ("production", "uat"):
+            write(self.legacy / ".config" / env / "gogcli/config.json", '{"fixture":"saved-config"}\n')
+        before = tree(self.legacy)
+        result = self.cli("migrate", "--org", "acme", "--from", str(self.legacy), "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("gog", json.loads(result.stdout)["connections"])
+        copied = orgs.org_path(self.home, "acme") / "config/gog/gogcli/config.json"
+        self.assertEqual(copied.read_bytes(), (self.legacy / ".config/uat/gogcli/config.json").read_bytes())
+        self.assertEqual(tree(self.legacy), before)
+
+    def test_native_migration_does_not_treat_aws_helper_config_as_a_kubernetes_login(self):
+        write(self.legacy / ".config/production/aws/config", "[default]\nregion = fixture-region\n")
+        result = self.cli("migrate", "--org", "acme", "--from", str(self.legacy), "--dry-run", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        connections = json.loads(result.stdout)["connections"]
+        self.assertIn("aws-production", connections)
+        self.assertNotIn("kubernetes-production", connections)
+        self.assertFalse(orgs.org_path(self.home, "acme").exists())
+
+    @unittest.skipIf(os.name == "nt", "fixture requires a local symlink")
+    def test_native_migration_checks_every_config_before_automatic_sharing(self):
+        (self.legacy / ".env.production").write_bytes((self.legacy / ".env.uat").read_bytes())
+        first = self.legacy / ".config/production/jenkins-cli/config.yaml"
+        second = self.legacy / ".config/uat/jenkins-cli/config.yaml"
+        write(second, first.read_text())
+        outside = self.dir / "outside-config"
+        outside.write_text("synthetic private config")
+        (second.parent / "redirected").symlink_to(outside)
+        for flags in (("--dry-run",), ()):
+            result = self.cli("migrate", "--org", "acme", "--from", str(self.legacy), *flags, "--json")
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertFalse(orgs.org_path(self.home, "acme").exists())
+        self.assertEqual(outside.read_text(), "synthetic private config")
+
 
 class LikeTests(OrgCase):
     def test_a_new_org_copies_the_layout_never_the_secrets(self):
@@ -1121,6 +1363,41 @@ class LikeTests(OrgCase):
 
 
 class LinkTests(OrgCase):
+    def test_native_malformed_links_cannot_select_a_context(self):
+        binary = os.environ.get("RECKON_TEST_BIN", str(SOURCE / "target/debug/reckon"))
+        path = self.home / "links.json"
+        linked = self.cli("link", "acme/uat", str(self.repo), "--json")
+        self.assertEqual(linked.returncode, 0, linked.stderr)
+        valid = subprocess.run([binary, "status", "--json"], cwd=self.repo,
+                               env=self.cli_env(), capture_output=True, text=True, timeout=10)
+        self.assertEqual(valid.returncode, 0, valid.stderr)
+        self.assertEqual(json.loads(valid.stdout)["org"], "acme")
+        target = {"org": "acme", "env": "uat"}
+        invalid = [{key: target} for key in ("", ".", "relative", str(self.repo / ".." / "acme"), str(self.repo) + "\0invalid")]
+        invalid.append({str(self.repo): target, str(self.repo) + os.sep + ".": {"org": "other", "env": "dev"}})
+        for entries in invalid:
+            with self.subTest(entries=entries):
+                content = json.dumps({"schema_version": 1, "links": entries})
+                path.write_text(content)
+                result = subprocess.run([binary, "status", "--json"], cwd=self.repo,
+                                        env=self.cli_env(), capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("malformed", result.stderr)
+                self.assertEqual(path.read_text(), content)
+        path.unlink()
+        path.mkdir()
+        wrong_type = subprocess.run([binary, "status", "--json"], cwd=self.repo,
+                                    env=self.cli_env(), capture_output=True, text=True, timeout=10)
+        self.assertEqual(wrong_type.returncode, 1, wrong_type.stderr)
+        self.assertIn("malformed", wrong_type.stderr)
+        path.rmdir()
+        if hasattr(os, "mkfifo"):
+            os.mkfifo(path)
+            wrong_type = subprocess.run([binary, "status", "--json"], cwd=self.repo,
+                                        env=self.cli_env(), capture_output=True, text=True, timeout=10)
+            self.assertEqual(wrong_type.returncode, 1, wrong_type.stderr)
+            self.assertIn("malformed", wrong_type.stderr)
+
     def setUp(self):
         super().setUp()
         self.org("acme", connections={"gh-acme": {"provider": "github"}, "gh-bot": {"provider": "github"},

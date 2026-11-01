@@ -5,7 +5,7 @@ import unittest
 
 from helpers import JENKINS, OrgCase
 from reckonlib import connectors, orgs
-from reckonlib.store import create, write_json
+from reckonlib.store import create, now, write_json
 
 
 class PinnedAgentTests(OrgCase):
@@ -49,9 +49,13 @@ class PinnedAgentTests(OrgCase):
         self.assertIn("orgs: acme", checks)
         self.assertEqual(self.agent("history", "--all-envs").returncode, 1)
         for aid, env in (("a-staging", "staging"), ("a-uat", "uat")):
-            write_json(self.root / "actions" / aid / "action.json", {"id": aid, "status": "prepared", "operation": "github.issue.create",
-                                                                    "connection": "gh", "environment": env, "params": {"repo": "acme/api"}})
-        self.assertEqual([a["id"] for a in json.loads(self.agent("act", "list", "--json").stdout)], ["a-staging"])
+            write_json(self.root / "actions" / aid / "action.json", {"schema_version": 1, "id": aid, "org": "acme",
+                                                                    "status": "prepared", "operation": "github.issue.create",
+                                                                    "prepared_at": now(), "receipt": None, "connection": "gh", "environment": env,
+                                                                    "params": {"repo": "acme/api", "title": "Fixture issue", "body": "Fixture body"}})
+        listed = self.agent("act", "list", "--json")
+        self.assertEqual(listed.returncode, 0, listed.stderr)
+        self.assertEqual([a["id"] for a in json.loads(listed.stdout)], ["a-staging"])
         self.assertEqual(self.agent("act", "show", "a-uat").returncode, 1)
         operator = json.loads(self.cli("act", "list", "--org", "acme", "--env", "staging", "--json").stdout)
         self.assertEqual(sorted(a["id"] for a in operator), ["a-staging", "a-uat"])
@@ -59,8 +63,8 @@ class PinnedAgentTests(OrgCase):
     def test_brief_leaves_out_other_environments_work(self):
         create(self.root, "acme", "uat", "UAT only", "task")
         create(self.root, "acme", "staging", "Staging review", "task")
-        write_json(self.root / "actions" / "a-uat" / "action.json", {"id": "a-uat", "status": "prepared", "operation": "github.issue.create",
-                                                                   "connection": "gh", "environment": "uat", "params": {"repo": "acme/api"}})
+        write_json(self.root / "actions" / "a-uat" / "action.json", {"schema_version": 1, "id": "a-uat", "org": "acme", "prepared_at": "2026-10-01T00:00:00Z", "status": "prepared", "operation": "github.issue.create",
+                                                                   "connection": "gh", "environment": "uat", "params": {"repo": "acme/api", "title": "Fixture issue", "body": "Synthetic fixture."}})
         out = json.loads(self.agent("brief", "--json").stdout)
         self.assertEqual([s["question"] for s in out["open_sessions"]], ["Staging review"])
         self.assertEqual(out["writes_waiting_for_approval"], [])

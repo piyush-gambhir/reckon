@@ -22,11 +22,14 @@ pub fn brief(
         (vec![], vec![], vec![], vec![], vec![], vec![]);
     let mut series: BTreeMap<String, Value> = BTreeMap::new();
     for folder in entries(&local_path(&root, "sessions")?)?.into_iter().rev() {
-        let Ok(data) = read_json(&folder.join("session.json")) else {
+        let path = local_path(&root, folder.strip_prefix(&root)?.join("session.json"))?;
+        let Ok(data) = read_json(&path) else {
             continue;
         };
         if !data.is_object()
             || !data["notes"].is_array()
+            || data["org"] != ctx.org
+            || text(&data["id"]) != folder.file_name().unwrap_or_default().to_string_lossy()
             || !envs.contains(&text(&data["environment"]).to_owned())
         {
             continue;
@@ -51,16 +54,7 @@ pub fn brief(
             ]));
             let row=series.entry(identity).or_insert_with(||json!({"workflow":flow["id"],"environment":data["environment"],"series":keys.iter().map(|k|format!("{k}={}",text(&flow["params"][k]))).collect::<Vec<_>>().join(" "),"last_done":null,"session":null,"open":[]}));
             if text(&data["status"]) == "done" {
-                let stamp = data["closed_at"]
-                    .as_str()
-                    .unwrap_or(text(&data["created_at"]));
-                let parsed = instant(stamp).ok().or_else(|| {
-                    chrono::NaiveDate::parse_from_str(stamp, "%Y-%m-%d")
-                        .ok()
-                        .and_then(|d| d.and_hms_opt(0, 0, 0))
-                        .map(|d| d.and_utc())
-                });
-                if let Some(done) = parsed
+                if let Ok(done) = finished_at(&data)
                     && (row["last_done"].is_null()
                         || instant(text(&row["last_done"])).is_ok_and(|t| done > t))
                 {
@@ -78,23 +72,35 @@ pub fn brief(
         if text(&data["status"]) == "open" {
             sessions.push(json!({"id":data["id"],"environment":data["environment"],"question":data["question"],"since":data["created_at"]}));
         }
-        for n in array(&data["notes"]) {
-            if text(&n["kind"]) == "finding"
-                && !truth(&n["withdrawn_at"])
-                && instant(text(&n["recorded_at"])).is_ok_and(|t| t >= since)
-            {
-                findings.push(json!({"session":data["id"],"environment":data["environment"],"text":n["text"],"at":n["recorded_at"]}));
+        let recent = array(&data["notes"])
+            .iter()
+            .filter(|n| {
+                text(&n["kind"]) == "finding"
+                    && !truth(&n["withdrawn_at"])
+                    && instant(text(&n["recorded_at"])).is_ok_and(|t| t >= since)
+            })
+            .collect::<Vec<_>>();
+        if !recent.is_empty() {
+            let records =
+                session_path(&root, text(&data["id"])).and_then(|(path, _)| evidence(&path));
+            for note in recent {
+                let citations = match &records {
+                    Ok(records) => investigation::citations(note, records),
+                    Err(error) => {
+                        json!({"ok":false,"problems":[format!("evidence integrity: {error}")],"warnings":[]})
+                    }
+                };
+                findings.push(json!({"session":data["id"],"environment":data["environment"],"text":note["text"],"at":note["recorded_at"],"citations":citations}));
             }
         }
     }
     for folder in entries(&local_path(&root, "actions")?)?.into_iter().rev() {
-        let Ok(action) = read_json(&folder.join("action.json")) else {
+        local_path(&root, folder.strip_prefix(&root)?.join("action.json"))?;
+        let id = folder.file_name().unwrap_or_default().to_string_lossy();
+        let Ok((_, action)) = actions::load(&root, &id) else {
             continue;
         };
-        if !action.is_object()
-            || !action["id"].is_string()
-            || !envs.contains(&text(&action["environment"]).to_owned())
-        {
+        if action["org"] != ctx.org || !envs.contains(&text(&action["environment"]).to_owned()) {
             continue;
         }
         let row = json!({"id":action["id"],"operation":action["operation"],"connection":action["connection"],"environment":action["environment"],"target":actions::target_text(text(&action["operation"]),&action["params"])});
@@ -128,7 +134,7 @@ pub fn brief(
     let mut targets = vec![];
     let mut new = vec![];
     for env in &envs {
-        for mut row in goals::report(&root, env, registry) {
+        for mut row in goals::report(&root, &ctx.org, env, registry) {
             row["environment"] = json!(env);
             targets.push(row);
         }
@@ -178,9 +184,7 @@ pub fn all_orgs(h: &Path, registry: &Registry, days: i64) -> Result<Value> {
         let envs = strings(&data["environments"]);
         let ctx = Context::from_data(data, &envs[0]);
         let mut r = brief(h, &ctx, registry, days, &envs)?;
-        r["agent_tokens"] = spend::report(h, &org, days)
-            .map(|r| r["tokens"].clone())
-            .unwrap_or(json!(0));
+        r["agent_tokens"] = spend::report(h, &org, days)?["tokens"].clone();
         results.push(r);
     }
     Ok(json!({"days":days,"orgs":results}))
@@ -219,12 +223,13 @@ fn goal_line(r: &Value) -> String {
         return format!("{where_}{} ({})", text(&r["status"]), text(&r["next"]));
     }
     format!(
-        "{where_}{} vs target {}, {} (observed {}, {})",
+        "{where_}{} vs target {}, {} (observed {}, {}){}",
         number(&r["value"]),
         number(&r["target"]),
         text(&r["status"]),
         text(&r["observed_at"]).get(..10).unwrap_or(""),
-        text(&r["evidence"])
+        text(&r["evidence"]),
+        investigation::citation_qualifier(r)
     )
 }
 pub fn render(result: &Value) -> String {
@@ -297,10 +302,11 @@ pub fn render(result: &Value) -> String {
                     text(&r["question"])
                 ),
                 "recent_findings" => format!(
-                    "[{}] {}  ({})",
+                    "[{}] {}  ({}){}",
                     text(&r["environment"]),
                     text(&r["text"]),
-                    text(&r["session"])
+                    text(&r["session"]),
+                    investigation::citation_qualifier(&r["citations"])
                 ),
                 _ => format!(
                     "{}  [{}] {} {} {}: {}",

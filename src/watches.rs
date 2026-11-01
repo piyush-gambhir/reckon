@@ -6,7 +6,15 @@ use crate::{
 pub fn load(h: &Path, org: &str) -> Result<Value> {
     let p = local_path(&orgs::org_path(h, org)?, "watches.json")?;
     if p.is_file() {
-        read_json(&p)
+        let data = read_json(&p)?;
+        ensure!(
+            data.is_object()
+                && object(&data)
+                    .iter()
+                    .all(|(name, watch)| orgs::valid_name(name) && watch.is_object()),
+            "watches.json must map watch names to objects"
+        );
+        Ok(data)
     } else {
         Ok(json!({}))
     }
@@ -64,12 +72,16 @@ pub fn add(
         "{provider} asks before every run; it cannot be watched unattended"
     );
     connectors::check(provider, spec, args)?;
+    let _registry_lock = lock(&local_path(
+        &orgs::org_path(h, &ctx.org)?,
+        "runtime/watch-registry",
+    )?)?;
     let mut watches = load(h, &ctx.org)?;
     ensure!(
         watches.get(name).is_none(),
         "watch {name} exists; remove it first"
     );
-    let record = json!({"connection":cname,"environment":ctx.env,"args":args,"items":items,"key":key,"title":title,"created_at":now()});
+    let record = json!({"connection":cname,"environment":ctx.env,"args":args,"items":items,"key":key,"title":title,"created_at":now(),"production_approved":production});
     watches[name] = record.clone();
     write_json(
         &local_path(&orgs::org_path(h, &ctx.org)?, "watches.json")?,
@@ -81,6 +93,15 @@ pub fn add(
 }
 pub fn remove(h: &Path, org: &str, name: &str) -> Result<Value> {
     orgs::name(name, "watch")?;
+    let _registry_lock = lock(&local_path(
+        &orgs::org_path(h, org)?,
+        "runtime/watch-registry",
+    )?)?;
+    // Keep the lock outside the state directory, which removal deletes.
+    let _watch_lock = lock(&local_path(
+        &orgs::org_path(h, org)?,
+        format!("runtime/watch-locks/{name}"),
+    )?)?;
     let mut watches = load(h, org)?;
     ensure!(watches.get(name).is_some(), "unknown watch: {name}");
     watches
@@ -119,15 +140,32 @@ fn poll(h: &Path, ctx: &Context, name: &str, watch: &Value, registry: &Registry)
         &orgs::org_path(h, &ctx.org)?,
         format!("runtime/watches/{}", orgs::name(name, "watch")?),
     )?;
-    let Ok(_lock) = lock(&folder) else {
+    let lock_folder = local_path(
+        &orgs::org_path(h, &ctx.org)?,
+        format!("runtime/watch-locks/{name}"),
+    )?;
+    let Some(_lock) = try_lock(&lock_folder)? else {
         return Ok(
             json!({"watch":name,"status":"skipped","items":0,"new":0,"detail":"another run of this watch is going"}),
         );
     };
+    ensure!(
+        load(h, &ctx.org)?.get(name) == Some(watch),
+        "watch {name} changed or was removed before this poll; retry"
+    );
+    ensure!(
+        !ctx.production || watch["production_approved"] == true,
+        "watch {name} is in a production environment; remove it and add it again with --production to confirm unattended runs"
+    );
     let connection = text(&watch["connection"]);
     ensure!(
         ctx.data["connections"].get(connection).is_some(),
         "{name}: connection {connection} no longer exists; remove the watch and add it again"
+    );
+    let provider = text(&ctx.data["connections"][connection]["provider"]);
+    ensure!(
+        text(&registry[provider]["mode"]) != "approval",
+        "{provider} asks for approval before every run; it cannot be watched unattended"
     );
     let outcome = connectors::run(
         h,
@@ -177,7 +215,9 @@ fn poll(h: &Path, ctx: &Context, name: &str, watch: &Value, registry: &Registry)
         watch["environment"],
         watch["args"],
         watch["items"],
-        watch["key"]
+        watch["key"],
+        watch["created_at"],
+        outcome.source_sha256
     ]));
     let state = if state_path.is_file() {
         read_json(&state_path)?
@@ -209,23 +249,11 @@ fn poll(h: &Path, ctx: &Context, name: &str, watch: &Value, registry: &Registry)
         fresh.push(json!({"id":actions::printable(&id).chars().take(200).collect::<String>(),"title":actions::printable(&if title.is_null(){id}else{scalar(title)}.replace('\n'," ")).chars().take(200).collect::<String>()}));
     }
     if !baseline && !fresh.is_empty() {
-        use std::io::Write;
         let p = local_path(&orgs::workspace(h, &ctx.org)?, "inbox.jsonl")?;
-        let mut opts = std::fs::OpenOptions::new();
-        opts.append(true).create(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            opts.mode(0o600)
-                .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
-        }
-        let mut file = opts.open(p)?;
-        ensure!(file.metadata()?.is_file(), "inbox must be a regular file");
         for item in &fresh {
-            writeln!(
-                file,
-                "{}",
-                json!({"at":now(),"watch":name,"environment":ctx.env,"connection":connection,"id":item["id"],"title":item["title"]})
+            append_json(
+                &p,
+                &json!({"at":now(),"watch":name,"environment":ctx.env,"connection":connection,"id":item["id"],"title":item["title"]}),
             )?;
         }
     }

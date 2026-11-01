@@ -57,6 +57,10 @@ The export API covers only the last 1 to 3 days, at most 3 dimensions and
 connection (`export` and `--verify` checks, not cache hits), warns when two are
 left and refuses the rest of the UTC day once all 10 are spent. Use `--cache` and
 saved evidence instead of asking again.
+An invalid quota ledger or a ledger dated after the current UTC day stops new
+export requests. Check `runtime/<connection>/quota.json` in the org folder and
+the system clock before retrying; Reckon preserves the ledger instead of
+resetting the allowance.
 Recordings are a sample, not a complete export.
 
 ## Links

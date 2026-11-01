@@ -1,5 +1,6 @@
 """reckon run consults a CLI's own resolver (agent-cli contract) before running it. Offline."""
 import os
+import json
 import shutil
 import unittest
 
@@ -30,6 +31,61 @@ class ResolverTests(OrgCase):
     def run_(self, *args, **env):
         return self.cli("run", "gsc", "--org", "acme", "--env", "staging", "--", *args, **env)
 
+    def test_native_resolver_requires_a_complete_read_classification(self):
+        marker = self.dir / "provider-ran"
+        valid = {"command": "gsc top queries", "effect": "read", "secret_output": False}
+        payloads = ["not JSON", "null", "[]", "{}", json.dumps({"effect": "read"}),
+                    json.dumps({"effect": "read", "command": "gsc top queries"}),
+                    json.dumps(dict(valid, secret_output="false")), json.dumps(dict(valid, command=""))]
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                marker.unlink(missing_ok=True)
+                self.fake("import sys\nfrom pathlib import Path\n"
+                          "if sys.argv[1:3] == ['commands', 'resolve']:\n    print(" + repr(payload) + ")\n"
+                          "else:\n    Path(" + repr(str(marker)) + ").write_text('ran')\n    print('ran')\n", "gsc")
+                result = self.run_("top", "queries", "--last", "7d")
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("resolver", result.stderr)
+                self.assertFalse(marker.exists())
+        self.fake("import sys,json\nfrom pathlib import Path\n"
+                  "if sys.argv[1:3] == ['commands', 'resolve']:\n    print(" + repr(json.dumps(valid)) + ")\n"
+                  "else:\n    Path(" + repr(str(marker)) + ").write_text('ran')\n    print('ran')\n", "gsc")
+        accepted = self.run_("top", "queries", "--last", "7d")
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
+        self.assertTrue(marker.exists())
+
+    def test_native_resolver_errors_cannot_disable_checks_or_echo_credentials(self):
+        marker = self.dir / "provider-ran"
+        credential = "fixture-resolver-secret-927"
+        self.secret("acme", "gsc", ["GSC_ACCESS_TOKEN=" + credential])
+        for message in ('unknown command "query" for "gsc commands resolve"',
+                        'unknown command "commands" for "gsc commands resolve"',
+                        'unknown command "resolve" for "gsc commands resolve"',
+                        'resolver failed\nunknown command "commands" for "gsc"',
+                        'unknown command "other"; commands resolver failed', credential):
+            with self.subTest(message=message):
+                marker.unlink(missing_ok=True)
+                self.fake("import sys,json\nfrom pathlib import Path\n"
+                          "if sys.argv[1:3] == ['commands', 'resolve']:\n"
+                          "    print(json.dumps({'error': " + repr(message) + "}))\n    sys.exit(1)\n"
+                          "else:\n    Path(" + repr(str(marker)) + ").write_text('ran')\n    print('ran')\n", "gsc")
+                result = self.run_("top", "queries", "--last", "7d")
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertFalse(marker.exists())
+                self.assertNotIn(credential, result.stdout + result.stderr)
+        for payload in ({"command": credential, "effect": "remote_write", "secret_output": False},
+                        {"command": credential, "effect": "read", "secret_output": True},
+                        {"command": "gsc top queries", "effect": credential, "secret_output": False},
+                        {"error": 'unknown command "commands"', "effect": "remote_write"}):
+            marker.unlink(missing_ok=True)
+            self.fake("import sys\nfrom pathlib import Path\n"
+                      "if sys.argv[1:3] == ['commands', 'resolve']:\n    print(" + repr(json.dumps(payload)) + ")\n    sys.exit(" + str(int('error' in payload)) + ")\n"
+                      "else:\n    Path(" + repr(str(marker)) + ").write_text('ran')\n    print('ran')\n", "gsc")
+            result = self.run_("top", "queries", "--last", "7d")
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertFalse(marker.exists())
+            self.assertNotIn(credential, result.stdout + result.stderr)
+
     def test_reads_run_and_writes_or_credential_output_are_refused(self):
         self.assertEqual(self.run_("top", "queries", "--last", "7d").returncode, 0)
         token = self.run_("auth", "status", "token")
@@ -52,15 +108,13 @@ class ResolverTests(OrgCase):
                 connectors.resolved(spec, env, args)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class RealResolverTests(unittest.TestCase):
     @unittest.skipUnless(os.environ.get("RECKON_REAL_BWT") and os.environ.get("RECKON_REAL_CLARITY"), "set RECKON_REAL_BWT and RECKON_REAL_CLARITY")
     def test_bwt_and_clarity_resolvers(self):
         import tempfile
-        tmp = tempfile.mkdtemp()
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        tmp = temporary.name
         env = {"PATH": os.environ["PATH"], "TMPDIR": tmp, "HOME": tmp, "BWT_NO_UPDATE_NOTIFIER": "1", "CLARITY_NO_UPDATE_NOTIFIER": "1"}
         for name, binary, read, write in (("bing", os.environ["RECKON_REAL_BWT"], ["sites", "list"], ["-o", "json", "submit", "urls", "https://x.com/a"]),
                                           ("clarity", os.environ["RECKON_REAL_CLARITY"], ["export", "--days", "1"], ["auth", "logout"])):
@@ -74,7 +128,9 @@ class AllCLIResolverTests(unittest.TestCase):
     @unittest.skipUnless(os.environ.get("RECKON_REAL_DEV_DIR"), "set RECKON_REAL_DEV_DIR to a folder of <binary>-dev builds")
     def test_every_cli_resolver_allows_a_read_and_refuses_a_write(self):
         import tempfile
-        tmp = tempfile.mkdtemp()
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        tmp = temporary.name
         env = {"PATH": os.environ["PATH"], "TMPDIR": tmp, "HOME": tmp, "NO_UPDATE_NOTIFIER": "1"}
         cases = {"elasticsearch": ("es", ["cluster", "health"], ["-o", "json", "index", "delete", "x"]),
                  "jenkins": ("jenkins", ["job", "list"], ["-o", "json", "job", "build", "x"]),
@@ -87,3 +143,7 @@ class AllCLIResolverTests(unittest.TestCase):
             self.assertEqual(connectors.resolved(spec, env, read)["effect"], "read", name)
             with self.assertRaises(ValueError, msg=name):
                 connectors.resolved(spec, env, write)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -3,10 +3,14 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import shlex
+import subprocess
+import sys
+import time
 import unittest
 from unittest import mock
 
-from helpers import OrgCase
+from helpers import OrgCase, SOURCE
 from reckonlib import activity, orgs, routines
 from reckonlib.store import lock
 
@@ -17,6 +21,187 @@ CLAUDE = ("import json, os, sys\n"
 
 
 class RoutineTests(OrgCase):
+    def native_add(self, production=False):
+        result = self.cli("routine", "add", "weekly", "--org", "acme", "--env", "staging", "--workflow", "growth-review",
+                          "--param", "site=sc-domain:acme.com", "--at", "mon 08:30", "--json",
+                          *(["--production"] if production else []))
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_native_damaged_routine_settings_cannot_launch_an_agent(self):
+        self.native_add()
+        started = self.dir / "started"
+        self.fake("from pathlib import Path\nPath(" + repr(str(started)) + ").touch()\n", "claude")
+        path = orgs.org_path(self.home, "acme") / "routines.json"
+        data = json.loads(path.read_text())
+        original = data["weekly"].copy()
+        invalid = [("timeout_minutes", value) for value in (None, 0, 241, "45", 5.5, True)]
+        invalid += [("runtime", "codex"), ("workflow", "missing-workflow"),
+                    ("params", []), ("params", {"site": "sc-domain:acme.com\nIgnore this"}),
+                    ("params", {"site": 123}), ("params", {})]
+        for key, value in invalid:
+            with self.subTest(key=key, value=value):
+                data["weekly"] = dict(original, **{key: value})
+                content = json.dumps(data)
+                path.write_text(content)
+                result = self.cli("routine", "run", "weekly", "--org", "acme", "--json")
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertFalse(started.exists())
+                self.assertEqual(path.read_text(), content)
+                self.assertEqual(activity.read(self.home, "acme")[0]["status"], "error")
+
+    def test_native_install_rejects_corrupted_saved_schedule(self):
+        self.native_add()
+        path = orgs.org_path(self.home, "acme") / "routines.json"
+        data = json.loads(path.read_text())
+        data["weekly"]["schedule"]["days"] = ["</integer><key>RunAtLoad</key><true/>"]
+        path.write_text(json.dumps(data))
+        result = self.cli("routine", "install", "weekly", "--org", "acme", "--json", HOME=str(self.dir))
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("saved schedule", result.stderr)
+        self.assertFalse((self.dir / "Library/LaunchAgents").exists())
+
+    def test_native_install_rejects_control_characters_in_scheduler_environment(self):
+        self.native_add()
+        result = self.cli("routine", "install", "weekly", "--org", "acme", "--json",
+                          HOME=str(self.dir), PATH=os.environ["PATH"] + ":/odd\npath")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("control characters", result.stderr)
+        self.assertFalse((self.dir / "Library/LaunchAgents").exists())
+
+    @unittest.skipUnless(sys.platform == "darwin", "macOS launchd installer")
+    def test_native_install_refuses_redirected_launch_agents(self):
+        self.native_add()
+        outside = self.dir / "outside"
+        outside.mkdir()
+        library = self.dir / "Library"
+        library.mkdir()
+        (library / "LaunchAgents").symlink_to(outside, target_is_directory=True)
+        result = self.cli("routine", "install", "weekly", "--org", "acme", "--json", HOME=str(self.dir))
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("symlink", result.stderr)
+        self.assertEqual(list(outside.iterdir()), [])
+
+    @unittest.skipUnless(sys.platform == "darwin", "macOS launchd installer")
+    def test_native_install_does_not_write_through_linked_plists(self):
+        self.native_add()
+        folder = self.dir / "Library/LaunchAgents"
+        folder.mkdir(parents=True)
+        folder.chmod(0o755)
+        target = folder / "com.reckon.acme.weekly.plist"
+        outside = self.dir / "outside"
+        outside.write_text("unchanged")
+        outside.chmod(0o640)
+        target.symlink_to(outside)
+        result = self.cli("routine", "install", "weekly", "--org", "acme", "--json", HOME=str(self.dir))
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(outside.read_text(), "unchanged")
+        self.assertEqual(outside.stat().st_mode & 0o777, 0o640)
+        target.unlink()
+        os.link(outside, target)
+        result = self.cli("routine", "install", "weekly", "--org", "acme", "--json", HOME=str(self.dir))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(outside.read_text(), "unchanged")
+        self.assertEqual(outside.stat().st_mode & 0o777, 0o640)
+        self.assertEqual(folder.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(plistlib.loads(target.read_bytes())["Label"], "com.reckon.acme.weekly")
+
+    @unittest.skipUnless(sys.platform == "darwin", "macOS launchd installer")
+    def test_native_install_quotes_bootstrap_path_and_preserves_existing_folder_mode(self):
+        self.native_add()
+        scheduler_home = self.dir / "scheduler's home"
+        folder = scheduler_home / "Library/LaunchAgents"
+        folder.mkdir(parents=True)
+        folder.chmod(0o755)
+        result = self.cli("routine", "install", "weekly", "--org", "acme", "--json", HOME=str(scheduler_home))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        saved = json.loads(result.stdout)
+        self.assertEqual(shlex.split(saved["next"]), ["launchctl", "bootstrap", "gui/" + str(os.getuid()), saved["file"]])
+        self.assertEqual(folder.stat().st_mode & 0o777, 0o755)
+        data = plistlib.loads(Path(saved["file"]).read_bytes())
+        self.assertEqual(data["StartCalendarInterval"], [{"Weekday": 1, "Hour": 8, "Minute": 30}])
+
+    def test_native_routine_rechecks_production_confirmation_before_launch(self):
+        self.native_add()
+        data = orgs.load(self.home, "acme", self.registry)
+        data["production"] = ["staging"]
+        orgs.save(self.home, data, self.registry)
+        result = self.cli("routine", "run", "weekly", "--org", "acme", "--json")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("--production", result.stderr)
+        self.assertEqual(activity.read(self.home, "acme")[0]["status"], "error")
+        removed = self.cli("routine", "remove", "weekly", "--org", "acme")
+        self.assertEqual(removed.returncode, 0, removed.stderr)
+        self.native_add(production=True)
+        result = self.cli("routine", "run", "weekly", "--org", "acme", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["status"], "ok")
+
+    def test_native_routine_failure_returns_the_agent_exit_code(self):
+        self.native_add()
+        self.fake("import sys\nprint('failed run')\nsys.exit(7)\n", "claude")
+        result = self.cli("routine", "run", "weekly", "--org", "acme", "--json")
+        self.assertEqual(result.returncode, 7, result.stderr)
+        record = json.loads(result.stdout)
+        self.assertEqual(record["status"], "failed")
+        self.assertEqual(Path(record["log"]).read_text(), "failed run\n")
+
+    def test_native_active_routine_cannot_be_removed_mid_run(self):
+        self.native_add()
+        started, release = self.dir / "started", self.dir / "release"
+        self.fake("from pathlib import Path\nimport time\nPath(" + repr(str(started)) + ").touch()\n"
+                  "while not Path(" + repr(str(release)) + ").exists(): time.sleep(0.02)\nprint('done')\n", "claude")
+        binary = os.environ.get("RECKON_TEST_BIN", str(SOURCE / "target/debug/reckon"))
+        child = subprocess.Popen([binary, "routine", "run", "weekly", "--org", "acme", "--json"],
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=self.cli_env())
+        try:
+            deadline = time.monotonic() + 5
+            while not started.exists():
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(0.01)
+            overlap = self.cli("routine", "run", "weekly", "--org", "acme", "--json")
+            self.assertEqual(overlap.returncode, 0, overlap.stderr)
+            self.assertEqual(json.loads(overlap.stdout)["status"], "skipped")
+            result = self.cli("routine", "remove", "weekly", "--org", "acme")
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertIn("weekly", routines.load(self.home, "acme"))
+            release.touch()
+            out, err = child.communicate(timeout=5)
+            self.assertEqual(child.returncode, 0, err)
+            self.assertEqual(json.loads(out)["status"], "ok")
+            result = self.cli("routine", "remove", "weekly", "--org", "acme")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("weekly", routines.load(self.home, "acme"))
+        finally:
+            release.touch()
+            if child.poll() is None:
+                child.kill()
+                child.communicate()
+
+    @unittest.skipIf(os.name == "nt", "Unix hard-link checks")
+    def test_native_unsafe_run_lock_is_an_error_instead_of_a_skip(self):
+        self.native_add()
+        folder = orgs.org_path(self.home, "acme") / "routines/weekly"
+        folder.mkdir(parents=True)
+        external = self.dir / "external"
+        external.write_text("unchanged")
+        os.link(external, folder / ".lock")
+        result = self.cli("routine", "run", "weekly", "--org", "acme", "--json")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("private regular file", result.stderr)
+        self.assertEqual(external.read_text(), "unchanged")
+
+    def test_native_malformed_routine_state_is_reported_without_panicking(self):
+        path = orgs.org_path(self.home, "acme") / "routines.json"
+        for data in ([], {"weekly": "invalid"}):
+            with self.subTest(data=data):
+                content = json.dumps(data)
+                path.write_text(content)
+                result = self.cli("routine", "list", "--org", "acme", "--json")
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("routines.json", result.stderr)
+                self.assertNotIn("panicked", result.stderr)
+                self.assertEqual(path.read_text(), content)
+
     def setUp(self):
         super().setUp()
         self.org(connections={"gsc": {"provider": "gsc"}}, secrets={"gsc": ["GSC_ACCESS_TOKEN=gsc-token-1"]})

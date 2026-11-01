@@ -1,5 +1,6 @@
 """Approved writes: prepared by the agent, applied once by the operator. Offline, fake gh."""
 import json
+import os
 import unittest
 from unittest import mock
 
@@ -17,6 +18,54 @@ FAKE_GH = ("import os, sys\n"
 
 
 class ActionTests(OrgCase):
+    def test_native_action_readers_refuse_malformed_records(self):
+        record = self.prepare()
+        aid = record["id"]
+        path = self.root / "actions" / aid / "action.json"
+        invalid = [[], dict(record, id="a-other"), dict(record, status="unknwon"),
+                   dict(record, environment=False), dict(record, connection="../other"),
+                   dict(record, receipt="damaged"), dict(record, prepared_at="invalid"),
+                   dict(record, operation="unknown"), dict(record, params=[])]
+        for data in invalid:
+            with self.subTest(data=data):
+                content = json.dumps(data)
+                path.write_text(content)
+                for args in (("act", "show", aid), ("act", "list")):
+                    result = self.cli(*args, "--org", "acme", "--env", "staging", "--json")
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertIn("action", result.stderr)
+                    self.assertNotIn("panicked", result.stderr)
+                    self.assertEqual(path.read_text(), content)
+
+    def test_native_payload_errors_do_not_echo_another_environments_parameters(self):
+        record = self.prepare()
+        record["environment"] = "prod"
+        record["operation"] = "gsc.sitemap.submit"
+        record["params"] = {"site": "sc-domain:other-environment.fixture.invalid", "sitemap": "https://outside.fixture.invalid/sitemap.xml"}
+        path = self.root / "actions" / record["id"] / "action.json"
+        path.write_text(json.dumps(record))
+        result = self.cli("act", "list", "--json", RECKON_ORG="acme", RECKON_ENV="staging")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertNotIn("other-environment.fixture.invalid", result.stderr)
+        self.assertIn("action", result.stderr)
+
+    @unittest.skipIf(os.name == "nt", "Unix directory symlink fixture")
+    def test_native_action_listing_and_brief_refuse_redirected_folders(self):
+        record = self.prepare()
+        outside = self.dir / "outside"
+        outside.mkdir()
+        record["id"] = "a-linked"
+        record["status"] = "unknown"
+        content = json.dumps(record)
+        (outside / "action.json").write_text(content)
+        (self.root / "actions/a-linked").symlink_to(outside, target_is_directory=True)
+        for args in (("act", "list"), ("brief",)):
+            with self.subTest(args=args):
+                result = self.cli(*args, "--org", "acme", "--env", "staging", "--json")
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("symlink", result.stderr)
+        self.assertEqual((outside / "action.json").read_text(), content)
+
     def setUp(self):
         super().setUp()
         patcher = mock.patch.object(actions, "terminal", return_value=True)

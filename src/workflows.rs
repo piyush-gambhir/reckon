@@ -44,6 +44,10 @@ pub fn validate(data: &Value, name: &str) -> Result<()> {
         regex::Regex::new(text(&spec["pattern"]))
             .map_err(|e| fail(&format!("parameter {k} pattern: {e}")))?;
     }
+    validate_checks(data, name)
+}
+fn validate_checks(data: &Value, name: &str) -> Result<()> {
+    let fail = |why: &str| anyhow!("workflow {name}: {why}");
     let checks = array(&data["checks"]);
     if !data["checks"].is_array() || checks.is_empty() {
         return Err(fail("needs at least one check"));
@@ -64,7 +68,12 @@ pub fn validate(data: &Value, name: &str) -> Result<()> {
     let mut ids = BTreeSet::new();
     for c in checks {
         let id = text(&c["id"]);
-        if !c.is_object() || !orgs::valid_name(id) || !ids.insert(id) || !truth(&c["text"]) {
+        if !c.is_object()
+            || !orgs::valid_name(id)
+            || !ids.insert(id)
+            || !c["text"].is_string()
+            || text(&c["text"]).trim().is_empty()
+        {
             return Err(fail("each check needs a unique id and a text"));
         }
         if ["report-actions", "follow-up"].contains(&id) {
@@ -95,6 +104,21 @@ pub fn validate(data: &Value, name: &str) -> Result<()> {
         }
     }
     Ok(())
+}
+pub fn validate_snapshot(data: &Value) -> Result<()> {
+    ensure!(
+        data.is_object()
+            && orgs::valid_name(text(&data["id"]))
+            && data["title"].is_string()
+            && data["params"].is_object()
+            && object(&data["params"]).values().all(Value::is_string)
+            && data.get("series").is_none_or(|v| v.is_array()
+                && array(v)
+                    .iter()
+                    .all(|k| k.is_string() && data["params"].get(text(k)).is_some())),
+        "invalid saved workflow metadata"
+    );
+    validate_checks(data, text(&data["id"]))
 }
 pub fn recipes(root: &Path) -> Result<Value> {
     let mut found = json!({});
@@ -188,8 +212,8 @@ pub fn start(root: &Path, id: &str, given: &Value) -> Result<Started> {
         playbook: recipe["playbook"].clone(),
     })
 }
-pub fn previous(root: &Path, env: &str, snapshot: &Value) -> Value {
-    let mut best: Option<(String, Value)> = None;
+pub fn previous(root: &Path, org: &str, env: &str, snapshot: &Value) -> Value {
+    let mut best: Option<(chrono::DateTime<chrono::Utc>, Value)> = None;
     for folder in entries(&root.join("sessions")).unwrap_or_default() {
         let id = folder.file_name().unwrap_or_default().to_string_lossy();
         let Ok((_, data)) = session_path(root, &id) else {
@@ -199,6 +223,7 @@ pub fn previous(root: &Path, env: &str, snapshot: &Value) -> Value {
         if !flow.is_object()
             || !flow["params"].is_object()
             || !data["notes"].is_array()
+            || data["org"] != org
             || text(&data["environment"]) != env
             || text(&data["status"]) != "done"
             || flow["id"] != snapshot["id"]
@@ -208,10 +233,12 @@ pub fn previous(root: &Path, env: &str, snapshot: &Value) -> Value {
         {
             continue;
         }
-        let created = text(&data["created_at"]).to_owned();
-        if best.as_ref().is_none_or(|(at, _)| &created > at) {
+        let Ok(finished) = finished_at(&data) else {
+            continue;
+        };
+        if best.as_ref().is_none_or(|(at, _)| &finished >= at) {
             best = Some((
-                created,
+                finished,
                 json!({"session":data["id"],"actions":investigation::live(&data["notes"]).iter().filter(|n|text(&n["kind"])=="action").map(|n|json!({"id":n["id"],"text":n["text"]})).collect::<Vec<_>>()}),
             ));
         }
@@ -253,9 +280,10 @@ pub fn progress(
     registry: &Registry,
 ) -> Result<Value> {
     let recipe = &session["workflow"];
-    if !truth(recipe) {
+    if recipe.is_null() {
         return Ok(Value::Null);
     }
+    validate_snapshot(recipe)?;
     let notes = investigation::live(&session["notes"]);
     let mut skipped = serde_json::Map::new();
     let re = regex::Regex::new(r"(?i)^skip(?:ped)? ([a-z0-9][a-z0-9-]*):\s*\S")?;
