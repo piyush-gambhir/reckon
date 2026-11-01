@@ -284,7 +284,6 @@ pub fn create(
     registry: &Registry,
 ) -> Result<Value> {
     let path = org_path(h, org)?;
-    ensure!(!path.join("org.json").exists(), "org already exists: {org}");
     let production = production.unwrap_or_else(|| {
         envs.iter()
             .filter(|e| ["prod", "production"].contains(&e.as_str()))
@@ -293,27 +292,60 @@ pub fn create(
     });
     let data = json!({"schema_version":SCHEMA,"id":org,"name":display.filter(|s|!s.is_empty()).unwrap_or(org),"environments":envs,"production":production,"connections":{},"created_at":now()});
     validate(&data, org, registry)?;
-    for dir in ["secrets", "config", "runtime", "workspace"] {
-        private_dir(&local_path(&path, dir)?)?;
+    private_dir(path.parent().ok_or_else(|| anyhow!("missing org parent"))?)?;
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
     }
-    save(h, &data, registry)?;
+    builder.create(&path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            anyhow!("org already exists (or its folder does): {org}")
+        } else {
+            e.into()
+        }
+    })?;
+    let initialized = (|| -> Result<()> {
+        for dir in ["secrets", "config", "runtime", "workspace"] {
+            private_dir(&local_path(&path, dir)?)?;
+        }
+        save(h, &data, registry)
+    })();
+    if let Err(error) = initialized {
+        let _ = fs::remove_dir_all(&path);
+        return Err(error);
+    }
     Ok(data)
 }
 pub fn folder(path: &Path) -> Result<PathBuf> {
-    let path = absolute(&expand_home(&path.to_string_lossy()))?;
-    Ok(fs::canonicalize(&path).unwrap_or(path))
+    let path = path
+        .to_str()
+        .ok_or_else(|| anyhow!("folder paths must be UTF-8"))?;
+    let path = absolute(&expand_home(path))?;
+    let path = fs::canonicalize(&path).unwrap_or(path);
+    ensure!(path.to_str().is_some(), "folder paths must be UTF-8");
+    Ok(path)
 }
 pub fn links(h: &Path) -> Result<Value> {
     let path = local_path(h, "links.json")?;
-    if !path.is_file() {
+    if !path.try_exists()? {
         return Ok(json!({}));
     }
     let data = read_json(&path).unwrap_or(Value::Null);
     let entries = &data["links"];
+    let mut paths = BTreeSet::new();
     ensure!(
         data["schema_version"] == SCHEMA
             && entries.is_object()
-            && object(entries).values().all(|v| v.is_object()
+            && object(entries).iter().all(|(path, v)| !path.contains('\0')
+                && Path::new(path).is_absolute()
+                && !Path::new(path)
+                    .components()
+                    .any(|component| matches!(component, std::path::Component::ParentDir))
+                && paths.insert(Path::new(path).components().collect::<PathBuf>())
+                && v.is_object()
                 && object(v)
                     .keys()
                     .all(|k| ["org", "env", "use"].contains(&k.as_str()))
@@ -592,6 +624,8 @@ pub fn link(
         }
     }
     let key = where_.to_string_lossy().to_string();
+    let _lock =
+        try_lock(h)?.ok_or_else(|| anyhow!("folder links are locked by another process"))?;
     let mut entries = links(h)?;
     let replaced = entries[&key].clone();
     let mut entry = json!({"org":org,"env":environment});
@@ -609,6 +643,8 @@ pub fn link(
 }
 pub fn unlink(h: &Path, path: &Path) -> Result<Value> {
     let where_ = folder(path)?.to_string_lossy().to_string();
+    let _lock =
+        try_lock(h)?.ok_or_else(|| anyhow!("folder links are locked by another process"))?;
     let mut entries = links(h)?;
     let mut entry = object(&entries).remove(&where_).ok_or_else(|| {
         let covering = linked(h, Some(Path::new(&where_))).unwrap_or(Value::Null);
@@ -640,6 +676,35 @@ pub fn secrets_path(h: &Path, org: &str, conn: &str) -> Result<PathBuf> {
         &org_path(h, org)?,
         format!("secrets/{}.env", name(conn, "connection")?),
     )
+}
+pub fn config_fingerprint(h: &Path, org: &str, conn: &str) -> Result<String> {
+    let root = local_path(
+        &org_path(h, org)?,
+        format!("config/{}", name(conn, "connection")?),
+    )?;
+    let mut files = std::collections::BTreeMap::new();
+    if root.exists() {
+        ensure!(
+            root.is_dir(),
+            "connection configuration must be a directory"
+        );
+        for entry in walkdir::WalkDir::new(&root).follow_links(false) {
+            let entry = entry?;
+            let relative = entry.path().strip_prefix(&root)?;
+            let path = local_path(&root, relative)?;
+            ensure!(
+                entry.file_type().is_dir() || entry.file_type().is_file(),
+                "connection configuration must contain regular files and directories"
+            );
+            if entry.file_type().is_file() {
+                let key = relative
+                    .to_str()
+                    .ok_or_else(|| anyhow!("configuration filenames must be UTF-8"))?;
+                files.insert(key.to_owned(), file_sha256(&path)?);
+            }
+        }
+    }
+    Ok(hash_json(&json!(files)))
 }
 pub fn secrets(h: &Path, org: &str, conn: &str, spec: &Value) -> Result<process::Environment> {
     let path = secrets_path(h, org, conn)?;
@@ -921,7 +986,7 @@ impl Redactable for ResolvedSettings {
         self.protected.iter().map(String::as_str).collect()
     }
 }
-pub fn redact(content: &str, values: &impl Redactable) -> String {
+fn redaction_secrets(values: &impl Redactable) -> Vec<String> {
     let mut secrets = values
         .settings()
         .iter()
@@ -943,9 +1008,21 @@ pub fn redact(content: &str, values: &impl Redactable) -> String {
     }
     let mut secrets = secrets.into_iter().collect::<Vec<_>>();
     secrets.sort_by_key(|s| std::cmp::Reverse(s.len()));
+    secrets
+}
+pub fn redact(content: &str, values: &impl Redactable) -> String {
     let mut out = content.to_owned();
-    for secret in secrets {
-        out = out.replace(&secret, "[REDACTED]");
+    for secret in redaction_secrets(values) {
+        if secret.contains("[REDACTED]") {
+            out = out.replace(&secret, "[REDACTED]");
+            continue;
+        }
+        // Do not match a secret inside a marker from an earlier pass.
+        out = out
+            .split("[REDACTED]")
+            .map(|part| part.replace(&secret, "[REDACTED]"))
+            .collect::<Vec<_>>()
+            .join("[REDACTED]");
     }
     let uri = regex::Regex::new(r"(://)[^\s/@:]*:[^\s/@]+@").expect("constant regex");
     out = uri.replace_all(&out, "${1}[REDACTED]@").into_owned();
@@ -953,6 +1030,74 @@ pub fn redact(content: &str, values: &impl Redactable) -> String {
         .expect("constant regex")
         .replace_all(&out, "${1}[REDACTED]")
         .into_owned()
+}
+// Find a possibly cut-off secret at the byte boundary, including partial UTF-8.
+// Prefix fallback keeps repeated-byte secrets linear rather than quadratic.
+fn secret_tail(bytes: &[u8], secret: &[u8]) -> usize {
+    let mut prefixes = vec![0; secret.len()];
+    let mut matched = 0;
+    for i in 1..secret.len() {
+        while matched > 0 && secret[i] != secret[matched] {
+            matched = prefixes[matched - 1];
+        }
+        if secret[i] == secret[matched] {
+            matched += 1;
+        }
+        prefixes[i] = matched;
+    }
+    matched = 0;
+    for &byte in &bytes[bytes.len().saturating_sub(secret.len())..] {
+        while matched > 0 && (matched == secret.len() || byte != secret[matched]) {
+            matched = prefixes[matched - 1];
+        }
+        if byte == secret[matched] {
+            matched += 1;
+        }
+    }
+    matched
+}
+pub fn redact_output(bytes: &[u8], values: &impl Redactable, status: process::Status) -> String {
+    let mut tail = if matches!(
+        status,
+        process::Status::OutputLimit | process::Status::Timeout | process::Status::Cancelled
+    ) {
+        redaction_secrets(values)
+            .iter()
+            .map(|secret| secret_tail(bytes, secret.as_bytes()))
+            .max()
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    // A provider may already have replaced a value with the standard marker.
+    if bytes.ends_with(b"[REDACTED]") && tail <= b"[REDACTED]".len() {
+        tail = 0;
+    }
+    let mut content = redact(
+        &String::from_utf8_lossy(&bytes[..bytes.len() - tail]),
+        values,
+    );
+    if tail > 0 {
+        content.push_str("[REDACTED]");
+    }
+    content
+}
+pub fn redact_bounded(
+    bytes: &[u8],
+    values: &impl Redactable,
+    limit: usize,
+    status: process::Status,
+) -> (String, bool) {
+    let mut content = redact_output(bytes, values, status);
+    let truncated = content.len() > limit;
+    if truncated {
+        let mut end = limit;
+        while !content.is_char_boundary(end) {
+            end -= 1;
+        }
+        content.truncate(end);
+    }
+    (content, truncated)
 }
 pub fn describe(h: &Path, ctx: &Context, registry: &Registry) -> Vec<Value> {
     object(&ctx.data["connections"]).into_iter().map(|(name,conn)|{let spec=&registry[text(&conn["provider"])];let scope=if truth(&conn["env"]){text(&conn["env"]).to_owned()}else if conn.get("env_labels").is_some(){object(&conn["env_labels"]).keys().cloned().collect::<Vec<_>>().join(", ")}else{"all environments".into()};let mut row=json!({"connection":name,"provider":conn["provider"],"scope":scope,"applies":applies(&conn,&ctx.env),"label":conn["env_labels"][&ctx.env],"account":conn["account"]});match configured(h,&ctx.org,&name,spec,None){Ok(ready)=>{let installed=which(text(&spec["binary"])).is_some();row["configured"]=json!(ready);row["installed"]=json!(installed);row["state"]=json!(if !installed{"no_cli"}else if ready{"ready"}else{"no_credentials"});},Err(e)=>{row["configured"]=json!(false);row["installed"]=json!(false);row["state"]=json!(format!("invalid: {e}"));}}row}).collect()

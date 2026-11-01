@@ -6,7 +6,15 @@ use crate::{
 pub fn load(h: &Path, org: &str) -> Result<Value> {
     let p = local_path(&orgs::org_path(h, org)?, "routines.json")?;
     if p.is_file() {
-        read_json(&p)
+        let data = read_json(&p)?;
+        ensure!(
+            data.is_object()
+                && object(&data)
+                    .iter()
+                    .all(|(name, routine)| orgs::valid_name(name) && routine.is_object()),
+            "routines.json must map routine names to objects"
+        );
+        Ok(data)
     } else {
         Ok(json!({}))
     }
@@ -67,12 +75,16 @@ pub fn add(h: &Path, ctx: &Context, name: &str, options: RoutineOptions<'_>) -> 
         "--timeout-minutes must be 5-240"
     );
     workflows::start(&orgs::workspace(h, &ctx.org)?, workflow, &params)?;
+    let _registry_lock = lock(&local_path(
+        &orgs::org_path(h, &ctx.org)?,
+        "runtime/routine-registry",
+    )?)?;
     let mut routines = load(h, &ctx.org)?;
     ensure!(
         routines.get(name).is_none(),
         "routine {name} exists; remove it (and its installed job) first"
     );
-    let record = json!({"environment":ctx.env,"workflow":workflow,"params":params,"runtime":"claude","schedule":schedule(at)?,"timeout_minutes":timeout_minutes});
+    let record = json!({"environment":ctx.env,"workflow":workflow,"params":params,"runtime":"claude","schedule":schedule(at)?,"timeout_minutes":timeout_minutes,"production_approved":production});
     routines[name] = record.clone();
     write_json(
         &local_path(&orgs::org_path(h, &ctx.org)?, "routines.json")?,
@@ -84,6 +96,15 @@ pub fn add(h: &Path, ctx: &Context, name: &str, options: RoutineOptions<'_>) -> 
     Ok(record)
 }
 pub fn remove(h: &Path, org: &str, name: &str) -> Result<Value> {
+    orgs::name(name, "routine")?;
+    let _registry_lock = lock(&local_path(
+        &orgs::org_path(h, org)?,
+        "runtime/routine-registry",
+    )?)?;
+    let _run_lock = lock(&local_path(
+        &orgs::org_path(h, org)?,
+        format!("routines/{name}"),
+    )?)?;
     let mut routines = load(h, org)?;
     ensure!(routines.get(name).is_some(), "unknown routine: {name}");
     routines
@@ -136,7 +157,7 @@ pub fn run(h: &Path, org: &str, name: &str, registry: &Registry) -> Result<Value
         .ok_or_else(|| anyhow!("unknown routine: {name}"))?;
     let ctx = orgs::context(h, Some(org), Some(text(&routine["environment"])), registry)?;
     let folder = local_path(&orgs::org_path(h, org)?, format!("routines/{name}"))?;
-    let Ok(_lock) = lock(&folder) else {
+    let Some(_lock) = try_lock(&folder)? else {
         activity::record(
             h,
             &ctx,
@@ -147,7 +168,34 @@ pub fn run(h: &Path, org: &str, name: &str, registry: &Registry) -> Result<Value
             json!({"routine":name,"status":"skipped","detail":"the previous run is still going"}),
         );
     };
+    ensure!(
+        load(h, org)?.get(name) == Some(routine),
+        "routine {name} changed or was removed before this run; retry"
+    );
     let attempt = (|| -> Result<Value> {
+        ensure!(
+            !ctx.production || routine["production_approved"] == true,
+            "routine {name} is in a production environment; remove it and add it again with --production to confirm unattended runs"
+        );
+        ensure!(
+            routine["runtime"] == "claude"
+                && routine["params"].is_object()
+                && object(&routine["params"])
+                    .values()
+                    .all(|v| v.is_string() && !text(v).chars().any(char::is_control)),
+            "invalid saved routine runtime or parameters; remove it and add it again"
+        );
+        let timeout = routine["timeout_minutes"]
+            .as_u64()
+            .filter(|n| (5..=240).contains(n))
+            .ok_or_else(|| {
+                anyhow!("invalid saved routine timeout: expected whole minutes 5-240")
+            })?;
+        workflows::start(
+            &orgs::workspace(h, org)?,
+            text(&routine["workflow"]),
+            &routine["params"],
+        )?;
         let root = workspace::ensure(h, &ctx, registry)?;
         let binary=std::env::var("RECKON_AGENT_BIN").ok().or_else(||which("claude").map(|p|p.display().to_string())).ok_or_else(||anyhow!("claude is not available to scheduled runs; reinstall with reckon routine install"))?;
         ensure!(
@@ -168,7 +216,7 @@ pub fn run(h: &Path, org: &str, name: &str, registry: &Registry) -> Result<Value
             &args,
             Some(&workspace::agent_env(h, &ctx, registry, "claude")),
             Some(&root),
-            routine["timeout_minutes"].as_f64().unwrap_or(45.0) * 60.0,
+            timeout as f64 * 60.0,
             8 * 1048576,
             None,
         )?;
@@ -216,6 +264,12 @@ pub fn install(h: &Path, org: &str, name: &str) -> Result<Value> {
     let routine = routines
         .get(name)
         .ok_or_else(|| anyhow!("unknown routine: {name}"))?;
+    let sched = schedule(text(&routine["schedule"]["at"]))
+        .context("invalid saved schedule; remove the routine and add it again")?;
+    ensure!(
+        routine["schedule"] == sched,
+        "invalid saved schedule; remove the routine and add it again"
+    );
     let reckon = h.join("bin/reckon");
     let reckon = if reckon.exists() {
         reckon
@@ -243,12 +297,27 @@ pub fn install(h: &Path, org: &str, name: &str) -> Result<Value> {
             agent.canonicalize()?.display().to_string(),
         ),
     ]);
+    ensure!(
+        command
+            .iter()
+            .chain(env.values())
+            .all(|v| !v.chars().any(char::is_control)),
+        "scheduler paths and environment cannot contain control characters"
+    );
     let folder = local_path(&orgs::org_path(h, org)?, format!("routines/{name}"))?;
     private_dir(&folder)?;
-    let sched = &routine["schedule"];
     if cfg!(target_os = "macos") {
         let label = format!("com.reckon.{org}.{name}");
-        let target = orgs::expand_home("~/Library/LaunchAgents").join(format!("{label}.plist"));
+        let home = orgs::expand_home("~");
+        ensure!(
+            home.is_absolute(),
+            "scheduler HOME must be an absolute path"
+        );
+        let target = local_path(&home, format!("Library/LaunchAgents/{label}.plist"))?;
+        ensure!(
+            !target.to_string_lossy().chars().any(char::is_control),
+            "scheduler paths and environment cannot contain control characters"
+        );
         let intervals=array(&sched["days"]).iter().map(|d|format!("<dict><key>Weekday</key><integer>{d}</integer><key>Hour</key><integer>{}</integer><key>Minute</key><integer>{}</integer></dict>",sched["hour"],sched["minute"])).collect::<String>();
         let content = format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict><key>Label</key><string>{}</string><key>ProgramArguments</key><array>{}</array><key>EnvironmentVariables</key><dict>{}</dict><key>StartCalendarInterval</key><array>{intervals}</array><key>StandardOutPath</key><string>{}</string><key>StandardErrorPath</key><string>{}</string></dict></plist>\n",
@@ -263,15 +332,18 @@ pub fn install(h: &Path, org: &str, name: &str) -> Result<Value> {
             xml(&folder.join("launchd.log").display().to_string()),
             xml(&folder.join("launchd.log").display().to_string())
         );
-        std::fs::create_dir_all(target.parent().ok_or_else(|| anyhow!("missing parent"))?)?;
-        std::fs::write(&target, content)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644))?;
-        }
+        let parent = target.parent().ok_or_else(|| anyhow!("missing parent"))?;
+        std::fs::create_dir_all(parent)?;
+        // Replace the plist atomically without changing LaunchAgents permissions.
+        use std::io::Write;
+        let mut temp = tempfile::Builder::new()
+            .prefix(".reckon-")
+            .tempfile_in(parent)?;
+        temp.write_all(content.as_bytes())?;
+        temp.as_file().sync_all()?;
+        temp.persist(&target).map_err(|e| e.error)?;
         Ok(
-            json!({"routine":name,"file":target,"next":format!("launchctl bootstrap gui/{} {}",user_id(),target.display())}),
+            json!({"routine":name,"file":target,"next":format!("launchctl bootstrap gui/{} {}",user_id(),shell_quote(&target.display().to_string()))}),
         )
     } else {
         let line = format!(

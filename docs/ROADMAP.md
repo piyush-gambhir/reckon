@@ -70,7 +70,12 @@ outcomes.
   before any read runs.
 - Done 2026-10-14: daily quota ledger per connection (`quota` in providers.json; Clarity's
   10 Export API requests), warning at two left and refusing when spent; cache hits are free.
-- Data-quality fields in evidence records for the commands the two reviews use.
+- Built 2026-10-22: basic data-quality metadata for both review recipes. Saved
+  evidence, checks and reports surface GSC finality and pagination, Bing days
+  with data and crawl-list caveats, Clarity sampling and export caps, Jenkins
+  recent-build scope, GitHub list caps and projections, changing build states,
+  and metric-provider warnings. This preserves reported limitations; it does
+  not establish the underlying data's accuracy or diagnostic benefit.
 - Dogfood on two real businesses for two weeks.
 
 ### M3 Approved writes, complete

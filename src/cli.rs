@@ -236,12 +236,17 @@ fn described(h: &Path, ctx: &Context, registry: &Registry) -> Vec<Value> {
     rows
 }
 
-fn knowledge_count(root: &Path, layer: &str) -> usize {
-    entries(&root.join("knowledge").join(layer))
-        .unwrap_or_default()
-        .iter()
-        .filter(|p| p.extension().is_some_and(|e| e == "md" || e == "json"))
-        .count()
+fn knowledge_count(root: &Path, layer: &str) -> Result<usize> {
+    Ok(
+        entries(&local_path(root, Path::new("knowledge").join(layer))?)?
+            .iter()
+            .filter(|p| {
+                p.is_file()
+                    && !redirected(p)
+                    && p.extension().is_some_and(|e| e == "md" || e == "json")
+            })
+            .count(),
+    )
 }
 
 fn preflight(h: &Path, ctx: &Context, registry: &Registry) -> Result<Value> {
@@ -249,7 +254,7 @@ fn preflight(h: &Path, ctx: &Context, registry: &Registry) -> Result<Value> {
 
     let rows = described(h, ctx, registry);
 
-    let sessions = investigation::history(&root, Some(&ctx.env), None, None, 200)?;
+    let sessions = investigation::history(&root, &ctx.org, Some(&ctx.env), None, None, 200)?;
 
     let open = sessions
         .iter()
@@ -262,10 +267,11 @@ fn preflight(h: &Path, ctx: &Context, registry: &Registry) -> Result<Value> {
         })
         .collect::<Vec<_>>();
 
-    let incidents = entries(&root.join("incidents"))?
+    let incidents = entries(&local_path(&root, "incidents")?)?
         .iter()
         .filter(|p| {
             p.is_dir()
+                && !redirected(p)
                 && !p
                     .file_name()
                     .unwrap_or_default()
@@ -302,7 +308,9 @@ fn preflight(h: &Path, ctx: &Context, registry: &Registry) -> Result<Value> {
         }
     }
 
-    if knowledge_count(&root, &ctx.env) == 0 && knowledge_count(&root, "_shared") == 0 {
+    let shared_knowledge = knowledge_count(&root, "_shared")?;
+    let environment_knowledge = knowledge_count(&root, &ctx.env)?;
+    if environment_knowledge == 0 && shared_knowledge == 0 {
         warnings.push("no knowledge for this org yet; do not invent facts".into());
     }
 
@@ -310,7 +318,7 @@ fn preflight(h: &Path, ctx: &Context, registry: &Registry) -> Result<Value> {
     "org":ctx.org,"name":ctx.data["name"],"environment":ctx.env,"production":ctx.production,"resolved_from":ctx.source,"workspace":root,"connections":rows.iter().filter(|r|truth(&r["applies"])).map(|r|json!({
     "connection":r["connection"],"provider":r["provider"],"state":r["state"],"label":r["label"],"verified":r["verified"]}
     )).collect::<Vec<_>>(),"other_environments":rows.iter().filter(|r|!truth(&r["applies"])).map(|r|format!("{} ({})",text(&r["connection"]),text(&r["scope"]))).collect::<Vec<_>>(),"knowledge":{
-    "_shared":knowledge_count(&root,"_shared"),&ctx.env:knowledge_count(&root,&ctx.env)}
+    "_shared":shared_knowledge,&ctx.env:environment_knowledge}
     ,"open_sessions":open,"incidents":{
     "count":incidents.len(),"latest":incidents.last()}
     ,"warnings":warnings,"note":"ready means configured locally; reckon verify proves live access"}
@@ -1268,10 +1276,13 @@ Some(&ctx.env)}
 ensure!(!a.passthrough.is_empty(),"usage: reckon run <connection|tool> -- <arguments>");
 ensure!(a.opt("label").is_none()||a.opt("session").is_some(),"--label needs --session");
 let words=activity::words(&ctx,a.s("target"),&a.passthrough,&registry);
+// Keep the read reservation until its evidence has consumed the budget.
+let mut _session_read_lock=None;
 let outcome=(||->Result<connectors::Outcome>{
 if let Some(sid)=a.opt("session"){
 let(path,data)=session_path(&root,sid)?;
 investigation::matching(&data,&ctx)?;
+_session_read_lock=Some(lock(&path)?);
 investigation::spend(&path,&data,1)?;
 }
 let stdin=if a.flag("stdin"){
@@ -1305,26 +1316,40 @@ return Err(e);
 }
 }
 ;
+let max_bytes=a.u("max_bytes")? as usize;
+let(stdout,stdout_limited)=orgs::redact_bounded(&outcome.result.stdout,&outcome.values,max_bytes,outcome.result.status);
+let(stderr,stderr_limited)=orgs::redact_bounded(&outcome.result.stderr,&outcome.values,max_bytes-stdout.len(),outcome.result.status);
+let mut status=outcome.result.status;
+if status==process::Status::Ok&&(stdout_limited||stderr_limited){
+status=process::Status::OutputLimit;
+}
+let mut invalid_evidence=false;
+if let Some(sid)=a.opt("session"){
+let record=investigation::record_run_locked(&root,sid,&ctx,&outcome,a.opt("label"),a.f("timeout")?,max_bytes)?;
+if status==process::Status::Ok&&text(&record["status"])=="failed"{
+status=process::Status::Failed;
+invalid_evidence=true;
+}
+eprintln!("reckon: saved as evidence {} in {sid}",text(&record["id"]));
+}
+activity::record(&h,&ctx,"run",json!({
+"target":outcome.connection,"command":words,"args":a.passthrough,"session":a.opt("session"),"status":status.name(),"exit_code":outcome.result.exit_code,"cached":outcome.cached_at.as_ref().map(|_|true)}
+));
 if let Some(note)=&outcome.quota_note{
 eprintln!("reckon: {note}");
 }
 if let Some(at)=&outcome.cached_at{
 eprintln!("reckon: cached result observed at {at}; drop --cache for a fresh read");
 }
-std::io::stdout().write_all(orgs::redact(&String::from_utf8_lossy(&outcome.result.stdout),&outcome.values).as_bytes())?;
-std::io::stderr().write_all(orgs::redact(&String::from_utf8_lossy(&outcome.result.stderr),&outcome.values).as_bytes())?;
-if let Some(sid)=a.opt("session"){
-let record=investigation::record_run(&root,sid,&ctx,&outcome,a.opt("label"),a.f("timeout")?,a.u("max_bytes")? as usize)?;
-eprintln!("reckon: saved as evidence {} in {sid}",text(&record["id"]));
+// A closed caller pipe must not discard evidence or refund the read budget.
+std::io::stdout().write_all(stdout.as_bytes())?;
+std::io::stderr().write_all(stderr.as_bytes())?;
+if status!=process::Status::Ok{
+eprintln!("reckon: {} {}",outcome.connection,status.name());
 }
-if outcome.result.status!=process::Status::Ok{
-eprintln!("reckon: {} {}",outcome.connection,outcome.result.status.name());
-}
-activity::record(&h,&ctx,"run",json!({
-"target":outcome.connection,"command":words,"args":a.passthrough,"session":a.opt("session"),"status":outcome.result.status.name(),"exit_code":outcome.result.exit_code,"cached":outcome.cached_at.as_ref().map(|_|true)}
-));
-let code=match outcome.result.status{
+let code=if invalid_evidence{2}else{match status{
 process::Status::Ok=>0,process::Status::Failed=>outcome.result.exit_code.unwrap_or(1),process::Status::Timeout=>124,process::Status::OutputLimit=>3,process::Status::Unavailable=>127,process::Status::Cancelled=>130}
+}
 ;
 Ok(json!({
 "_exit":code}
@@ -1396,7 +1421,7 @@ Value::Null}
 let previous=if recipe.is_null(){
 Value::Null}
 else{
-workflows::previous(&root,&ctx.env,&recipe)}
+workflows::previous(&root,&ctx.org,&ctx.env,&recipe)}
 ;
 let mut extra=json!({
 "area":area,"budget":budget,"window":bounds,"playbook":playbook}
@@ -1413,7 +1438,7 @@ let mut result=json!({
 "session":sid,"org":ctx.org,"environment":ctx.env,"path":path,"report":investigation::report(&root,sid)?,"next":format!("reckon run <connection> --session {sid} -- <arguments>")}
 );
 if !previous.is_null(){
-result["previous"]=investigation::summary(&root,&previous);
+result["previous"]=investigation::summary(&root,&ctx.org,&ctx.env,&previous);
 result["start_with"]=json!(format!("the last review's actions: for each, record what happened with reckon note {sid} --kind finding --follows <action-note-id> --evidence <ids>"));
 }
 if !recipe.is_null(){
@@ -1502,6 +1527,7 @@ Ok(json!(rows))}
     "resume"|"report"|"note"|"promote"|"check"|"close"=>{
 let sid=a.s("session");
 let(path,mut data)=session_path(&root,sid)?;
+ensure!(data["org"]==ctx.org,"session belongs to another org");
 if activity::pinned()||name=="check"{
 investigation::matching(&data,&ctx)?;
 }
@@ -1523,9 +1549,13 @@ data=session_path(&root,sid)?.1;
 if a.s("outcome")=="diagnosed"{
 ensure!(investigation::live(&data["notes"]).iter().any(|n|text(&n["kind"])=="finding"),"record an evidence-backed finding before marking the investigation diagnosed");
 }
+let checked=if ["done","diagnosed"].contains(&a.s("outcome")){
+let checked=investigation::check(&root,sid,&available(&h,&ctx,&registry),&registry)?;
+ensure!(truth(&checked["ok"]),"cannot close as {}: {}",a.s("outcome"),strings(&checked["problems"]).join("; "));
+checked
+}else{Value::Null};
 if a.s("outcome")=="done"&&truth(&data["workflow"]){
 investigation::matching(&data,&ctx)?;
-let checked=investigation::check(&root,sid,&available(&h,&ctx,&registry),&registry)?;
 ensure!(checked.get("workflow").is_some(),"cannot close as done: {}",strings(&checked["problems"]).join("; "));
 let todo=strings(&checked["workflow"]["todo"]);
 ensure!(!todo.contains(&"report-actions".into()),"report-actions: the recorded actions are outside the workflow's limit; merge or withdraw some with reckon note {sid} --withdraw <note-id> --text \"<why>\"");
@@ -1544,7 +1574,7 @@ Ok(json!({
 let limit=a.u("limit")?;
 ensure!((1..=200).contains(&limit),"history limit must be 1–200");
 ensure!(!a.flag("all_envs")||!activity::pinned(),"a pinned agent sees only its own environment's history");
-Ok(json!(investigation::history(&root,if a.flag("all_envs"){
+Ok(json!(investigation::history(&root,&ctx.org,if a.flag("all_envs"){
 None}
 else{
 Some(&ctx.env)}
@@ -2128,6 +2158,25 @@ pub fn exit_code(command: &str, r: &Value) -> i32 {
             .any(|v| !["ok", "reused"].contains(&text(&v["status"])))
     {
         return 2;
+    }
+
+    if command == "watch" && array(r).iter().any(|row| text(&row["status"]) == "error") {
+        return 1;
+    }
+
+    if command == "routine" && r.is_object() {
+        return match text(&r["status"]) {
+            "timeout" => 124,
+            "cancelled" => 130,
+            "output_limit" => 3,
+            "unavailable" => 127,
+            "failed" => match r["exit_code"].as_i64() {
+                Some(n) if n < 0 => 128 + (-n as i32),
+                Some(n) if n > 0 => n as i32,
+                _ => 1,
+            },
+            _ => 0,
+        };
     }
 
     if truth(&r["collection"]["partial"]) {

@@ -1,0 +1,20 @@
+{
+  "cubeapm.metrics.range": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"service":"fixture"},"values":[[1,"42"]]}]}},
+  "cubeapm.logs.search": {"_time":"2026-10-01T00:00:00Z","_msg":"fixture log"},
+  "cubeapm.traces.search": [{"TRACE_ID":"0123456789abcdef","SERVICE":"fixture","OPERATION":"GET /","DURATION":"1ms","STATUS":"OK","TIMESTAMP":"2026-10-01T00:00:00Z"}],
+  "cubeapm.trace.get": {"traceID":"0123456789abcdef","spans":[{"spanID":"01234567","operationName":"GET /"}],"processes":{}},
+  "grafana.metrics.range": {"status":"success","data":{"resultType":"matrix","result":[]}},
+  "grafana.annotations": [{"id":1,"time":1790812800000,"text":"fixture annotation"}],
+  "jenkins.builds": [{"number":1,"result":"SUCCESS","timestamp":1790812800000}],
+  "jenkins.build.get": {"number":1,"result":"SUCCESS","building":false,"actions":[]},
+  "github.runs": [{"databaseId":1,"status":"completed","conclusion":"success","headSha":"abcdef0"}],
+  "github.run.get": {"databaseId":1,"status":"completed","conclusion":"success","jobs":[]},
+  "git.show": "commit 0123456789abcdef0123456789abcdef01234567\nAuthor: Fixture <fixture@example.invalid>\n\n    fixture commit\n",
+  "elasticsearch.logs.search": {"hits":{"hits":[{"_id":"fixture","_source":{"message":"fixture log"}}]}},
+  "kubernetes.pods": {"apiVersion":"v1","kind":"PodList","items":[{"metadata":{"name":"fixture"},"status":{"phase":"Running"}}]},
+  "kubernetes.events": {"apiVersion":"v1","kind":"EventList","items":[{"metadata":{"name":"fixture-event"},"message":"fixture event"}]},
+  "jira.search": [{"id":"1","key":"FIX-1","fields":{"summary":"fixture issue"}}],
+  "nginxpm.proxy.get": {"id":1,"domain_names":["fixture.invalid"],"enabled":true},
+  "nginxpm.cert.get": {"id":1,"nice_name":"fixture","domain_names":["fixture.invalid"]},
+  "aws.logs.search": {"events":[{"timestamp":1790812800000,"message":"fixture log","eventId":"fixture"}]}
+}

@@ -95,9 +95,16 @@ For operations work, the agent narrows from broad to specific:
 
 `reckon check <session>` exits 1 when a saved session should not be trusted as is:
 broken evidence integrity, a finding without successful evidence, evidence from
-another org or environment, or a session closed as done without a finding. It
+another org or environment, or a session closed as diagnosed without a finding. It
 also warns about partial evidence, hypotheses without a next check and knowledge
 that changed since the session started.
+
+Saved session budgets, notes, workflow checks and copied previous-review actions
+are validated before use. Invalid metadata is preserved and reported as an error.
+Closing as `done` or `diagnosed` also requires the session's integrity checks to
+pass; a finding that cites missing or failed evidence prevents a successful close.
+Plain tasks can finish without a finding; workflow recipes define their own
+finding and read requirements.
 
 ## Reusing recent reads
 
@@ -106,6 +113,12 @@ the last 15 minutes instead of calling the tool again, and says when it was
 observed. The cache is per org, environment and connection, stored without
 secrets in `~/.reckon/orgs/<org>/cache/`. Evidence saved from a cached read keeps
 its original observation time.
+
+`--max-bytes` bounds combined stdout and stderr after redaction and UTF-8
+replacement, including cached results and saved evidence. Truncation returns
+exit status 3. With `--session`, a successful subprocess that returns invalid
+declared JSON or a provider error payload saves failed evidence and exits 2.
+Subprocess failures retain their own exit codes.
 
 ## Routines
 
@@ -117,7 +130,7 @@ rules can run, whatever your default mode is. Codex is not offered for routines:
 its sandboxes have no deny list, and unattended it could read secrets files.
 
 ```bash
-reckon routine add weekly-growth --org acme --env prod --workflow growth-review \
+reckon routine add weekly-growth --org acme --env prod --production --workflow growth-review \
   --param site=sc-domain:acme.com --at "mon 08:30"
 reckon routine install weekly-growth --org acme   # writes the launchd job (macOS) or prints a crontab line
 reckon routine run weekly-growth --org acme       # what the scheduler runs; try it once by hand
@@ -130,7 +143,17 @@ once after the Mac wakes. Each run's output is kept in
 `~/.reckon/orgs/<org>/routines/<name>/`, and the activity log records its result.
 Routines spend model usage without anyone watching, so start with one a week.
 `install` writes the schedule but does not load it; it prints the `launchctl`
-command for you to run.
+command for you to run. It validates the saved schedule and rejects control
+characters in scheduler paths and environment values. On macOS it replaces the
+plist atomically and refuses symlinked schedule paths.
+
+Production confirmation is saved and checked before each launch. If an environment
+becomes production, or an older routine has no saved confirmation, remove and
+re-add it with `--production`. Each launch also validates the saved runtime,
+timeout (whole minutes, 5-240), workflow and parameters. Invalid settings are
+recorded as errors before the agent starts. Removal is refused while a run is active. A failed
+agent returns its exit code to the scheduler; timeouts return 124, cancellation
+130, and an output limit 3. Launch failures return nonzero. Normal overlap skips return 0.
 
 ## Watches and the inbox
 
@@ -149,9 +172,16 @@ The read must pass the same checks as `reckon run` when the watch is added and
 each time it runs. `--items` is the dotted path to the list in the JSON output and
 `--key` the field that identifies an item. The first run records what already
 exists, so only later items reach the inbox; changing or re-adding a watch starts
-again from a baseline. Production watches need `--production`, and tools that ask
+again from a baseline. A changed connection, saved profile, credential or executable
+also starts a new baseline. Production watches need `--production`, and tools that ask
 before every run (databases) cannot be watched. Watches are for the operator; an
 agent can read its own environment's inbox.
+
+Production confirmation and the provider's approval policy are checked on every
+poll. An older production watch without saved confirmation must be removed and
+re-added with `--production`. Removal is refused during an active poll. A watch
+error makes `watch run` return 1, while ordinary overlap skips return 0. Invalid
+lock files and lock I/O errors are reported as errors.
 
 ## Goals
 
@@ -172,8 +202,18 @@ each bound to a read and the number to take from its JSON output:
 in the environment (with its date and evidence id), whether it is on track, or the
 read to run when there is none. `match` lists arguments the read must include
 (here the site and the period), so a one-day read of another site never counts.
+Matches use whole arguments or flag names and values in `--flag=value` form;
+nested assignments and longer positional values do not count as exact matches.
 Check `path` against the tool's real output; a weekly routine keeps the readings
 fresh. A goals file that does not parse shows as one invalid row, not an error.
+
+Goal readings preserve the source's coverage limits and warnings. JSON includes
+`completeness`, `data_quality` and `warnings`; the text brief shows coverage
+warnings beside the comparison. A partial reading's on-track or behind result
+compares the captured value only. Observation times are compared as instants,
+including timezone offsets. Invalid times or foreign-org evidence produce an
+invalid reading. Whole-number comparisons retain 64-bit counter precision, and
+an explicitly supplied `direction` must be `up` or `down`.
 
 ## Agent spend
 
@@ -184,15 +224,30 @@ reckon spend --all-orgs --days 7
 
 Each org has its own workspace folder, and Claude Code and Codex record the folder
 each session ran in, so Reckon totals input, output and cache tokens per org and
-model from their session files (`~/.claude/projects`, `~/.codex/sessions`). Only
-usage counters are read, never content. Prices change, so dollar estimates appear
+model from their session files (`~/.claude/projects`, `~/.codex/sessions` and
+`~/.codex/archived_sessions`). The
+report uses usage metadata and does not include transcript content. Prices change, so dollar estimates appear
 only for models you list in `~/.reckon/prices.json`, in USD per million tokens:
 
 ```json
 {"claude-opus-5-5": {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}}
 ```
 
+Invalid usage counters, missing message identities and token-total overflow
+produce an error. Rates must be nonnegative finite numbers; cost-estimate
+overflow also produces an error. Session logs and prices are left unchanged.
+Unreadable usage directories or transcripts also produce errors, as do invalid
+price-file paths. Missing runtime directories still count as no recorded usage.
+Named pipes are refused, and a present usage value must be an object; null
+placeholders remain supported.
+Independent Codex threads are counted separately even when their event times and
+counters match. Copies of the same identified log count once across active and
+archived folders; conflicting duplicate counters produce an error.
+Workspace paths are resolved before attribution, including `..` and existing
+symlinks; usage from deleted subdirectories within an org still counts.
+
 `reckon brief --all-orgs` shows each org's token total next to its open work.
+If usage accounting fails, the all-org briefing reports the error.
 
 ```bash
 reckon spend --org acme --set-budget 20000000 --budget-days 30   # 0 clears it
@@ -231,4 +286,19 @@ starts with one table row per org and runs only in your own terminal, never in a
 pinned agent. It contacts no tool, so it is safe
 to run from cron or launchd, for example
 `0 8 * * 1-5 RECKON_HOME=~/.reckon ~/.reckon/bin/reckon brief --org acme --env prod --save`.
+
+Recent findings include citation checks against the saved evidence. A missing,
+failed or damaged citation is marked `Unsupported`; partial coverage and source
+warnings appear beside the claim. JSON findings include `citations.ok`,
+`citations.problems` and `citations.warnings`. Session reports and previous-review
+summaries also surface these limitations without rewriting the original notes.
+
+The previous review is the matching run that finished most recently, comparing
+timestamps with their timezone offsets. Older runs without a finish time fall
+back to creation time. History orders session creation times before applying its
+limit. Foreign-org sessions are excluded, and a previous review whose context
+changed is unavailable while its copied actions still need follow-up. Receipt
+summaries require valid action records in the same org and environment.
+The brief applies the same checks to writes waiting for approval or with an
+unknown outcome.
 

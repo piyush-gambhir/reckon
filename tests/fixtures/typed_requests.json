@@ -1,0 +1,20 @@
+{
+  "cubeapm.metrics.range":{"query":"up"},
+  "cubeapm.logs.search":{"query":"error","service":"fixture"},
+  "cubeapm.traces.search":{"service":"fixture"},
+  "cubeapm.trace.get":{"trace_id":"0123456789abcdef"},
+  "grafana.metrics.range":{"query":"up","datasource":"fixture"},
+  "grafana.annotations":{},
+  "jenkins.builds":{"job":"fixture"},
+  "jenkins.build.get":{"job":"fixture","number":1},
+  "github.runs":{"repo":"acme/api"},
+  "github.run.get":{"repo":"acme/api","number":1},
+  "git.show":{"path":".","revision":"0123456789abcdef0123456789abcdef01234567"},
+  "elasticsearch.logs.search":{"index":"fixture","query":"error"},
+  "kubernetes.pods":{"namespace":"fixture","selector":"app=fixture"},
+  "kubernetes.events":{"namespace":"fixture"},
+  "jira.search":{"query":"project = FIX"},
+  "nginxpm.proxy.get":{"number":1},
+  "nginxpm.cert.get":{"number":1},
+  "aws.logs.search":{"group":"fixture","query":"ERROR"}
+}
