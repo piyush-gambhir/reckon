@@ -29,3 +29,6 @@ __pycache__/
 
 # macOS Finder metadata (it can encode the names of ignored folders).
 .DS_Store
+
+# Local bundle graph exports
+/.bundle-analysis/
