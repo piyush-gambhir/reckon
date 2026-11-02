@@ -3,7 +3,7 @@
 import { Moon, Search, Sun } from 'lucide-react';
 import Link from 'next/link';
 import { useTheme } from 'next-themes';
-import { useSearchContext } from 'fumadocs-ui/contexts/search';
+import { useSearchContext } from '@fumadocs/base-ui/contexts/search';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { OsmoButton } from '@/components/ui/osmo-button';
 import { site } from '@/lib/site';

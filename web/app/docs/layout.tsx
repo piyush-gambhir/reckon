@@ -1,5 +1,5 @@
 import { source } from '@/lib/source';
-import { DocsLayout } from 'fumadocs-ui/layouts/docs';
+import { DocsLayout } from '@fumadocs/base-ui/layouts/docs';
 import { baseOptions } from '@/lib/layout.shared';
 import type { ComponentProps } from 'react';
 
