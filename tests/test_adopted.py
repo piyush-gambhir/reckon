@@ -86,10 +86,9 @@ class RealBinaryTests(unittest.TestCase):
                 if any("*" in w for w in words):
                     continue
                 done = subprocess.run([binary] + words + (["help"] if name == "aws" else ["--help"]), env=env, capture_output=True, text=True, timeout=60)
-                # Some CLIs print the parent's help for an unknown verb, so the full path must appear.
                 raw = re.sub(r".\x08", "", done.stdout + done.stderr)
                 text = " ".join(raw.split()).lower()
-                text = re.sub(r" \([a-z0-9, -]+\)", "", text)  # gog prints aliases inline: "gog drive (drv) ls"
+                text = re.sub(r" \([a-z0-9, -]+\)", "", text)
                 exists = raw.lstrip().lower().startswith(words[-1].lower() + "()") if name == "aws" else " ".join([spec["binary"]] + words).lower() in text
                 self.assertTrue(done.returncode == 0 and exists, (name, words, done.returncode, text[:300]))
                 checked += 1

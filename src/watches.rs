@@ -97,7 +97,6 @@ pub fn remove(h: &Path, org: &str, name: &str) -> Result<Value> {
         &orgs::org_path(h, org)?,
         "runtime/watch-registry",
     )?)?;
-    // Keep the lock outside the state directory, which removal deletes.
     let _watch_lock = lock(&local_path(
         &orgs::org_path(h, org)?,
         format!("runtime/watch-locks/{name}"),

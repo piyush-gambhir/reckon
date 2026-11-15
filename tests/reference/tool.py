@@ -7,7 +7,6 @@ import sys
 name = Path(sys.argv[0]).name
 args = sys.argv[1:]
 if args[:2] == ["commands", "resolve"]:
-    # Every synthetic command is a read, as the real CLIs' resolvers report.
     words = [a for a in args[3:] if not a.startswith("-")][:2]
     print(json.dumps({"command": " ".join([name] + words), "effect": "read"}))
 elif name in ("cubeapm", "grafana") and (args[:2] == ["metrics", "query-range"] or args[:2] == ["datasource", "query"]):

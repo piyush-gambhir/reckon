@@ -144,20 +144,17 @@ class ActionTests(OrgCase):
 
     def test_review_fixes(self):
         record = self.prepare()
-        # The executor itself refuses inside a pinned agent, whatever confirm a caller passes.
         with mock.patch.dict("os.environ", RECKON_ORG="acme", RECKON_ENV="staging"):
             with self.assertRaisesRegex(ValueError, "not a pinned agent"):
                 self.apply(record, "yes")
         with mock.patch.object(actions, "terminal", return_value=False):
             with self.assertRaisesRegex(ValueError, "own terminal"):
                 self.apply(record, "yes")
-        # A replaced connection is not silently used.
         data = orgs.load(self.home, "acme", self.registry)
         data["connections"]["github"] = data["connections"].pop("gh-staging")
         orgs.save(self.home, data, self.registry)
         with self.assertRaisesRegex(ValueError, "changed or no longer serves"):
             self.apply(record, "yes")
-        # Control characters are shown, not interpreted.
         shown = actions.preview(dict(record, params=dict(PARAMS, body="ok\x1b[2J\x1b[Hfake")), False)
         self.assertNotIn("\x1b", shown)
         self.assertIn("\\x1b[2J", shown)
@@ -182,7 +179,6 @@ class ActionTests(OrgCase):
         record = self.prepare()
         with mock.patch.object(actions, "bounded", return_value=timeout):
             self.assertEqual(self.apply(record, "yes")["status"], "unknown")
-        # A same-title issue without this action's marker proves nothing; the outcome stays unknown.
         self.fake("import json\nprint(json.dumps([{'number': 3, 'url': 'u3', 'body': 'Fix checkout timeout', 'createdAt': '2999-01-01T00:00:00Z'}]))", "gh")
         still = actions.reconcile(self.home, self.ctx(), self.root, record["id"], self.registry)
         self.assertEqual(still["status"], "unknown")
@@ -260,7 +256,6 @@ class JiraWriteTests(OrgCase):
 
     def test_apply_creates_one_issue_and_links_it(self):
         record = self.prepare()
-        # Org-wide connection: the operator types the org name.
         done = actions.apply(self.home, self.ctx(), self.root, record["id"], self.registry, confirm=lambda p: "acme")
         self.assertEqual(done["status"], "applied")
         self.assertEqual(done["receipt"]["url"], "https://acme.atlassian.net/browse/ABC-7")
@@ -268,7 +263,6 @@ class JiraWriteTests(OrgCase):
         self.assertEqual(ran["args"], ["issue", "create", "--allow-duplicate", "--project=ABC", "--type=Task", "--summary=-Checkout times out",
                                        "--description=Seen in s-1.\n\n" + actions.marker(record["id"], "jira.issue.create"),
                                        "--label=growth", "--label=checkout", "--parent=ABC-1", "-o", "json"])
-        # The write runs without read-only mode and never waits for input.
         self.assertEqual((ran["read_only"], ran["no_input"]), (None, "true"))
 
     def test_reconcile_finds_the_issue_by_its_marker(self):
@@ -282,7 +276,6 @@ class JiraWriteTests(OrgCase):
         tag = actions.marker(record["id"], "jira.issue.create")
         doc = {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Seen in s-1."}]},
                                           {"type": "paragraph", "content": [{"type": "text", "text": tag}]}]}
-        # Quoting the marker in another issue, or a different summary, proves nothing.
         quoting = {"key": "ABC-8", "self": other["self"], "fields": {"summary": JIRA_PARAMS["summary"],
                                                                      "description": "Why did " + tag + " time out?\nStill checking."}}
         renamed = {"key": "ABC-9", "self": other["self"], "fields": {"summary": "Something else", "description": doc}}
@@ -311,7 +304,6 @@ class JiraLinkTests(unittest.TestCase):
         self.assertEqual(actions.browse({"key": "ABC-1", "self": "https://acme.atlassian.net/rest/api/3/issue/1"}),
                          "https://acme.atlassian.net/browse/ABC-1")
         self.assertIsNone(actions.browse({"key": "ABC-1", "self": "not a url"}))
-        # A Server (wiki markup) description and a Cloud (ADF) one read the same.
         doc = {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "a"}, {"type": "hardBreak"},
                                                                              {"type": "text", "text": "b"}]}]}
         self.assertEqual((actions.plain(doc), actions.plain("a\nb"), actions.plain(None)), ("a\nb", "a\nb", ""))
@@ -342,14 +334,12 @@ class SitemapWriteTests(OrgCase):
                              ({"site": "sc-domain:other.com", "sitemap": "https://other.com/s.xml"}, "outside")):
             with self.assertRaisesRegex(ValueError, message):
                 self.prepare(**bad)
-        # Text that only looks like the property (a fragment or user info naming it) is not inside it.
         for sitemap in ("https://evil.invalid#.acme.com/s.xml", "https://www.acme.com@evil.invalid/s.xml",
                         "https://acme.com.evil.invalid/s.xml", "https://evil.invalid/www.acme.com/s.xml"):
             with self.assertRaisesRegex(ValueError, "inside the property", msg=sitemap):
                 self.prepare(sitemap=sitemap)
         with self.assertRaisesRegex(ValueError, "Search Console property"):
             self.prepare(site="https://evil.invalid#.acme.com/", sitemap="https://evil.invalid/s.xml")
-        # A URL-prefix property inside the allowed domain is fine, and so is an explicit default port.
         self.prepare(site="https://www.acme.com/", sitemap="https://www.acme.com/news/sitemap.xml")
         self.prepare(sitemap="https://acme.com:443/sitemap.xml")
 
@@ -366,7 +356,6 @@ class SitemapWriteTests(OrgCase):
         record = self.prepare()
         with mock.patch.object(actions, "bounded", return_value=timeout):
             self.assertEqual(self.apply(record)["status"], "unknown")
-        # A submission from before the apply, even a minute before, proves nothing.
         from datetime import datetime, timedelta
         approved = datetime.fromisoformat(actions.load(self.root, record["id"])[1]["approved_at"].replace("Z", "+00:00"))
         for earlier in ("2020-01-01T00:00:00Z", (approved - timedelta(minutes=1)).isoformat()):

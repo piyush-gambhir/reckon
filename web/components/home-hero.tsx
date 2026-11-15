@@ -8,15 +8,9 @@ import { gsap } from '@/lib/motion/gsap';
 import { useGsap } from '@/lib/motion/useGsap';
 import { site } from '@/lib/site';
 
-/**
- * A viewport-locked stage with one centered idea: the headline, what it does,
- * and the two ways in. Nothing sits behind the type.
- */
 export function HomeHero() {
   const rootRef = useRef<HTMLElement>(null);
   const words = site.tagline.split(/\s+/);
-  // Deliberate two-line break: the long clause reads first, the answer lands
-  // second. Accent stays on the closing pair.
   const opening = words.slice(0, -3);
   const closing = words.slice(-3);
   const repoUrl = `https://github.com/${site.repo}`;
@@ -93,7 +87,6 @@ export function HomeHero() {
 
   return (
     <section ref={rootRef} className="osmo-home-hero">
-      {/* Gutter ticks: the stage admits it sits on a grid. */}
       <span className="osmo-home-hero__tick is--start" aria-hidden="true">
         +
       </span>
@@ -109,7 +102,6 @@ export function HomeHero() {
           <span className="home-motion__text-mask">
             <span className="home-motion__text-line">
               {`${closing[0]} `}
-              {/* The answer the terminal prints, in the terminal's color. */}
               <span className="osmo-home-hero__accent">
                 {closing[1]}{' '}
                 <span className="osmo-home-hero__tail">

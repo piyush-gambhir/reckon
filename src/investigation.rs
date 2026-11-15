@@ -113,7 +113,6 @@ pub fn save(
         .unwrap_or(8 * 1048576)
         .min(8 * 1048576) as usize;
     for (stream, bytes) in [("stdout", &result.stdout), ("stderr", &result.stderr)] {
-        // Redaction and UTF-8 replacement can expand otherwise bounded output.
         let (content, limited) = orgs::redact_bounded(bytes, values, remaining, result.status);
         remaining -= content.len();
         truncated |= limited;
@@ -220,7 +219,6 @@ pub fn record_run(
     let _lock = lock(&path)?;
     record_run_locked(root, sid, ctx, outcome, label, timeout, max_bytes)
 }
-// The run command holds the session lock from its budget check through this save.
 pub(crate) fn record_run_locked(
     root: &Path,
     sid: &str,
@@ -384,7 +382,6 @@ pub fn collect(
             .flatten();
         planned.push((task, c, p, problem, fingerprint, reused));
     }
-    // Reuse adds no record. Reserve the entire fresh batch before any provider read.
     spend(
         &path,
         &session,

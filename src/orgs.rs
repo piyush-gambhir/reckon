@@ -1017,7 +1017,6 @@ pub fn redact(content: &str, values: &impl Redactable) -> String {
             out = out.replace(&secret, "[REDACTED]");
             continue;
         }
-        // Do not match a secret inside a marker from an earlier pass.
         out = out
             .split("[REDACTED]")
             .map(|part| part.replace(&secret, "[REDACTED]"))
@@ -1031,8 +1030,6 @@ pub fn redact(content: &str, values: &impl Redactable) -> String {
         .replace_all(&out, "${1}[REDACTED]")
         .into_owned()
 }
-// Find a possibly cut-off secret at the byte boundary, including partial UTF-8.
-// Prefix fallback keeps repeated-byte secrets linear rather than quadratic.
 fn secret_tail(bytes: &[u8], secret: &[u8]) -> usize {
     let mut prefixes = vec![0; secret.len()];
     let mut matched = 0;
@@ -1069,7 +1066,6 @@ pub fn redact_output(bytes: &[u8], values: &impl Redactable, status: process::St
     } else {
         0
     };
-    // A provider may already have replaced a value with the standard marker.
     if bytes.ends_with(b"[REDACTED]") && tail <= b"[REDACTED]".len() {
         tail = 0;
     }

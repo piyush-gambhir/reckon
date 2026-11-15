@@ -14,7 +14,6 @@ def demo(h):
         raise ValueError("the synthetic executable demo currently requires macOS/Linux or WSL2")
     code = orgs.code_root()
     registry = orgs.providers(code)
-    # A throwaway Reckon home: the demo never sees your orgs or credentials.
     home = local_path(h, "demos", uuid.uuid4().hex[:10])
     private_dir(local_path(home, "bin"))
     tool = (code / "tests/reference/tool.py").read_text()
@@ -38,8 +37,6 @@ def demo(h):
     ctx = orgs.context(home, "demo", "staging", registry)
     path, session = create(root, "demo", "staging", "Synthetic demo: checkout latency increased around a deployment", "debug",
                            mapping["services"][0], {"from": "2026-09-08T14:00:00Z", "to": "2026-09-08T14:30:00Z"}, "latency")
-    # Only the fixture binaries and essential system programs are on the child PATH,
-    # so a missing source can never resolve a real, authenticated CLI.
     saved = os.environ.get("PATH")
     os.environ["PATH"] = str(home / "bin") + ":/usr/bin:/bin"
     try:

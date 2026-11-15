@@ -78,7 +78,6 @@ pub fn flag_problem(arg: &str, spec: &Value) -> Option<String> {
     }
     None
 }
-// urfave/cli (lk) trims each argument, reads -name as --name and --x as -x.
 fn spellings(arg: &str, spec: &Value) -> Vec<String> {
     if !truth(&spec["single_dash_long"]) {
         return vec![arg.into()];
@@ -98,7 +97,6 @@ fn spellings(arg: &str, spec: &Value) -> Vec<String> {
     }
     out
 }
-// For CLIs that put names and IDs into API URL paths (pipecat): no path tricks.
 fn path_safe(arg: &str) -> bool {
     arg != "."
         && !arg.contains("..")
@@ -145,7 +143,6 @@ pub fn operands(
 }
 pub fn github_format_options(args: &[String], spec: &Value) -> Vec<(String, Option<String>)> {
     let mut spec = spec.clone();
-    // Run-list shorthands also take values, including values beginning with '-'.
     let words = tokens(args, &spec);
     if words.first().is_some_and(|word| word == "run")
         && words
@@ -447,7 +444,6 @@ fn site_parts(value: &str) -> Option<(String, String, String)> {
     {
         return None;
     }
-    // Validate the original authority before URL normalization can map it to another host.
     let authority = value.split_once("://")?.1.split(['/', '?', '#']).next()?;
     if authority.contains('@') {
         return None;
@@ -942,8 +938,6 @@ pub fn run(
         cached_at = Some(text(&hit["observed_at"]).into());
         let out = text(&hit["stdout"]);
         let err = text(&hit["stderr"]);
-        // Keep markers intact until presentation and evidence re-redact and bound them.
-        // The cache file itself is bounded by read_json's state-file limit.
         process::Output {
             status: Status::Ok,
             exit_code: hit["exit_code"].as_i64().map(|v| v as i32),
@@ -971,7 +965,6 @@ pub fn run(
         if result.status == Status::Ok {
             let entry = json!({"observed_at":now(),"exit_code":result.exit_code,"duration_ms":result.duration_ms as u64,"stdout":orgs::redact(&String::from_utf8_lossy(&result.stdout),&p.values),"stderr":orgs::redact(&String::from_utf8_lossy(&result.stderr),&p.values)});
             let serialized = format!("{}\n", serde_json::to_string_pretty(&entry)?);
-            // Escaping can expand a bounded process result beyond the state file limit.
             if serialized.len() <= 8 * 1048576
                 && orgs::config_fingerprint(h, &ctx.org, &p.connection)
                     .is_ok_and(|current| current == configuration)

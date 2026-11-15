@@ -98,7 +98,6 @@ export default function HomePage() {
       />
       <HomeHero />
 
-      {/* Stack strip */}
       {site.compatible && site.compatible.length > 0 ? (
         <section
           id="stack"
@@ -115,9 +114,6 @@ export default function HomePage() {
               <div className="compatible-marquee__track">
                 {Array.from(
                   {
-                    // Each copy is one full set, so the scroll speed stays fixed
-                    // per site; enough copies guarantee the track always overruns
-                    // the widest container so no blank gap sweeps through.
                     length: Math.max(
                       4,
                       Math.ceil(24 / site.compatible.length) + 1,
@@ -146,7 +142,6 @@ export default function HomePage() {
 
       <RcaSteps />
 
-      {/* Features */}
       <section
         className="osmo-section osmo-section--features"
         aria-labelledby="features-heading"
@@ -194,7 +189,6 @@ export default function HomePage() {
 
       <IncidentPanel />
 
-      {/* CTA band */}
       <section className="osmo-section osmo-section--cta">
         <div className="osmo-container">
           <Reveal className="osmo-cta-card__reveal">

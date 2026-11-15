@@ -37,7 +37,6 @@ export function BootSequence() {
       try {
         window.sessionStorage.setItem(BOOT_STORAGE_KEY, 'true');
       } catch {
-        // Storage can be unavailable in privacy-restricted contexts.
       }
     };
 
@@ -70,9 +69,6 @@ export function BootSequence() {
       },
     });
 
-    // The first line reveals via a pure-CSS animation the moment the overlay
-    // paints (no hydration dependency), so the plate is never blank. GSAP
-    // sequences the remaining lines like a real boot log.
     const queuedLines = lines.slice(1);
     gsap.set(queuedLines, { yPercent: 100, autoAlpha: 0 });
     timeline

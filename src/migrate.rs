@@ -119,7 +119,6 @@ fn digest(path: &Path) -> Result<Option<String>> {
             let name = relative
                 .to_str()
                 .ok_or_else(|| anyhow!("migrated CLI config filenames must be UTF-8"))?;
-            // Hash each file separately so its bytes cannot mimic file boundaries.
             files.push(json!([
                 name,
                 sha256(read_bytes(entry.path(), 8 * 1048576)?)
@@ -323,7 +322,6 @@ pub fn migrate(
         !dest.exists(),
         "org already exists (or its folder does): {org}"
     );
-    // Failed creation must never enter cleanup for another process's org.
     let mut data = orgs::create(
         h,
         org,

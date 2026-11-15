@@ -199,7 +199,6 @@ class NativeApprovalTests(OrgCase):
     def test_a_write_that_cannot_start_has_a_definite_failure(self):
         action = self.prepare()
         (self.bin / "gh").unlink()
-        # Hide any system gh (CI runners ship one) so the write truly cannot start.
         with mock.patch.dict(os.environ, PATH=str(self.bin)):
             code, out, err = self.apply_in_terminal(action)
         self.assertEqual(code, 1, err)
@@ -424,7 +423,6 @@ class NativeApprovalTests(OrgCase):
                 except ProcessLookupError:
                     break
                 if time.monotonic() >= deadline:
-                    # Linux can retain an already killed descendant as a zombie until init reaps it.
                     status = Path('/proc') / str(pid) / 'stat'
                     self.assertTrue(status.exists() and status.read_text().split()[2] == 'Z', pid)
                     break

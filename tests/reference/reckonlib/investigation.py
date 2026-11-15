@@ -101,7 +101,6 @@ def collect(h, ctx, root, sid, operation=None, params=None, refresh=False, timeo
     if not 0 < timeout <= 120 or not 0 < max_bytes <= 8388608:
         raise ValueError("timeout must be 0–120 seconds; output limit 1–8388608 bytes")
     registry = registry or orgs.providers()
-    # A saved session reads the same connections from any folder: no folder link preferences.
     ctx = dict(ctx, link=None)
     path, session = session_path(root, sid)
     matching(session, ctx)
@@ -111,7 +110,6 @@ def collect(h, ctx, root, sid, operation=None, params=None, refresh=False, timeo
             raise ValueError("this session has no time window; record reads with reckon run --session instead")
         tasks = [{"operation": operation, "params": params or {}, "label": operation, "window": session["window"]}]
     for task in tasks:
-        # A shared CubeAPM tenant holds every environment; keep trace reads on this one.
         if task["operation"] == "cubeapm.traces.search":
             try:
                 label = orgs.resolve(ctx, "cubeapm")[1].get("env_labels", {}).get(ctx["env"])
@@ -121,7 +119,6 @@ def collect(h, ctx, root, sid, operation=None, params=None, refresh=False, timeo
                 raise ValueError("env_label " + task["params"]["env_label"] + " belongs to another environment; this context uses " + label)
             if label:
                 task["params"] = dict(task["params"], env_label=label)
-    # Validate every command before launching any. No partially executed plan on bad input.
     commands = [build(t["operation"], t["params"], t["window"], root) for t in tasks]
     spend(path, session, len(commands))
     for command in commands:
@@ -135,8 +132,6 @@ def collect(h, ctx, root, sid, operation=None, params=None, refresh=False, timeo
                 from .connectors import scope
                 scope(registry["cubeapm"], command["argv"][1:], labels[ctx["env"]], labels.values())
     sources = {c["provider"]: source(h, ctx, c["provider"], registry) for c in commands}
-    # Typed reads pass the same gates as reckon run before any of them starts: argument
-    # rules, the CLI's own resolver and the connection's resource limits.
     from . import activity, connectors
     for command in commands:
         cname, env, values, problem = sources[command["provider"]]
@@ -220,7 +215,6 @@ def output_format(args, spec=None):
             or "--json" in args or "-o=json" in args):
         return "text"
     from .connectors import matches, tokens
-    # Streaming commands print one JSON value per entry rather than one document.
     if spec and any(matches(p, tokens(args, spec)) for p in spec.get("ndjson_commands", [])):
         return "ndjson"
     return "json"
@@ -248,7 +242,6 @@ def record_run(root, sid, ctx, outcome, label=None, timeout=60, max_bytes=838860
         private_dir(target)
         argv = outcome["argv"]
         command = [orgs.redact(a, outcome["values"]) for a in argv]
-        # A cached read keeps the time it was really observed.
         observed = outcome.get("cached_at") or now()
         record = {"schema_version": 1, "id": eid, "session": sid, "org": ctx["org"], "environment": ctx["env"],
                   "connection": outcome["connection"], "operation": "run:" + outcome["provider"],
@@ -323,7 +316,7 @@ def history(root, env=None, service=None, query=None, limit=20):
         try:
             _, data = session_path(root, p.parent.name)
         except (ValueError, OSError):
-            continue  # one unreadable session never hides the others
+            continue
         if env and data["environment"] != env or service and data.get("service") != service:
             continue
         if query and query.casefold() not in json.dumps(data).casefold():
@@ -332,8 +325,6 @@ def history(root, env=None, service=None, query=None, limit=20):
                         "question": data.get("question"), "status": data.get("status"), "created_at": data.get("created_at"), "path": str(p.parent)})
         if len(matches) >= limit:
             return matches
-    # Legacy RCAs have no reliable machine-readable environment. Label unknown;
-    # don't silently include them in an environment-filtered result.
     if not env:
         for p in sorted(local_path(root, "incidents").glob("*/RCA.md"), reverse=True):
             local_path(root, p.relative_to(root))
@@ -377,7 +368,6 @@ def resume(root, sid):
     path, data = session_path(root, sid)
     tasks, gaps = plan(data)
     records = evidence(path)
-    # Do not mutate a live collection. A running record is explicitly incomplete.
     previous = summary(root, data["previous"]) if data.get("previous") else None
     return {"session": data, "evidence": records, "plan": tasks, "gaps": gaps, "knowledge_changes": knowledge_changes(root, data),
             "previous": previous,

@@ -8,11 +8,9 @@ fn historical_path(path: &Path) -> Option<PathBuf> {
     for ancestor in path.ancestors() {
         match ancestor.canonicalize() {
             Ok(resolved) => {
-                // Resolve existing symlinks before normalizing a deleted suffix.
                 return orgs::absolute(&resolved.join(path.strip_prefix(ancestor).ok()?)).ok();
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                // A dangling symlink has no reliable workspace attribution.
                 if ancestor.symlink_metadata().is_ok() {
                     return None;
                 }
@@ -140,7 +138,6 @@ impl std::io::Read for ZstdReader {
             if read != 0 {
                 return Ok(read);
             }
-            // The decoder exposes the stored checksum; compare after collecting all output.
             if let Some(expected) = frame.decoder.get_checksum_from_data()
                 && frame.decoder.get_calculated_checksum() != Some(expected)
             {
@@ -163,7 +160,6 @@ fn indexed_lines(path: &Path) -> Result<impl Iterator<Item = Result<(String, u64
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        // A replaced transcript must not leave a report waiting on a named pipe.
         options.custom_flags(libc::O_NONBLOCK);
     }
     let file = options
@@ -422,7 +418,6 @@ struct CodexRollout {
     scoped: bool,
 }
 fn codex_revision(metadata: &Value) -> String {
-    // Revert preserves the thread ID while replacing its physical history.
     hash_json(&json!([
         metadata["id"],
         metadata["timestamp"],
@@ -665,7 +660,6 @@ fn codex(root: &Path, since: DateTime<Utc>, until: DateTime<Utc>) -> Result<Tota
             let path = entry
                 .map_err(|error| anyhow!("could not enumerate Codex usage transcripts: {error}"))?
                 .into_path();
-            // Revert rewrites wrapper timestamps. Old originals establish receipt age.
             if !(path.extension().is_some_and(|e| e == "jsonl") || compressed(&path))
                 || modified(&path)?.is_none()
             {
@@ -762,7 +756,6 @@ fn codex(root: &Path, since: DateTime<Utc>, until: DateTime<Utc>) -> Result<Tota
                     if p == &metadata["payload"] {
                         continue;
                     }
-                    // Copied prefixes retain metadata and owner-tagged settings.
                     copied_history = true;
                     inherited = true;
                     source_thread = p["id"]
@@ -1058,7 +1051,6 @@ fn codex(root: &Path, since: DateTime<Utc>, until: DateTime<Utc>) -> Result<Tota
     for (index, counter) in counters.iter().enumerate() {
         streams[counter.stream].push(index);
     }
-    // Referenced history can seed a new rollout with an already billed snapshot.
     let mut seeds = Vec::new();
     for stream in 0..rollouts.len() {
         let Some(mut source) = prefix_counter(stream, &rollouts, &counters, &streams) else {
@@ -1195,7 +1187,6 @@ fn codex(root: &Path, since: DateTime<Utc>, until: DateTime<Utc>) -> Result<Tota
             "conflicting agent usage in copied counters"
         );
     }
-    // Rate-limit and context updates repeat totals without consuming more tokens.
     let mut observations: BTreeMap<String, Vec<&CodexCounter>> = BTreeMap::new();
     for counter in counters
         .iter()

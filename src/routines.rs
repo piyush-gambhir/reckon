@@ -334,7 +334,6 @@ pub fn install(h: &Path, org: &str, name: &str) -> Result<Value> {
         );
         let parent = target.parent().ok_or_else(|| anyhow!("missing parent"))?;
         std::fs::create_dir_all(parent)?;
-        // Replace the plist atomically without changing LaunchAgents permissions.
         use std::io::Write;
         let mut temp = tempfile::Builder::new()
             .prefix(".reckon-")

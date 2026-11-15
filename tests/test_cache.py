@@ -121,7 +121,7 @@ class CacheTests(OrgCase):
         self.assertEqual(first.stdout, second.stdout)
         self.assertIn("cached result observed at", second.stderr)
         self.run_()
-        self.assertEqual(self.calls(), 2)  # without --cache, always a fresh read
+        self.assertEqual(self.calls(), 2)
 
     def test_cache_is_per_environment_and_never_stores_secrets(self):
         self.run_("--cache", "1h")

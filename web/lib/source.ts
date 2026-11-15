@@ -2,7 +2,6 @@ import { docs } from 'collections/server';
 import { loader } from 'fumadocs-core/source';
 import { docsContentRoute, docsImageRoute, docsRoute, siteUrl } from './shared';
 
-// See https://fumadocs.dev/docs/headless/source-api for more info
 export const source = loader({
   baseUrl: docsRoute,
   source: docs.toFumadocsSource(),
@@ -29,8 +28,6 @@ export function getPageMarkdownUrl(page: (typeof source)['$inferPage']) {
 
 export async function getLLMText(page: (typeof source)['$inferPage']) {
   const processed = await page.data.getText('processed');
-  // Agents read this outside the site, where root-relative links would resolve
-  // against the domain root, so make them absolute.
   const absolute = processed.replace(/\]\((\/[^)\s]*)\)/g, (_match, path: string) => `](${siteUrl}${path})`);
 
   return `# ${page.data.title} (${siteUrl}${page.url})

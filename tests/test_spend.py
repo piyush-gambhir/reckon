@@ -103,7 +103,6 @@ class SpendTests(OrgCase):
         result = self.cli("spend", "--org", "acme", "--json")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)[0]["tokens"], 22)
-        # SpendingOnly changes cumulative usage but leaves the stored last usage stale.
         self.codex_log("coverage.jsonl", [self.codex_context(), self.codex_counter(4, 4), first,
                        self.codex_counter(4, 14), self.codex_counter(3, 17)])
         result = self.cli("spend", "--org", "acme", "--json")
@@ -326,7 +325,6 @@ class SpendTests(OrgCase):
                 self.assertEqual(json.loads(result.stdout)[0]["tokens"], 3)
 
     def zstd_frame(self, content):
-        # A standard frame containing one raw block keeps fixtures dependency-free.
         self.assertLess(len(content), 128 * 1024)
         return (bytes.fromhex("28b52ffd a0") + len(content).to_bytes(4, "little")
                 + ((len(content) << 3) | 1).to_bytes(3, "little") + content)
@@ -373,7 +371,6 @@ class SpendTests(OrgCase):
     def test_native_codex_standard_compressed_blocks_and_checksums_are_read(self):
         path = self.codex_log("compressed.jsonl", [])
         prefix = path.read_bytes() + b'{"type":"event_msg","timestamp":"' + stamp().encode()
-        # Synthetic JSON suffix encoded once by the reference zstd CLI at level 3.
         suffix = bytes.fromhex(
             "28b52ffd0458750200d204101690a71a03cc85c21b095878245474f72373549ce7ca38c3ee9ad3d4c5026c940e96974d0887"
             "d25074e665e700cb62c5948181a490ba4d8ed2972db834eacee203004ae104a7fbe0d88402b415197d")
@@ -1241,7 +1238,6 @@ class SpendTests(OrgCase):
                     "usage": {"input_tokens": tokens, "output_tokens": 10, "cache_read_input_tokens": 100, "cache_creation_input_tokens": 1}}}) + "\n")
 
     def test_usage_is_attributed_by_workspace_and_window(self):
-        # The same message streamed twice counts once; another org's and old messages do not count.
         self.claude_session(self.root, [("m1", 0, 5), ("m1", 0, 5), ("m2", 1, 7), ("m3", 40, 1000)])
         self.claude_session(str(orgs.workspace(self.home, "beta")), [("b1", 0, 999)])
         codex = self.dir / "codex" / "sessions" / "2026" / "10" / "14"
@@ -1257,12 +1253,10 @@ class SpendTests(OrgCase):
             {"type": "event_msg", "timestamp": stamp(), "payload": {"type": "token_count", "info": {
                 "total_token_usage": {"input_tokens": 1080, "output_tokens": 9},
                 "last_token_usage": {"input_tokens": 30, "cached_input_tokens": 10, "output_tokens": 4}}}})) + "\n")
-        # A forked session replaying the same events counts them once.
         (codex / "rollout-2.jsonl").write_text((codex / "rollout-1.jsonl").read_text())
         result = spend.report(self.home, "acme", days=30)
         rows = {m["model"]: m for m in result["models"]}
         self.assertEqual((rows["claude-opus-5-5"]["input"], rows["claude-opus-5-5"]["output"], rows["claude-opus-5-5"]["cache_read"]), (12, 20, 200))
-        # Only the in-window turns count: input 80 - cached 30, output 9.
         self.assertEqual((rows["gpt-6.1-sol"]["input"], rows["gpt-6.1-sol"]["cache_read"], rows["gpt-6.1-sol"]["output"]), (50, 30, 9))
         self.assertIsNone(result["usd"])
         (self.home / "prices.json").write_text(json.dumps({"claude-opus-5-5": {"input": 1e6, "output": 0, "cache_read": 0, "cache_write": 0},
@@ -1279,7 +1273,6 @@ class SpendTests(OrgCase):
         (folder / "s.jsonl").write_text("\n".join(json.dumps(x) for x in lines) + "\n")
         result = spend.report(self.home, "acme", days=30)
         self.assertEqual([(m["model"], m["output"]) for m in result["models"]], [("claude-opus-5-5", 500)])
-        # A pinned agent cannot name another org.
         refused = self.cli("spend", "--org", "beta", RECKON_ORG="acme", RECKON_ENV="staging")
         self.assertEqual(refused.returncode, 1)
         self.assertIn("pinned", refused.stderr)
@@ -1295,7 +1288,6 @@ class SpendTests(OrgCase):
         self.assertEqual(self.cli("spend", "--org", "acme", "--set-budget", "5", RECKON_ORG="acme", RECKON_ENV="staging").returncode, 1)
         self.cli("spend", "--org", "acme", "--set-budget", "0")
         self.assertIsNone(spend.over(self.home, "acme"))
-        # A hand-edited bad budget warns instead of breaking open, spend or the brief, and can be cleared.
         path = orgs.org_path(self.home, "acme") / "org.json"
         data = json.loads(path.read_text())
         data["agent_token_budget"] = {"tokens": True, "days": 0}

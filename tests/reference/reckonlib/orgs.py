@@ -17,11 +17,9 @@ from .store import local_path, now, private_dir, read_bytes, read_json, write, w
 SCHEMA = 1
 NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 LABEL = re.compile(r"[A-Za-z0-9_.:/-]{1,80}")
-# Some tools report a name with spaces (a Grafana org), so only edge spaces and control characters are refused.
 ACCOUNT = re.compile(r"(?=\S)[^\x00-\x1f\x7f]{1,200}(?<=\S)")
 LINE = re.compile(r"(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)")
 PRODUCTION_NAMES = ("prod", "production")
-# Inherited from the operator's shell by every child; everything else is dropped.
 BASE_KEYS = {"PATH", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TERM",
              "SystemRoot", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT",
              "SSL_CERT_FILE", "SSL_CERT_DIR", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY",
@@ -148,13 +146,11 @@ def context(h, org=None, env=None, registry=None, cwd=None):
     RECKON_ORG/RECKON_ENV, then the link of the folder the command runs in, then
     the saved default. Missing or unknown values fail closed."""
     pinned = (os.environ.get("RECKON_ORG"), os.environ.get("RECKON_ENV"))
-    # reckon open pins an agent to one org and environment; it cannot step outside them.
     if pinned[0] and org and org != pinned[0] or pinned[1] and env and env != pinned[1]:
         raise ValueError("this agent is pinned to " + str(pinned[0]) + "/" + str(pinned[1]) +
                          "; another org or environment needs its own agent (reckon open <org>/<env>)")
     saved_path = local_path(h, "context")
     saved = read_bytes(saved_path, 4096).decode().strip().partition("/")[::2] if saved_path.is_file() else (None, None)
-    # An agent started by reckon open follows its pin, never the folder it wanders into.
     link = None if "RECKON_ORG" in os.environ or "RECKON_ENV" in os.environ else linked(h, cwd)
     source = "arguments"
     if not org:
@@ -164,10 +160,8 @@ def context(h, org=None, env=None, registry=None, cwd=None):
             org, source = link["org"], "folder link " + link["path"]
         else:
             org, source = saved[0], str(saved_path)
-    # A link is a default, not a lock: it applies only when the chosen org is the linked one.
     link = link if link and link["org"] == org else None
     if not env:
-        # An org named explicitly keeps the environment pinned, linked or saved for that same org.
         env = pinned[1] if pinned[0] == org else link["env"] if link else saved[1] if saved[0] == org else None
     if not org:
         raise ValueError("no org selected: run reckon use <org>/<env> (reckon org list shows your orgs)")
@@ -176,7 +170,6 @@ def context(h, org=None, env=None, registry=None, cwd=None):
         raise ValueError("no environment selected for " + org + "; choose one of: " + ", ".join(data["environments"]))
     if env not in data["environments"]:
         raise ValueError(org + " has no environment " + repr(env) + "; choose one of: " + ", ".join(data["environments"]))
-    # An agent started in one org's folder must not act for another org.
     here = Path(os.path.abspath(cwd or os.getcwd()))
     base = Path(os.path.abspath(h / "orgs"))
     if base in here.parents and len(here.relative_to(base).parts) >= 2 and here.relative_to(base).parts[1] == "workspace":
@@ -248,10 +241,8 @@ def link(h, path, org, env, use=(), registry=None):
         if cname not in conns:
             raise ValueError(org + " has no connection " + cname + " (reckon status --org " + org + " lists them)")
     for provider in sorted({conns[c]["provider"] for c in use}):
-        # reckon run <name> means the connection of that name first, so the preference would never apply.
         if provider in conns and provider not in use:
             raise ValueError(org + " has a connection named " + provider + ", so reckon run " + provider + " always means it; prefer it or rename it")
-        # One preferred connection per tool and environment, or the preference would still be a guess.
         for each in data["environments"]:
             fit = [c for c in use if conns[c]["provider"] == provider and applies(conns[c], each)]
             if len(fit) > 1:
@@ -288,7 +279,6 @@ def resolve(ctx, target):
     conns = ctx["data"]["connections"]
     link = ctx.get("link") or {}
     use = link.get("use", [])
-    # Checked before any name: a replacement named like the tool must not stand in for a removed preference.
     missing = [c for c in use if c not in conns]
     if missing:
         raise ValueError("the folder link at " + link["path"] + " prefers " + ", ".join(missing) + ", which " + ctx["org"] +
@@ -403,8 +393,6 @@ def child_env(h, ctx, conn_name, conn, spec, interactive=False, values=None):
         for key in keys:
             env[key] = str(target)
     if spec.get("real_home") and os.environ.get("HOME"):
-        # These CLIs keep OAuth tokens in the OS keychain, which macOS finds through
-        # the real home. Their config (and keychain entries) stay per connection.
         env["HOME"] = os.environ["HOME"]
     for key, relative in spec.get("paths", {}).items():
         env[key] = str(local_path(config, relative))
@@ -426,7 +414,6 @@ def redact(text, values):
     secrets_ = {v for k, v in values.items() if len(v) >= 4 and SECRET_KEY.search(k)}
     for secret in sorted(secrets_, key=len, reverse=True):
         text = text.replace(secret, "[REDACTED]")
-    # user:password@ and the password-only :password@ form (redis://:secret@host).
     text = re.sub(r"(://)[^\s/@:]*:[^\s/@]+@", r"\1[REDACTED]@", text)
     return re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+", r"\1[REDACTED]", text)
 

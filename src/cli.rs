@@ -1276,7 +1276,6 @@ Some(&ctx.env)}
 ensure!(!a.passthrough.is_empty(),"usage: reckon run <connection|tool> -- <arguments>");
 ensure!(a.opt("label").is_none()||a.opt("session").is_some(),"--label needs --session");
 let words=activity::words(&ctx,a.s("target"),&a.passthrough,&registry);
-// Keep the read reservation until its evidence has consumed the budget.
 let mut _session_read_lock=None;
 let outcome=(||->Result<connectors::Outcome>{
 if let Some(sid)=a.opt("session"){
@@ -1341,7 +1340,6 @@ eprintln!("reckon: {note}");
 if let Some(at)=&outcome.cached_at{
 eprintln!("reckon: cached result observed at {at}; drop --cache for a fresh read");
 }
-// A closed caller pipe must not discard evidence or refund the read budget.
 std::io::stdout().write_all(stdout.as_bytes())?;
 std::io::stderr().write_all(stderr.as_bytes())?;
 if status!=process::Status::Ok{

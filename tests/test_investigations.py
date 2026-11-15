@@ -173,7 +173,6 @@ class WorkflowTests(Fixture):
         self.assertFalse(output["network_used"])
         self.assertEqual(output["evidence_records"], 7)
         demo_home = Path(output["home"])
-        # The demo runs in a throwaway home: the operator's orgs are untouched.
         self.assertEqual(orgs.orgs(self.home), ["acme"])
         self.assertEqual(orgs.orgs(demo_home), ["demo"])
         context = work.resume(orgs.workspace(demo_home, "demo"), output["session"])
@@ -189,7 +188,7 @@ class WorkflowTests(Fixture):
         path, data = self.session()
         with self.assertRaisesRegex(ValueError, "remote_write"):
             self.collect(data["id"])
-        self.assertEqual(evidence(path), [])  # refused before any read started
+        self.assertEqual(evidence(path), [])
 
     def test_collection_is_in_the_activity_log(self):
         self.fake('print("[]")')
@@ -325,7 +324,6 @@ class WorkflowTests(Fixture):
         self.assertEqual(seen, {"GH_TOKEN": None, "JENKINS_TOKEN": None, "CUBEAPM_SERVER": "fixture.invalid", "RECKON_ORG": "acme", "RECKON_ENV": "staging"})
 
     def test_indented_log_stream_is_parsed(self):
-        # The pinned cubeapm prints each log entry as an indented JSON object.
         stream = json.dumps({"_msg": "a"}, indent=2) + "\n" + json.dumps({"_msg": "b"}, indent=2) + "\n"
         summary = work.payload_summary(stream, "ndjson", 100)
         self.assertEqual((summary["summary"], summary["completeness"]), ("2 entries captured.", "bounded"))
@@ -441,7 +439,6 @@ class WorkflowTests(Fixture):
         self.fake('print("[]")')
         path, data = self.session()
         record = self.collect(data["id"])[0]
-        # Same byte count as the original []\n: this must check the hash too.
         (path / record["artifacts"]["stdout"]["path"]).write_text('{}\n')
         checks = [lambda: self.collect(data["id"]),
                   lambda: work.note(self.root, data["id"], "finding", "Unsupported", [record["id"]]),
@@ -584,7 +581,6 @@ class WorkflowTests(Fixture):
         self.assertEqual(record["status"], "ok")
         argv = json.loads((path / record["artifacts"]["stdout"]["path"]).read_text())
         self.assertEqual(argv[argv.index("--env") + 1], "STAG")
-        # Passing the right label explicitly is fine; the uat label is another environment's.
         explicit = self.collect(session["id"], operation="cubeapm.traces.search", params={"service": "checkout", "env_label": "STAG"})
         self.assertEqual(explicit[0]["status"], "reused")
         marker = len(evidence(path))

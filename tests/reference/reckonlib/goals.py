@@ -67,7 +67,6 @@ def latest(root, env, goal, registry=None):
                 or not connectors.matches(goal["command"], connectors.tokens(args, spec))
                 or not all(any(a == m or a.startswith(m + "=") or a.endswith("=" + m) for a in args) for m in goal.get("match", []))):
             continue
-        # Observation time first; the record's write time breaks ties within a second.
         key = (record.get("observed_at", ""), record_path.stat().st_mtime_ns)
         if best is None or key > best[0]:
             best = (key, record, record_path.parent)
@@ -86,7 +85,6 @@ def report(root, env, registry=None):
     try:
         found = load(root, env)
     except ValueError as exc:
-        # One bad file is reported in the brief instead of stopping it.
         return [{"goal": "goals.json", "title": "goals file", "status": "invalid", "next": str(exc)[:300]}]
     for goal in found:
         row = {"goal": goal["id"], "title": goal["title"], "target": goal["target"], "direction": goal.get("direction", "up")}

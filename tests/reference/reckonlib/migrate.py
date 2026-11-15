@@ -13,7 +13,6 @@ from . import orgs
 from .store import local_path, private_dir, read_bytes, read_json, write, write_json
 
 LEGACY_ENVS = ("production", "staging", "uat")
-# Names the old .envrc translated before the CLIs saw them.
 ALIASES = {"CUBEAPM_HOST": "CUBEAPM_SERVER", "JENKINS_USERNAME": "JENKINS_USER"}
 
 
@@ -30,8 +29,6 @@ def parse(path):
             skipped.append(path.name + " line " + str(number) + " (not KEY=value)")
             continue
         key, value = match.group(1), match.group(2).strip()
-        # The old loader sourced these files with a shell: single quotes are literal,
-        # anything else may expand.
         quote = value[0] if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"" else ""
         if quote:
             value = value[1:-1]
@@ -138,19 +135,16 @@ def migrate(h, org, source, registry, display=None, dry_run=False, rename=None, 
                                for n, c in steps["connections"].items()},
                "skipped": steps["skipped"], "sessions": len(steps["sessions"]), "incidents": len(steps["incidents"]),
                "knowledge": steps["knowledge"], "dry_run": dry_run,
-               # Their logins live in the OS keychain under the old config path, which does not move.
                "login_again": sorted(n for n, c in steps["connections"].items() if c["config"] and registry[c["provider"]].get("real_home"))}
     if dry_run:
         return summary
     production = [names[e] for e in steps["environments"] if e == "production"]
     if orgs.org_path(h, org).exists():
-        # Rollback deletes the destination, so it must be entirely new.
         raise ValueError("org already exists (or its folder does): " + org)
     try:
         data = orgs.create(h, org, display, [names[e] for e in steps["environments"]], production, registry)
         copy(h, org, data, source, steps, names, registry)
     except BaseException:
-        # The org did not exist before this call; leave nothing half-copied behind.
         shutil.rmtree(orgs.org_path(h, org), ignore_errors=True)
         raise
     return summary

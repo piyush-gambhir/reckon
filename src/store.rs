@@ -77,7 +77,6 @@ pub fn private_dir(path: &Path) -> Result<()> {
                 !redirected(parent),
                 "local state directories must not be symlinks"
             );
-            // Existing parents can be shared system directories such as /tmp.
             if !parent.exists() {
                 private_dir(parent)?;
             }
@@ -132,7 +131,6 @@ pub(crate) fn json_content(value: &Value) -> Result<String> {
         content.len() <= 8 * 1048576,
         "local JSON state exceeds its readable size limit"
     );
-    // Serialization permits deeper values than our reader can reopen.
     serde_json::from_str::<Value>(&content)
         .map_err(|_| anyhow!("local JSON state exceeds its readable nesting limit"))?;
     Ok(content)
@@ -151,7 +149,6 @@ pub fn append_file(path: &Path) -> Result<File> {
     )?;
     private_dir(parent)?;
     let mut opts = OpenOptions::new();
-    // Windows locks need read access as well as an append-only handle.
     opts.read(true).append(true).create(true);
     #[cfg(unix)]
     {
@@ -167,7 +164,6 @@ pub fn append_file(path: &Path) -> Result<File> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};
-        // Check the link count before changing permissions or writing through this inode.
         ensure!(
             file.metadata()?.nlink() == 1,
             "local log must be a private regular file"
@@ -180,7 +176,6 @@ pub fn append_json(path: &Path, value: &Value) -> Result<()> {
     let mut bytes = serde_json::to_vec(value)?;
     bytes.push(b'\n');
     let mut file = append_file(path)?;
-    // Separate watches and CLI processes share these logs.
     file.lock()?;
     file.write_all(&bytes)?;
     Ok(())
@@ -282,7 +277,6 @@ pub fn file_sha256(path: &Path) -> Result<String> {
         .map(|byte| format!("{byte:02x}"))
         .collect())
 }
-// Python's canonical JSON encoding is retained for existing cache and action hashes.
 pub fn canonical(value: &Value) -> String {
     match value {
         Value::Array(v) => format!(
@@ -321,7 +315,6 @@ pub struct Lock {
 }
 impl Drop for Lock {
     fn drop(&mut self) {
-        // Explicit unlock also releases locks briefly inherited by a concurrent spawn.
         let _ = self._file.unlock();
     }
 }
@@ -478,7 +471,6 @@ pub fn finished_at(data: &Value) -> Result<DateTime<Utc>> {
         .as_str()
         .ok_or_else(|| anyhow!("invalid session finish time"))?;
     instant(stamp).or_else(|_| {
-        // Older review summaries can store a UTC date without a time.
         chrono::NaiveDate::parse_from_str(stamp, "%Y-%m-%d")
             .ok()
             .and_then(|date| date.and_hms_opt(0, 0, 0))

@@ -222,7 +222,6 @@ pub fn ensure(h: &Path, ctx: &Context, registry: &Registry) -> Result<PathBuf> {
         }
     }
     let mut skills = vec![("reckon".to_owned(), code.join("skills/reckon"))];
-    // Source installations can also carry adopted tool skills beside the checkout.
     let installed_skills = orgs::code_root().join(".agents/skills");
     for entry in entries(&installed_skills)? {
         let name = entry

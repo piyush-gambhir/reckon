@@ -83,18 +83,15 @@ class OrgTests(OrgCase):
         os.environ.update(RECKON_ORG="acme", RECKON_ENV="staging")
         pinned = orgs.context(self.home, registry=self.registry)
         self.assertEqual((pinned["org"], pinned["env"], pinned["source"]), ("acme", "staging", "RECKON_ORG/RECKON_ENV"))
-        # A pinned agent cannot name another org or environment...
         for org, env in (("other", "dev"), ("acme", "uat"), ("other", None)):
             with self.assertRaisesRegex(ValueError, "pinned to acme/staging"):
                 orgs.context(self.home, org, env, self.registry)
-        # ...but may name its own, and an org named alone keeps the pinned environment.
         self.assertEqual(orgs.context(self.home, "acme", "staging", self.registry)["source"], "arguments")
         self.assertEqual(orgs.context(self.home, "acme", None, self.registry)["env"], "staging")
         os.environ.pop("RECKON_ORG")
         os.environ.pop("RECKON_ENV")
         explicit = orgs.context(self.home, "other", "dev", self.registry)
         self.assertEqual((explicit["org"], explicit["env"], explicit["source"]), ("other", "dev", "arguments"))
-        # Outside an agent, an org named alone uses the saved environment, never another org's.
         self.assertEqual(orgs.context(self.home, "acme", None, self.registry)["env"], "uat")
         with self.assertRaisesRegex(ValueError, "no environment selected"):
             orgs.context(self.home, "other", None, self.registry)
@@ -127,7 +124,6 @@ class OrgTests(OrgCase):
             orgs.context(self.home, "acme", "staging", self.registry, cwd=foreign)
         self.assertEqual(orgs.context(self.home, "acme", "staging", self.registry, cwd=own)["org"], "acme")
         self.assertEqual(orgs.context(self.home, "acme", "staging", self.registry, cwd=self.dir)["org"], "acme")
-        # Secrets live beside the workspace, not in it: only the workspace folder pins an org.
         self.assertEqual(orgs.context(self.home, "acme", "staging", self.registry, cwd=self.home / "orgs" / "other" / "secrets")["org"], "acme")
 
     def test_set_context_rejects_unknown_org_and_environment(self):
@@ -218,7 +214,6 @@ class SecretsTests(OrgCase):
     def test_quotes_comments_blank_lines_and_export_prefix(self):
         self.secret("acme", "jenkins", ["# comment", "", "JENKINS_URL=\"https://j.invalid\"", "export JENKINS_USER='bob'",
                                         "JENKINS_TOKEN = tok-1", "JENKINS_INSECURE=true"])
-        # "KEY = value" is not KEY=value
         with self.assertRaisesRegex(ValueError, "expected KEY=value"):
             self.read()
         self.secret("acme", "jenkins", ["# comment", "", "JENKINS_URL=\"https://j.invalid\"", "export JENKINS_USER='bob'", "JENKINS_TOKEN=tok-1"])
@@ -424,11 +419,9 @@ class CheckTests(unittest.TestCase):
         self.refused("cubeapm", ["ingest"], pattern="ingest")
 
     def test_denied_commands_cannot_hide_behind_a_leading_flag(self):
-        # tokens() stops at the first flag, so subcommand CLIs must start with the command.
         self.refused("jenkins", ["-o", "json", "login"], pattern="before any flags")
         self.refused("kubernetes", ["-n", "x", "get", "pods"], pattern="before any flags")
         self.ok("jenkins", ["--help"])
-        # psql takes flags first and has no subcommands.
         self.ok("postgres", ["-c", "SELECT 1"])
 
     def test_cli_shorthands_for_target_and_auth_are_refused(self):
@@ -449,7 +442,6 @@ class CheckTests(unittest.TestCase):
         self.refused("aws", ["sts", "get-caller-identity", "--pro", "other"], pattern="--profile")
         self.refused("aws", ["logs", "filter-log-events", "--endp", "https://other.invalid"], pattern="--endpoint-url")
         self.ok("aws", ["logs", "filter-log-events", "--end-time", "1"])
-        # Cobra does not expand abbreviations, so a real flag that prefixes a denied one stays usable.
         self.ok("cubeapm", ["traces", "search", "--query", "GET /x"])
 
     def test_database_overrides_are_refused(self):
@@ -461,48 +453,35 @@ class CheckTests(unittest.TestCase):
             self.refused("mysql", args, pattern="fixed by the connection")
 
     def test_review_round_two_bypasses_are_closed(self):
-        # kcat chooses producer mode on its own unless a read mode is given.
         self.refused("kafka", ["-t", "events", "messages.txt"], pattern="read mode")
         self.ok("kafka", ["-C", "-t", "events", "-o", "-10", "-e"])
         self.ok("kafka", ["-L", "-J"])
-        # One-letter abbreviations where the parser expands them.
         self.refused("aws", ["sts", "get-caller-identity", "--e", "http://other.invalid"], pattern="--endpoint-url")
         self.refused("postgres", ["--u", "other", "-c", "SELECT 1"], pattern="--username")
-        # MySQL option prefixes, underscores and password aliases.
         self.refused("mysql", ["-e", "SELECT 1", "--loose-host=prod.invalid"], pattern="--host")
         self.refused("mysql", ["-e", "SELECT 1", "--init_command=SET SESSION TRANSACTION READ WRITE"], pattern="--init-command")
         self.refused("mysql", ["-e", "SELECT 1", "--password1=x"], pattern="--password")
-        # Credential-printing and credential-reading commands.
         self.refused("gsc", ["auth", "token"], pattern="auth token")
         self.refused("redis", ["CONFIG", "GET", "requirepass"], pattern="read commands")
-        # Boolean ClickHouse -m must not hide -C.
         self.refused("clickhouse", ["-mC/etc/clickhouse.xml", "--query", "SELECT 1"], pattern="-C")
-        # Elasticsearch -f owns its attached file name.
         self.ok("elasticsearch", ["search", "query", "logs", "-f./query.json"])
-        # psql: -c inside a cluster owns the SQL that follows.
         self.ok("postgres", ["-Ac", "SELECT * FROM users WHERE user = 1"])
         self.ok("postgres", ["--comm", "SELECT * FROM users WHERE user = 1"])
         self.refused("postgres", ["-c", "SELECT 1", "-dhost=prod.invalid"], pattern="connection strings")
 
     def test_review_round_three_bypasses_are_closed(self):
-        # -t owns the next argument, so "-C" there is a topic name, not consumer mode.
         self.refused("kafka", ["-t", "-C", "messages.txt"], pattern="read mode")
-        # Subcommands resolve across flags.
         self.refused("gsc", ["auth", "-o", "json", "token"], pattern="auth token")
         self.refused("github", ["auth", "status", "--show-token"], pattern="allows only")
-        # Boolean --show-labels does not own the next word; qualified singular secrets are secrets.
         self.refused("kubernetes", ["get", "--show-labels", "secrets", "-o", "json"], pattern="secrets are not readable")
         self.refused("kubernetes", ["get", "secret.v1.", "-o", "json"], pattern="secrets are not readable")
         self.refused("kubernetes", ["get", "pods", "--client-certificate", "c.crt"], pattern="--client-certificate")
-        # Local file writes.
         self.refused("jenkins", ["build", "artifacts", "job", "42", "-d", "--output-dir", "x"], pattern="fixed by the connection")
         self.refused("jira", ["issue", "download", "10001"], pattern="issue download")
         self.refused("grafana", ["dashboard", "export", "uid", "--output-file", "x"], pattern="--output-file")
         self.ok("grafana", ["dashboard", "export", "uid", "-o", "json"])
-        # psql [DBNAME [USERNAME]].
         self.refused("postgres", ["-c", "SELECT 1", "app", "admin"], pattern="at most a database name")
         self.ok("postgres", ["-c", "SELECT 1", "app"])
-        # Subcommand-specific value flags own their attached values.
         self.ok("jira", ["issue", "search", "-jstatus=Open"])
         self.ok("jenkins", ["job", "list", "-fservices"])
         self.refused("jenkins", ["build", "log", "job", "1", "-fs", "x"], pattern="-s")
@@ -525,7 +504,6 @@ class CheckTests(unittest.TestCase):
         self.refused("cubeapm", ["metrics", "query", 'up{env!="UAT"}'], pattern="reaches outside", label="UAT")
         self.refused("cubeapm", ["logs", "query", "env:UAT OR error"], pattern="or/unless", label="UAT")
         self.ok("cubeapm", ["logs", "query", "error or timeout", "--stream", '{env="UAT"}'], label="UAT")
-        # An ordinary word that equals another environment's label is not a selector.
         self.ok("cubeapm", ["logs", "query", "env:UAT AND error"], label="UAT")
 
     def test_kubernetes_cannot_select_resources_from_files(self):
@@ -541,11 +519,8 @@ class CheckTests(unittest.TestCase):
         self.ok("kubernetes", ["get", "-n", "x", "pods"])
 
     def test_cubeapm_tags_are_one_pair_each(self):
-        # --tags is a repeatable string array: "service=a,environment=UAT" is one tag named service,
-        # so it does not count as the environment and --env is still added.
         self.assertEqual(connectors.scope(self.registry["cubeapm"], ["traces", "search", "--tags", "service=a,environment=UAT"], "UAT", ())[-2:],
                          ["--env", "UAT"])
-        # Anything that reads as another environment's selector is still refused, conservatively.
         self.refused("cubeapm", ["traces", "search", "--tags", "service=a,environment=PROD"], pattern="reaches outside", label="UAT")
         self.refused("cubeapm", ["traces", "search", "--tags", "environment=PROD"], pattern="must use UAT", label="UAT")
 
@@ -570,7 +545,6 @@ class CheckTests(unittest.TestCase):
         self.ok("aws", ["logs", "filter-log-events", "--log-group-name", "g"])
         self.ok("aws", ["ecs", "describe-services", "--cluster", "c"])
         self.ok("aws", ["s3", "ls"])
-        # Only listed reads run: credential-returning and file-writing gets are simply not on the list.
         for args in (["secretsmanager", "get-secret-value", "--secret-id", "x"], ["ssm", "get-parameter", "--name", "x"],
                      ["lightsail", "get-instance-access-details", "--instance-name", "x"], ["s3api", "get-object", "--bucket", "b", "--key", "k", "out"],
                      ["lambda", "get-function", "--function-name", "f"]):
@@ -587,7 +561,6 @@ class CheckTests(unittest.TestCase):
         self.ok("cubeapm", ["traces", "search", "--env", "UAT"], "UAT")
         self.ok("cubeapm", ["traces", "search", "--env=UAT", "--tags", "environment=UAT"], "UAT")
         self.ok("cubeapm", ["traces", "search", "--tags", "team=payments"], "UAT")
-        # Without a label (an unshared connection) nothing is guarded.
         self.ok("cubeapm", ["traces", "search", "--env", "PROD"])
 
 
@@ -696,7 +669,6 @@ class RunTests(OrgCase):
     def test_session_from_another_org_is_refused_before_the_cli_runs(self):
         self.org("other", ("staging",))
         path, session = create(orgs.workspace(self.home, "other"), "other", "staging", "Other org", "task")
-        # The id exists only in the other org's workspace, so acme cannot even see it.
         result = self.cli("run", "jenkins", "--org", "acme", "--env", "staging", "--session", session["id"], "--", "job", "list")
         self.assertEqual(result.returncode, 1)
         self.assertFalse(self.marker.exists())
@@ -726,8 +698,6 @@ class RunTests(OrgCase):
         self.fake("import sys\nif sys.argv[1:3] == ['org', 'current']: print('{}')\nelse: sys.exit(3)", "grafana")
         result = self.cli("verify", "--org", "acme", "--env", "staging", "--json")
         rows = {r["connection"]: r for r in json.loads(result.stdout)}
-        # jenkins-staging is checked with whoami (the fake jenkins answers), jenkins-uat is another environment,
-        # grafana has no credentials yet.
         self.assertEqual(rows["jenkins-staging"]["status"], "ok")
         self.assertNotIn("jenkins-uat", rows)
         self.assertEqual((rows["grafana"]["status"], rows["grafana"]["detail"]), ("skipped", "no credentials"))
@@ -780,17 +750,14 @@ class RunTests(OrgCase):
         orgs.save(self.home, data, self.registry)
         self.secret("acme", "cubeapm", CUBEAPM)
         self.fake("import sys; print(sys.argv[1:])", "cubeapm")
-        # Trace searches without an environment get the active label added.
         result = self.run_cli("cubeapm", "--", "traces", "search", "--service", "x")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("'--env', 'STAG'", result.stdout)
         self.assertEqual(self.run_cli("cubeapm", "--", "traces", "search", "--env", "UAT").returncode, 1)
-        # Another environment's label anywhere in a query is refused.
         other = self.run_cli("cubeapm", "--", "metrics", "query", 'up{env="UAT"}')
         self.assertEqual(other.returncode, 1)
         self.assertIn("reaches outside STAG", other.stderr)
         self.assertEqual(self.run_cli("cubeapm", "--", "logs", "query", "env:UAT AND error").returncode, 1)
-        # Query commands must name the active label; discovery commands need not.
         self.assertIn("select STAG", self.run_cli("cubeapm", "--", "metrics", "query", "up").stderr)
         self.assertEqual(self.run_cli("cubeapm", "--", "metrics", "query", 'up{env="STAG"}').returncode, 0)
         self.assertEqual(self.run_cli("cubeapm", "--", "metrics", "labels", "--last", "1h").returncode, 0)
@@ -1357,7 +1324,6 @@ class LikeTests(OrgCase):
         secret = orgs.secrets_path(self.home, "beta", "jenkins-prod").read_text()
         self.assertNotIn("jenkins-token-123", secret)
         self.assertEqual(set(orgs.secrets(self.home, "beta", "jenkins-prod", self.registry["jenkins"]).values()), {""})
-        # Connections tied to environments the new org lacks are left out.
         narrow = json.loads(self.cli("org", "add", "gamma", "--like", "acme", "--envs", "uat", "--json").stdout)
         self.assertEqual(narrow["connections"], ["github"])
 
@@ -1413,12 +1379,10 @@ class LinkTests(OrgCase):
         ctx = orgs.context(self.home, registry=self.registry, cwd=self.repo / "src")
         self.assertEqual((ctx["org"], ctx["env"]), ("acme", "uat"))
         self.assertIn("folder link", ctx["source"])
-        # Arguments still win, and another org named outright gets no link.
         self.assertEqual(orgs.context(self.home, None, "staging", self.registry, cwd=self.repo)["env"], "staging")
         named = orgs.context(self.home, "other", None, self.registry, cwd=self.repo)
         self.assertEqual((named["org"], named["env"], named["link"]), ("other", "dev", None))
         self.assertEqual(orgs.context(self.home, registry=self.registry, cwd=self.dir)["org"], "other")
-        # The deepest link wins and inherits nothing from the one above it.
         orgs.link(self.home, self.repo / "src", "other", "dev", registry=self.registry)
         self.assertEqual(orgs.context(self.home, registry=self.registry, cwd=self.repo / "src")["org"], "other")
         self.assertEqual(orgs.context(self.home, registry=self.registry, cwd=self.repo)["org"], "acme")
@@ -1441,7 +1405,6 @@ class LinkTests(OrgCase):
         self.assertEqual(orgs.resolve(staging, "github")[0], "gh-acme")
         self.assertEqual(orgs.resolve(staging, "jenkins")[0], "jenkins-staging")
         self.assertEqual(orgs.resolve(uat, "jenkins")[0], "jenkins-uat")
-        # A connection named outright still works; saved work and other folders do not follow the preference.
         self.assertEqual(orgs.resolve(staging, "gh-bot")[0], "gh-bot")
         with self.assertRaisesRegex(ValueError, "several github"):
             orgs.resolve(dict(staging, link=None), "github")
@@ -1460,7 +1423,6 @@ class LinkTests(OrgCase):
         orgs.save(self.home, data, self.registry)
         with self.assertRaisesRegex(ValueError, "connection named github"):
             orgs.link(self.home, self.repo, "acme", "staging", ["gh-acme"], self.registry)
-        # A link made before the org changed fails closed instead of falling back.
         del data["connections"]["github"]
         orgs.save(self.home, data, self.registry)
         orgs.link(self.home, self.repo, "acme", "staging", ["gh-acme"], self.registry)
@@ -1468,7 +1430,6 @@ class LinkTests(OrgCase):
         orgs.save(self.home, data, self.registry)
         with self.assertRaisesRegex(ValueError, "names a connection"):
             orgs.resolve(orgs.context(self.home, registry=self.registry, cwd=self.repo), "github")
-        # A removed preference fails closed even when a replacement is named like the tool.
         del data["connections"]["gh-acme"]
         orgs.save(self.home, data, self.registry)
         for target in ("jenkins", "github"):

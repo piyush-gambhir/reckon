@@ -23,12 +23,12 @@ def brief(h, ctx, registry, days=7, envs=None):
         try:
             data = read_json(path)
         except (ValueError, OSError):
-            continue  # one unreadable session never stops the brief
+            continue
         if not isinstance(data, dict) or not isinstance(data.get("notes", []), list):
             continue
         review(series, data, envs)
         if data.get("environment") not in envs:
-            continue  # another environment's work stays out of this brief
+            continue
         if data.get("status") == "open":
             sessions.append({"id": data["id"], "environment": data["environment"], "question": data["question"], "since": data["created_at"]})
         for note in data.get("notes", []):
@@ -93,7 +93,6 @@ def review(series, data, envs):
             or data.get("environment") not in envs):
         return
     keys = sorted(set(flow.get("series", [])))
-    # The values themselves identify a series; the text is only for display.
     identity = (flow["id"], data["environment"], tuple((k, json.dumps(flow["params"].get(k), sort_keys=True)) for k in keys))
     row = series.setdefault(identity, {"workflow": flow["id"], "environment": data["environment"],
                                        "series": " ".join(k + "=" + str(flow["params"].get(k)) for k in keys),
@@ -152,7 +151,6 @@ def render_all(result):
     lines.append("")
     for r in result["orgs"]:
         for line in render(r).splitlines():
-            # One level down: the org becomes a section and its sections become subsections.
             lines.append("## " + line[9:] if line.startswith("# Brief: ") else "#" + line if line.startswith("## ") else line)
         lines.append("")
     return "\n".join(lines)

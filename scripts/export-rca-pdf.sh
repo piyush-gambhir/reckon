@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-#
-# reckon PDF export — render an incident RCA Markdown document as a PDF.
-#
-# Usage:
-#   bash scripts/export-rca-pdf.sh PATH_TO_RCA_MD [OPTIONAL_OUTPUT_PDF] [--force]
-#   bash scripts/export-rca-pdf.sh incidents/SOME_DIR [OPTIONAL_OUTPUT_PDF] [--force]
-#
-# Idempotent: an existing output is left untouched unless --force is supplied.
-#
 
 set -euo pipefail
 

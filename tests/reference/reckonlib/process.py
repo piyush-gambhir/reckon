@@ -66,8 +66,6 @@ def run(argv, *, env=None, cwd=None, timeout=15, max_bytes=1048576, stdin=None):
         signal.signal(signal.SIGTERM, terminate)
     try:
         if stdin is not None:
-            # All supported request bodies are small; write in a thread so a
-            # child refusing stdin cannot defeat the wall-clock deadline.
             def feed():
                 try:
                     proc.stdin.write(stdin)
@@ -86,7 +84,6 @@ def run(argv, *, env=None, cwd=None, timeout=15, max_bytes=1048576, stdin=None):
     except KeyboardInterrupt:
         status = "cancelled"
     finally:
-        # Also reap descendants after a parent exits with inherited pipes open.
         stop()
         for thread in threads:
             thread.join(timeout=1)

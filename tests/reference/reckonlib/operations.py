@@ -12,7 +12,6 @@ import re
 
 from .store import instant, window
 
-# name: provider, capability, required parameters, optional parameters, output
 OPERATIONS = {
     "cubeapm.metrics.range": ("cubeapm", "metrics.range", "query", "step", "json"),
     "cubeapm.logs.search": ("cubeapm", "logs.search", "query service", "limit", "ndjson"),
@@ -82,7 +81,6 @@ def build(operation, params, bounds, root):
     if operation == "cubeapm.metrics.range":
         args = ["cubeapm", "metrics", "query-range", p["query"], "--from", start, "--to", end, "--step", step + "s", "-o", "json"]
     elif operation == "cubeapm.logs.search":
-        # Quote the service value ourselves; the CLI's --service concatenates raw LogsQL.
         if not re.fullmatch(r"[A-Za-z0-9_.:/-]+", p["service"]):
             raise ValueError("use a literal mapped service label for CubeAPM logs")
         args = ["cubeapm", "logs", "query", p["query"], "--service", p["service"], "--from", start, "--to", end, "--limit", limit, "-o", "json"]

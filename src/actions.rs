@@ -570,7 +570,6 @@ pub fn apply(h: &Path, ctx: &Context, root: &Path, id: &str, registry: &Registry
     record["status"] = json!(match result.status {
         process::Status::Ok => "applied",
         process::Status::Unavailable => "failed",
-        // A CLI can exit nonzero after the server has accepted its write.
         _ => "unknown",
     });
     record["completed_at"] = json!(now());
