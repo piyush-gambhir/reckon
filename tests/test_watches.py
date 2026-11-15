@@ -8,7 +8,6 @@ import unittest
 from helpers import OrgCase, SOURCE
 from reckonlib import activity, orgs, watches
 
-# Disputes come from a file the test edits between polls.
 STRIPE = ("import json, os\n"
           "print(open(os.environ['TMPDIR'] + '/../disputes.json').read() if os.path.exists(os.environ['TMPDIR'] + '/../disputes.json') else '{\"data\": []}')\n")
 
@@ -132,7 +131,6 @@ class WatchTests(OrgCase):
         self.feed.write_text(json.dumps({"data": [{"id": "dp_1"}, {"id": "dp_2", "reason": "\x1b[2Jfake\nline"}]}))
         watches.run(self.home, "acme", self.registry)
         self.assertEqual(watches.inbox(self.home, "acme")[0]["title"], "\\x1b[2Jfake line")
-        # Removing and adding it again starts from a baseline, not a flood.
         watches.remove(self.home, "acme", "d")
         watches.add(self.home, self.ctx(env="prod"), "d", "stripe", ["disputes", "list"], "data", "id", None, self.registry, True)
         self.assertEqual(watches.run(self.home, "acme", self.registry)[0]["status"], "baseline")
@@ -152,7 +150,6 @@ class WatchTests(OrgCase):
         pinned = self.cli("watch", "run", "--org", "acme", RECKON_ORG="acme", RECKON_ENV="prod")
         self.assertEqual(pinned.returncode, 1)
         self.assertEqual(self.cli("watch", "list", "--org", "acme", RECKON_ORG="", RECKON_ENV="").returncode, 1)
-        # The agent may read its own environment's inbox.
         self.assertEqual(self.cli("inbox", RECKON_ORG="acme", RECKON_ENV="prod").returncode, 0)
 
     def test_a_watch_reads_its_own_connection_from_a_linked_folder(self):
@@ -163,8 +160,6 @@ class WatchTests(OrgCase):
         orgs.save(self.home, data, self.registry)
         repo = self.dir / "repo"
         repo.mkdir()
-        # A link made before stripe existed (reckon link refuses it now) prefers stripe-b;
-        # the saved watch still reads stripe, wherever it is polled from.
         orgs.write(self.home / "links.json", json.dumps({"schema_version": 1, "links": {str(orgs.folder(repo)): {
             "org": "acme", "env": "staging", "use": ["stripe-b"]}}}))
         here = os.getcwd()

@@ -28,7 +28,6 @@ class WorkflowTests(OrgCase):
             path = root / "sessions" / sid / "session.json"
             saved = json.loads(path.read_text())
             path.write_text(json.dumps(dict(saved, closed_at="2026-10-05T00:00:00Z")))
-        # Equal recorded finish times use the same deterministic tie in both views.
         next_review = self.start("site=sc-domain:acme.com")
         brief = self.cli("brief", *self.scope, "--json")
         self.assertEqual(brief.returncode, 0, brief.stderr)
@@ -266,7 +265,6 @@ class WorkflowTests(OrgCase):
     def test_done_is_judged_from_evidence(self):
         sid = self.start("site=sc-domain:acme.com")["session"]
         rows = {r["id"]: r["status"] for r in self.check(sid)["workflow"]["checks"]}
-        # No bing or clarity connection in this org: those checks cannot be done here.
         self.assertEqual((rows["gsc-totals"], rows["bing-summary"], rows["behaviour"]), ("todo", "unavailable", "unavailable"))
         run = self.cli("run", "gsc", "--session", sid, *self.scope, "--", "performance", "--site", "sc-domain:acme.com", "-o", "json")
         self.assertEqual(run.returncode, 0, run.stderr)
@@ -281,7 +279,6 @@ class WorkflowTests(OrgCase):
             self.cli("note", sid, "--kind", "question", "--text", "skip " + check + ": property is two days old", *self.scope)
         evidence = rows["gsc-totals"]["evidence"][0]
         self.cli("note", sid, "--kind", "finding", "--text", "Clicks steady", "--evidence", evidence, *self.scope)
-        # Actions must cite evidence, and the recipe caps how many a review ends with.
         self.assertEqual(self.cli("note", sid, "--kind", "action", "--text", "Rewrite titles", *self.scope).returncode, 1)
         for n in range(6):
             self.cli("note", sid, "--kind", "action", "--text", "Fix page " + str(n), "--evidence", evidence, *self.scope)
@@ -300,23 +297,19 @@ class WorkflowTests(OrgCase):
 
     def test_review_fixes(self):
         sid = self.start("site=sc-domain:acme.com")["session"]
-        # Another environment, where gsc looks unavailable, can neither judge nor close the session.
         for args in (("check", sid), ("close", sid, "--outcome", "done")):
             other = self.cli(*args, "--org", "acme", "--env", "uat")
             self.assertEqual(other.returncode, 1, args)
             self.assertIn("session belongs to acme/staging", other.stderr)
-        # A help page or a parent command does not meet a check.
         self.cli("run", "gsc", "--session", sid, *self.scope, "--", "performance", "--help")
         self.cli("run", "gsc", "--session", sid, *self.scope, "--", "insights", "-o", "json")
         rows = {r["id"]: r["status"] for r in self.check(sid)["workflow"]["checks"]}
         self.assertEqual((rows["gsc-totals"], rows["opportunities"]), ("todo", "todo"))
-        # Findings cannot be skipped; an unknown skip id is reported.
         self.cli("note", sid, "--kind", "question", "--text", "skip findings: nothing to say", *self.scope)
         self.cli("note", sid, "--kind", "question", "--text", "skip gsc-totalz: typo", *self.scope)
         result = self.check(sid)
         self.assertEqual({r["id"]: r["status"] for r in result["workflow"]["checks"]}["findings"], "todo")
         self.assertIn("gsc-totalz", " ".join(result["warnings"]))
-        # A value is substituted once, as written.
         question = workflows.start(orgs.workspace(self.home, "acme"), "growth-review", {"site": "sc-domain:{week}", "week": "2026-01-05"})[0]
         self.assertEqual(question, "Growth review for sc-domain:{week}, week of 2026-01-05")
 
@@ -343,10 +336,8 @@ class WorkflowTests(OrgCase):
         prepared = self.cli("act", "prepare", "github.issue.create", "--session", first["session"], *self.scope,
                             "--params", json.dumps({"repo": "acme/web", "title": "Add FAQ schema", "body": "From the growth review."}))
         self.assertEqual(prepared.returncode, 0, prepared.stderr)
-        # An open review is not the last one: the next run waits for a finished review.
         self.assertNotIn("previous", self.start("site=sc-domain:acme.com"))
         self.assertEqual(self.cli("close", first["session"], "--outcome", "done", *self.scope).returncode, 0)
-        # Another site is another series.
         self.assertNotIn("previous", self.start("site=sc-domain:other.com"))
         second = self.start("site=sc-domain:acme.com")
         last = second["previous"]
@@ -356,7 +347,6 @@ class WorkflowTests(OrgCase):
         self.assertIn("follow-up: each action from the last review", second["checks"])
         sid = second["session"]
         evidence, _ = self.finish(sid, actions=())
-        # Only a finding can follow up, and only an action from the last review.
         for kind, ref, message in (("finding", "n-unknown", "not an action from this session's last review"),
                                    ("action", ids[0], "a follow-up is a finding")):
             refused = self.cli("note", sid, "--kind", kind, "--text", "x", "--evidence", evidence, "--follows", ref, *self.scope)
@@ -375,7 +365,6 @@ class WorkflowTests(OrgCase):
             since = text.read().split("## Since the last review")[1].split("## ")[0]
         self.assertIn("followed up: Pricing title rewritten; CTR up", since)
         self.assertIn("github.issue.create): prepared", since)
-        # The chain continues: the third review follows the second, which had no actions of its own.
         third = self.start("site=sc-domain:acme.com")
         self.assertEqual((third["previous"]["session"], third["previous"]["actions"]), (sid, []))
         self.assertNotIn("follow-up: each action from the last review", third["checks"])
@@ -385,7 +374,6 @@ class WorkflowTests(OrgCase):
         _, ids = self.finish(first)
         self.cli("close", first, "--outcome", "done", *self.scope)
         sessions = orgs.workspace(self.home, "acme") / "sessions"
-        # Malformed sessions and action records are passed over, not fatal.
         broken = sessions / "20990101T000000Z-broken0000"
         broken.mkdir()
         write_json(broken / "session.json", {"schema_version": 1, "id": broken.name, "environment": "staging", "workflow": "x"})
@@ -399,14 +387,12 @@ class WorkflowTests(OrgCase):
         second = self.start("site=sc-domain:acme.com")
         self.assertEqual(second["previous"]["session"], first)
         sid = second["session"]
-        # An action added to the last run afterwards is not one this run must follow up, and is not shown as one.
         path = sessions / first / "session.json"
         data = json.loads(path.read_text())
         data["notes"].append(dict(data["notes"][-1], id="n-latecomer", text="Added later"))
         write_json(path, data)
         resumed = json.loads(self.cli("resume", sid, *self.scope, "--json").stdout)
         self.assertEqual([a["id"] for a in resumed["previous"]["actions"]], ids)
-        # A deleted last run leaves this run readable, from the copy taken when it started.
         import shutil
         shutil.rmtree(sessions / first)
         resumed = self.cli("resume", sid, *self.scope, "--json")

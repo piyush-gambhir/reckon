@@ -132,14 +132,12 @@ def check(provider, spec, args, label=None):
         if flag:
             raise ValueError(flag + " is fixed by the connection and cannot be passed through reckon run")
     if (spec.get("deny_commands") or spec.get("read_commands")) and args and args[0].startswith("-") and args not in (["--help"], ["-h"], ["--version"]):
-        # Subcommand CLIs: the command comes first, so no flag can hide it from the checks below.
         raise ValueError("put the " + provider + " command before any flags, e.g. reckon run " + provider + " -- <command> <args> -o json")
     words = tokens(args, spec)
     allowed = spec.get("read_commands")
     if allowed and not any(matches(p, words) for p in allowed):
         raise ValueError(provider + " allows only these read commands through reckon run: " +
                          "; ".join(" ".join(p) for p in allowed) + " (put the command before any flags)")
-    # Cobra resolves subcommands across flags (auth -o json token), so match on positional words too.
     aliases = spec.get("aliases", {})
     positional = [aliases.get(w.lower(), w.lower()) for w in operands(args, spec)[1]]
     for pattern in spec.get("deny_commands", []):
@@ -147,7 +145,6 @@ def check(provider, spec, args, label=None):
             raise ValueError("'" + " ".join(pattern) + "' is not allowed through reckon run")
     required = spec.get("require_short")
     if required and not short_flags_set(args, spec) & set(required):
-        # kcat picks producer mode by itself when stdin is not a terminal; insist on a read mode.
         raise ValueError(provider + " needs an explicit read mode: one of " + ", ".join("-" + c for c in required))
     if provider == "kubernetes":
         secrets_(args, spec)
@@ -169,7 +166,6 @@ def secrets_(args, spec):
     _, positional = operands(args, spec, KUBE_VALUES)
     for word in positional[1:]:
         for part in word.split(","):
-            # secret, secrets, secret.v1., secrets.v1, secret/name: the resource is the part before the first dot.
             kind = part.split("/", 1)[0].lower().split(".", 1)[0]
             if kind in ("secret", "secrets"):
                 raise ValueError("Kubernetes secrets are not readable through reckon run")
@@ -183,7 +179,6 @@ def conninfo(args, spec):
     """psql reads a connection string wherever a database name goes; it would replace the connection."""
     pairs, positional = operands(args, spec, PSQL_VALUES)
     if len(positional) > 1:
-        # psql [DBNAME [USERNAME]]: a second word would replace the connection's user.
         raise ValueError("psql takes at most a database name here; the user is fixed by the connection")
     names = positional + [v for f, v in pairs if f in ("-d", "--dbname") and v]
     for value in names:
@@ -204,7 +199,6 @@ def scope(spec, args, label, others):
     if not label:
         return list(args)
     if "--" in args:
-        # After --, cobra stops reading flags: an added --env would be ignored.
         raise ValueError("-- is not allowed on a shared backend; pass every flag before it")
     words = tokens(args, spec)
     family = spec.get("env_label_families", [])
@@ -220,7 +214,6 @@ def scope(spec, args, label, others):
             if (arg.split("=", 1)[1] if "=" in arg else value) != label:
                 raise ValueError(flag + " must be " + label + " on this connection")
         if arg == "--tags" or arg.startswith("--tags="):
-            # One key=value per --tags (a repeatable string array).
             key, _, tag_value = (arg.split("=", 1)[1] if arg.startswith("--tags=") else value).partition("=")
             if key.strip() in spec.get("env_label_tags", []):
                 given = True
@@ -240,7 +233,6 @@ def scope(spec, args, label, others):
                              "\"} in PromQL or --stream '{env=\"" + label + "\"}' for logs")
         streams = [args[i + 1] if a == "--stream" and i + 1 < len(args) else a.split("=", 1)[1]
                    for i, a in enumerate(args) if a == "--stream" or a.startswith("--stream=")]
-        # The CLI wraps the query in parentheses after the stream filter, except around pipes.
         streamed = any(any(k in keys and v == label for k, _, v in SELECTOR.findall(st)) for st in streams) and not any("|" in a for a in args)
         if any(re.search(r"(?i)(?<![\w-])(or|unless)(?![\w-])", a) for a in args) and not streamed:
             raise ValueError("or/unless can read past the " + label + " selector; for logs put it in --stream '{env=\"" + label +
@@ -301,7 +293,6 @@ def site_allowed(value, pattern):
     if not got:
         return False
     if any(c in pattern for c in "*?["):
-        # An operator's wildcard pattern matches the text, once the value is known to be a plain target.
         return fnmatchcase(value, pattern)
     allowed = site_parts(pattern)
     if not allowed:
@@ -345,7 +336,6 @@ def bind(spec, args, conn, values):
         if not chosen and not defaults:
             raise ValueError("this connection is limited to " + kind + " " + ", ".join(allowed) + "; name it with " + rule["flags"][0])
         test = site_allowed if kind == "site" else fnmatchcase
-        # Defaults count too: the CLI may use them whatever the command line says.
         for value in chosen + defaults:
             if not any(test(value, pattern) for pattern in allowed):
                 raise ValueError(kind + " " + value + " is outside this connection (allowed: " + ", ".join(allowed) + ")")
@@ -387,7 +377,6 @@ def prepare(h, ctx, target, registry, interactive=False, values=None):
     spec = registry[conn["provider"]]
     env, values = orgs.child_env(h, ctx, cname, conn, spec, interactive=interactive, values=values)
     if conn["provider"] == "kafka-rpk":
-        # rpk reads RPK_* settings; derive them from the shared KAFKA_* names.
         for target_key, source_key in (("RPK_BROKERS", "KAFKA_BOOTSTRAP_SERVERS"), ("RPK_USER", "KAFKA_SASL_USERNAME"),
                                        ("RPK_PASS", "KAFKA_SASL_PASSWORD"), ("RPK_SASL_MECHANISM", "KAFKA_SASL_MECHANISM")):
             if values.get(source_key) and not env.get(target_key):
@@ -430,7 +419,6 @@ def remember(h, ctx, key, result, values):
     from .store import now, write_json
     path = local_path(orgs.org_path(h, ctx["org"]), "cache", key + ".json")
     orgs.private_dir(path.parent)
-    # Stored redacted, like evidence: no injected secret is ever written to disk.
     write_json(path, {"observed_at": now(), "exit_code": result["exit_code"], "duration_ms": result.get("duration_ms", 0),
                       "stdout": orgs.redact(result["stdout"].decode("utf-8", "replace"), values),
                       "stderr": orgs.redact(result["stderr"].decode("utf-8", "replace"), values)})
@@ -449,10 +437,10 @@ def resolved(spec, env, args):
     text = asked["stdout"].decode(errors="replace") + asked["stderr"].decode(errors="replace")
     if asked["status"] != "ok":
         if "unknown command" in text and ("commands" in text or "resolve" in text):
-            return None  # an older release without the resolver: the registry checks still apply
+            return None
         raise ValueError(spec["binary"] + " could not resolve these arguments: " + str(answer.get("error", asked["status"])))
     if not isinstance(answer, dict) or "effect" not in answer:
-        return None  # not a resolver answer (an older release printed something else)
+        return None
     if answer.get("secret_output"):
         raise ValueError(answer.get("command", "this command") + " prints a credential and is not allowed through reckon run")
     if answer.get("effect") != "read":
@@ -480,7 +468,6 @@ def run(h, ctx, target, args, registry, timeout=60, max_bytes=8 * 1048576, stdin
         return {"connection": cname, "provider": conn["provider"], "argv": argv, "values": values, "result": result, "spec": spec,
                 "cached_at": hit["observed_at"]}
     note = quota(h, ctx, cname, spec, args)
-    # Some CLIs pick a target from the working directory (gh: the git remote); give them none.
     cwd = env["TMPDIR"] if spec.get("isolated_cwd") else os.getcwd()
     result = bounded(argv, env=env, cwd=cwd, timeout=timeout, max_bytes=max_bytes, stdin=stdin)
     if result["status"] == "ok":
@@ -535,7 +522,6 @@ def account(spec, result):
         data = json.loads(result["stdout"].decode("utf-8", errors="replace"))
     except ValueError:
         return None
-    # A list names fallbacks: Jira hides emailAddress for some users, so name or accountId comes next.
     for path in spec["identity"] if isinstance(spec["identity"], list) else [spec["identity"]]:
         found = pick(data, path)
         if not isinstance(found, bool) and isinstance(found, (str, int)) and str(found).strip():
@@ -554,7 +540,6 @@ def account_problem(cname, conn, seen, values):
         return None
     if seen is None:
         return cname + " did not report which account it uses, so it cannot be confirmed as " + expected
-    # Logins and emails are case-insensitive; a pattern such as *@acme.com allows any account of a domain.
     if not fnmatchcase(seen.casefold(), expected.casefold()):
         text = shown(seen, values)
         return cname + " is logged in as " + text + ", not " + expected + " (if " + text + " is right: reckon connect " + cname + " --account " + text + ")"
@@ -609,7 +594,6 @@ def verify(h, ctx, registry, names=()):
             result = probe(h, ctx, cname, conn, spec, env, values)
             detail = "" if result["status"] == "ok" else orgs.redact(result["stderr"].decode(errors="replace"), values).strip()[-400:]
             row.update(status=result["status"], detail=detail)
-            # A pinned account is checked even where the tool reports none: unconfirmed is not ok.
             if result["status"] == "ok" and (spec.get("identity") or conn.get("account")):
                 seen = account(spec, result)
                 problem = account_problem(cname, conn, seen, values)

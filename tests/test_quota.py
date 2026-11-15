@@ -57,7 +57,6 @@ class QuotaTests(OrgCase):
         self.assertEqual(json.loads(self.ledger.read_text())["used"], 10)
         with self.assertRaisesRegex(ValueError, "used its 10 Export API requests"):
             self.run_clarity("export", "--days", "2")
-        # Calls that do not reach the Export API, and cache hits, spend nothing.
         self.run_clarity("export", "dimensions")
         self.run_clarity("auth", "status")
         self.assertEqual(json.loads(self.ledger.read_text())["used"], 10)
@@ -69,7 +68,6 @@ class QuotaTests(OrgCase):
         rows = connectors.verify(self.home, self.ctx(), self.registry)
         self.assertEqual(rows[0]["status"], "ok")
         self.assertEqual(json.loads(self.ledger.read_text())["used"], 2)
-        # Yesterday's count does not carry over.
         self.ledger.write_text(json.dumps({"day": "2020-01-01", "used": 10}))
         self.assertIsNone(self.run_clarity("export", "--days", "1")["quota_note"])
         self.assertEqual(json.loads(self.ledger.read_text())["used"], 1)

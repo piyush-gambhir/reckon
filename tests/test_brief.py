@@ -118,7 +118,6 @@ class BriefTests(OrgCase):
                 self.assertIn("A recorded conclusion", rendered)
                 self.assertIn("Unsupported", rendered)
                 self.assertIn("failed", rendered)
-        # Artifact damage must qualify a brief rather than validate an old claim.
         record_path.write_text(json.dumps(record))
         (record_path.parent / "stdout.txt").write_text("[{}]")
         result = self.cli("brief", *scope, "--json")
@@ -153,7 +152,6 @@ class BriefTests(OrgCase):
         (path / "session.json").write_text(json.dumps(data))
         result = self.cli("brief", *scope, "--json")
         self.assertIn("missing evidence", " ".join(json.loads(result.stdout)["recent_findings"][0]["citations"]["problems"]))
-        # A foreign org or mismatched session ID cannot contribute local findings.
         for changed in (dict(data, org="other"), dict(data, id="s-other")):
             (path / "session.json").write_text(json.dumps(changed))
             result = self.cli("brief", *scope, "--json")
@@ -209,14 +207,11 @@ class BriefTests(OrgCase):
             _, data = create(self.root, "acme", "staging", "review", "task", workflow=dict(flow, params=dict(flow["params"], **other)))
             path = self.root / "sessions" / data["id"] / "session.json"
             write_json(path, dict(data, status=status, closed_at=closed))
-        # An unreadable session and a malformed write are passed over.
         write(self.root / "sessions" / "20200101T000000Z-broken0000" / "session.json", "{not json")
         write_json(self.root / "actions" / "a-x" / "action.json", [])
         write_json(self.root / "actions" / "a-j" / "action.json", {"schema_version": 1, "id": "a-j", "org": "acme", "prepared_at": "2026-10-01T00:00:00Z", "status": "prepared", "operation": "jira.issue.create",
                                                                    "connection": "jira", "environment": "staging",
                                                                    "params": {"project": "ABC", "type": "Task", "summary": "Fix titles"}})
-        # Hand-edited workflow data is passed over, dates that cannot be read count as no date, and
-        # values that print alike stay separate series.
         for odd in ({"workflow": dict(flow, series=None)}, {"workflow": dict(flow, series="site")}, {"workflow": dict(flow, id=["x"])},
                     {"closed_at": "not-a-date"}, {"closed_at": "2026-10-13"},
                     {"workflow": {"id": "custom", "series": ["a", "b"], "params": {"a": "x b=y", "b": "z"}}},
@@ -270,7 +265,6 @@ class DoctorVersionTests(OrgCase):
         self.assertFalse(any(c.startswith("jenkins") and "older" in c for c in checks))
 
     def test_the_version_line_wins_over_the_latest_release(self):
-        # gsc prints the newest release it knows of above its own version.
         self.fake("print('latest  0.1.6\\nversion 0.1.9')", "gsc")
         checks = json.loads(self.cli("doctor", "--json").stdout)["checks"]
         self.assertFalse(any(c.startswith("gsc") for c in checks), checks)

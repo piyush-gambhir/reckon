@@ -65,7 +65,6 @@ fn latest(
             metadata["org"] == org,
             "goal evidence belongs to another org"
         );
-        // Briefings use the same integrity checks as citations and session reports.
         for record in evidence(&session)? {
             let dir = local_path(&session, format!("evidence/{}", text(&record["id"])))?;
             let path = local_path(&dir, "record.json")?;
@@ -130,7 +129,6 @@ fn compare(value: &Value, target: &Value) -> Option<std::cmp::Ordering> {
             .map(i128::from)
             .or_else(|| number.as_u64().map(i128::from))
     };
-    // Compare whole parts as integers so counters above 2^53 keep their precision.
     let float_integer = |float: f64, integer: i128| {
         let whole = (float.trunc() as i128).cmp(&integer);
         if whole == std::cmp::Ordering::Equal {

@@ -14,7 +14,6 @@ from helpers import OrgCase, SOURCE
 from reckonlib import activity, orgs, routines
 from reckonlib.store import lock
 
-# Records what a scheduled agent would see: its arguments, folder and pinned context.
 CLAUDE = ("import json, os, sys\n"
           "print(json.dumps({'argv': sys.argv[1:], 'cwd': os.getcwd(), 'org': os.environ.get('RECKON_ORG'),\n"
           "                  'env': os.environ.get('RECKON_ENV'), 'token': os.environ.get('GSC_ACCESS_TOKEN')}))\n")
@@ -260,7 +259,6 @@ class RoutineTests(OrgCase):
         with self.assertRaisesRegex(ValueError, "is production"):
             routines.add(self.home, self.ctx("live", "prod"), "w", "release-review", {}, "daily 07:00")
         self.assertEqual(routines.add(self.home, self.ctx("live", "prod"), "w", "release-review", {}, "daily 07:00", production=True)["environment"], "prod")
-        # A failed run leaves a trace; a timeout stops the agent's whole process group.
         (self.bin / "claude").unlink()
         with mock.patch.dict(os.environ, PATH="/usr/bin:/bin"), self.assertRaisesRegex(ValueError, "not available"):
             routines.run(self.home, "acme", "weekly-growth", self.registry)
@@ -270,7 +268,6 @@ class RoutineTests(OrgCase):
         data["weekly-growth"]["timeout_minutes"] = 0.02
         routines.write_json(routines.path(self.home, "acme"), data)
         self.assertEqual(routines.run(self.home, "acme", "weekly-growth", self.registry)["status"], "timeout")
-        # Install creates the log folder launchd needs and escapes % for cron.
         with mock.patch.object(routines.sys, "platform", "linux"), mock.patch.dict(os.environ, PATH=str(self.bin) + ":/usr/bin:/odd%dir"):
             line = routines.install(self.home, "acme", "weekly-growth")["crontab"]
         self.assertIn("/odd\\%dir", line)

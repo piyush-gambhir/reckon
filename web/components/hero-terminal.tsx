@@ -68,11 +68,6 @@ function Prompt() {
   );
 }
 
-/**
- * A live investigation session: the transcript types itself like a real RCA.
- * Server-rendered (and reduced-motion) output is the complete static
- * transcript; the playback only ever runs client-side on top of it.
- */
 export function HeroTerminal({
   title,
   command,
@@ -99,7 +94,6 @@ export function HeroTerminal({
         if (!entry.isIntersecting || started) return;
         started = true;
         observer.disconnect();
-        // Small hold so the card has settled after the boot/hero reveal.
         window.setTimeout(() => setPhase('playing'), 600);
       },
       { threshold: 0.35 },
@@ -133,7 +127,6 @@ export function HeroTerminal({
     if (isBlank(line)) {
       timer = window.setTimeout(advance, 140);
     } else if (isComment(line)) {
-      // Narration appears as a whole line, like a step label.
       timer = window.setTimeout(advance, 500);
     } else if (charIdx < line.length) {
       timer = window.setTimeout(
@@ -141,7 +134,6 @@ export function HeroTerminal({
         16 + Math.random() * 22,
       );
     } else {
-      // Brief "execute" beat before the next step.
       timer = window.setTimeout(advance, 320);
     }
     return () => window.clearTimeout(timer);
@@ -163,7 +155,6 @@ export function HeroTerminal({
           aria-hidden="true"
         />
       </div>
-      {/* Full transcript for assistive tech regardless of playback state. */}
       <pre className="sr-only">{command}</pre>
       <pre className="hero-terminal__body" aria-hidden="true">
         <code>
@@ -193,7 +184,6 @@ export function HeroTerminal({
                 hidden = isBlank(line);
               }
             } else {
-              // Reserve the final layout so nothing shifts while typing.
               content = (
                 <>
                   {commandLine ? <Prompt /> : null}

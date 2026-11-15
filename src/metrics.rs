@@ -56,7 +56,6 @@ pub fn matrix_summary(series: &Value) -> Result<Value> {
     let mut total_nonfinite = 0;
     let mut total_histograms = 0;
     let mut unreported_series = 0;
-    // Validate every series, even when only its first 20 are summarized.
     for (index, entry) in series.iter().enumerate() {
         ensure!(entry.is_object(), "invalid metric series");
         let samples_unreported = entry.get("values").is_none() && entry.get("histograms").is_none();
@@ -119,7 +118,6 @@ pub fn matrix_summary(series: &Value) -> Result<Value> {
             labels_truncated |= shown.len() < value.len();
             shown_labels.insert(key.clone(), json!(shown));
         }
-        // Scale before summing so finite inputs near f64::MAX keep a finite mean.
         let scale = values.iter().map(|v| v.abs()).fold(0.0, f64::max);
         let mean = if values.is_empty() {
             None

@@ -15,7 +15,6 @@ class IdentityTests(OrgCase):
         super().setUp()
         self.login = self.dir / "login"
         self.login.write_text("acme-bot")
-        # gh api user answers with whatever login the test sets; anything else creates the issue.
         self.used = self.dir / "used"
         self.fake("import json, os, sys\n"
                   "if sys.argv[1:3] == ['api', 'user']: print(json.dumps({'login': open(" + repr(str(self.login)) + ").read()})); sys.exit()\n"
@@ -43,14 +42,12 @@ class IdentityTests(OrgCase):
         code, rows = self.verify()
         self.assertEqual(code, 0)
         self.assertEqual((rows["gh"]["status"], rows["gh"]["account"]), ("ok", "acme-bot"))
-        # Not pinned yet: verify says what it found and how to pin it.
         self.assertEqual(rows["jenkins"]["account"], "Tester")
         self.assertIn("reckon connect jenkins --account Tester", rows["jenkins"]["detail"])
         self.login.write_text("someone-else")
         code, rows = self.verify("gh")
         self.assertEqual((code, rows["gh"]["status"]), (1, "wrong_account"))
         self.assertIn("logged in as someone-else, not acme-bot", rows["gh"]["detail"])
-        # Case does not matter, and a pattern can allow any account of a domain.
         self.edit("jenkins", account="tester")
         self.assertEqual(self.verify("jenkins")[1]["jenkins"]["status"], "ok")
         self.edit("jenkins", account="dev-*")
@@ -72,7 +69,6 @@ class IdentityTests(OrgCase):
         self.assertFalse([w for w in show("preflight")["warnings"] if "live check" in w])
         logged = json.loads(self.cli("log", "--org", "acme", "--env", "staging", "--event", "verify", "--json").stdout)
         self.assertEqual([(r["target"], r["status"]) for r in logged[:2]], [("gh", "ok"), ("gh", "wrong_account")])
-        # A check counts only for the configuration it checked, and not for a connection re-added under its name.
         self.edit("gh", account="acme-*")
         rows = {r["connection"]: r for r in show("status")["connections"]}
         self.assertNotIn("verified", rows["gh"])
@@ -97,7 +93,6 @@ class IdentityTests(OrgCase):
             self.assertIsNone(connectors.account(spec, dict(ok, stdout=body)))
         self.assertIsNone(connectors.account(spec, dict(ok, status="failed")))
         self.assertEqual(connectors.account({"identity": "Account"}, dict(ok, stdout=b'{"Account": 123456789012}')), "123456789012")
-        # The whole value is compared, not the 200 characters shown.
         conn = {"account": "a" * 200}
         self.assertIsNone(connectors.account_problem("c", conn, "a" * 200, {}))
         self.assertIn("is logged in as", connectors.account_problem("c", conn, "a" * 200 + "-other", {}))
@@ -114,8 +109,6 @@ class IdentityTests(OrgCase):
     def test_connect_sets_and_clears_the_account(self):
         result = self.cli("connect", "jenkins", "--account", "Tester", "--org", "acme", "--json")
         self.assertEqual(json.loads(result.stdout)["account"], "Tester")
-        # It already has credentials, so the next step is checking it, not filling them in. The hint
-        # names the org and an environment the connection serves, so it works whatever the saved default is.
         self.assertEqual(json.loads(result.stdout)["next"], "reckon verify jenkins --org acme --env staging")
         fresh = self.cli("connect", "gh-other", "--provider", "github", "--org", "acme", "--json")
         self.assertTrue(json.loads(fresh.stdout)["next"].startswith("edit "), fresh.stdout)
@@ -140,7 +133,6 @@ class IdentityTests(OrgCase):
 
     def test_apply_ignores_the_folder_link_it_runs_in(self):
         record, _ = self.prepare()
-        # A stale link (its preferred connection was removed) must not block the saved connection's account check.
         stale = dict(self.ctx(), link={"path": "/code/acme", "org": "acme", "env": "staging", "use": ["gh-removed"]})
         done = actions.apply(self.home, stale, self.root, record["id"], self.registry, confirm=lambda prompt: "yes")
         self.assertEqual(done["status"], "applied")
@@ -152,7 +144,6 @@ class IdentityTests(OrgCase):
         asked = []
         with self.assertRaisesRegex(ValueError, "logged in as someone-else, not acme-bot"):
             actions.apply(self.home, self.ctx(), self.root, record["id"], self.registry, confirm=lambda p: asked.append(p) or "yes")
-        # Refused before the operator was asked, and the action is still waiting.
         self.assertEqual(asked, [])
         self.assertEqual(actions.load(self.root, record["id"])[1]["status"], "prepared")
         self.login.write_text("acme-bot")
@@ -171,13 +162,11 @@ class IdentityTests(OrgCase):
             change()
             with self.assertRaisesRegex(ValueError, "changed after action .* was prepared"):
                 self.apply(record)
-        # A rotated token is not a different target; the account check covers who it belongs to.
         self.secret("acme", "gh", ["GH_TOKEN=gh-secret-token"])
         self.edit("gh", account="acme-bot")
         record, _ = self.prepare()
         self.secret("acme", "gh", ["GH_TOKEN=gh-rotated-token"])
         self.assertEqual(self.apply(record)[0]["status"], "applied")
-        # Secrets never enter the action record.
         self.assertNotIn("gh-secret-token", json.dumps(actions.load(self.root, record["id"])[1]))
 
     def test_a_reference_counts_by_the_value_it_gives(self):
@@ -193,7 +182,6 @@ class IdentityTests(OrgCase):
         record, _ = self.prepare()
 
         def confirm(prompt):
-            # Settings edited while the operator reads the preview do not reach the write.
             self.secret("acme", "gh", ["GH_TOKEN=gh-other-token", "GH_HOST=github.other.invalid"])
             return "yes"
         done = actions.apply(self.home, self.ctx(), self.root, record["id"], self.registry, confirm=confirm)

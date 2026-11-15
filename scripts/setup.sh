@@ -1,18 +1,4 @@
 #!/usr/bin/env bash
-#
-# reckon setup — installs every CLI the workspace needs.
-#
-# Supported platforms:
-#   - macOS (Homebrew)
-#   - Linux: Debian/Ubuntu (apt) and Fedora/RHEL family (dnf)
-#   - Other Linux distros: prints manual install commands and exits
-#   - Windows: see scripts/setup.ps1 (and prefer WSL2 for the full experience)
-#
-# Idempotent: re-running installs what's missing and upgrades a custom CLI
-# older than its pin.
-#
-# Usage:  bash scripts/setup.sh
-#
 
 set -uo pipefail
 
@@ -23,12 +9,12 @@ ALREADY=0
 FAILED=0
 SKIPPED=0
 
-PLATFORM=""        # macos | linux
-DISTRO=""          # debian | rhel | unknown  (linux only)
-PKG=""             # apt | dnf | ""           (linux only)
-ARCH=""            # amd64 | arm64
-SUDO=""            # "" or "sudo"
-GOBIN_DIR=""       # $(go env GOPATH)/bin once go is present
+PLATFORM=""
+DISTRO=""
+PKG=""
+ARCH=""
+SUDO=""
+GOBIN_DIR=""
 
 if [ -t 1 ]; then
     C_RESET=$'\033[0m'
@@ -49,9 +35,6 @@ header() { printf "\n%s%s%s\n" "$C_BOLD" "$*" "$C_RESET"; }
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
-# -----------------------------------------------------------------------------
-# Platform detection
-# -----------------------------------------------------------------------------
 
 detect_platform() {
     header "Pre-flight"
@@ -111,11 +94,7 @@ detect_linux_distro() {
     fi
 }
 
-# -----------------------------------------------------------------------------
-# Generic helpers
-# -----------------------------------------------------------------------------
 
-# pkg_install <apt-name> <dnf-name> [--quiet]
 pkg_install() {
     local apt_pkg="$1" dnf_pkg="$2"
     case "$PKG" in
@@ -136,21 +115,15 @@ brew_install() {
     brew install --quiet "$1" >/dev/null 2>&1
 }
 
-# Used for libpq/mysql-client on macOS — keg-only formulas need force-link.
 brew_install_keg() {
     brew install --quiet "$1" >/dev/null 2>&1 && brew link --force --quiet "$1" >/dev/null 2>&1
 }
 
-# Install a binary into a user-writable location.
-# Args: <url> <archive-type: zip|tar.gz|none> <bin-name-in-archive>
-#       <final-bin-name> [checksum-manifest-url] [target-dir, default ~/.local/bin]
 download_install_bin() {
     local url="$1" archive="$2" inner="$3" final="$4" checksum_url="${5:-}"
     local target_dir="${6:-${HOME}/.local/bin}" tmp package_name package_file
     mkdir -p "$target_dir"
     tmp="$(mktemp -d)"
-    # Clean up when this function returns; the trap then removes itself, or it
-    # would fire again on every later return with $tmp unset.
     trap 'rm -rf "$tmp"; trap - RETURN' RETURN
 
     package_name="${url##*/}"
@@ -201,9 +174,6 @@ mark_already()   { ok "$1 — already installed"; ALREADY=$((ALREADY + 1)); }
 mark_failed()    { err "$1 — install failed"; FAILED=$((FAILED + 1)); }
 mark_skipped()   { warn "$1 — skipped (manual install required)"; SKIPPED=$((SKIPPED + 1)); }
 
-# -----------------------------------------------------------------------------
-# Per-tool installers — each knows about every supported platform.
-# -----------------------------------------------------------------------------
 
 build_reckon() {
     if ! have cargo; then
@@ -237,8 +207,6 @@ install_aws() {
             brew_install awscli && mark_installed aws || mark_failed aws
             ;;
         linux)
-            # Prefer the distribution's signed package over executing an
-            # unverified upstream installer as root.
             if [ -n "$PKG" ] && pkg_install awscli awscli; then
                 mark_installed aws
             else
@@ -259,7 +227,6 @@ install_gh() {
         linux)
             case "$PKG" in
                 apt)
-                    # Add GitHub CLI repo + install.
                     if ( $SUDO mkdir -p -m 755 /etc/apt/keyrings \
                          && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
                               | $SUDO tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null \
@@ -293,7 +260,6 @@ install_kcat() {
     case "$PLATFORM" in
         macos) brew_install kcat && mark_installed kcat || mark_failed kcat ;;
         linux)
-            # Debian/Ubuntu used 'kafkacat' historically; newer releases ship 'kcat'.
             if [ "$PKG" = apt ]; then
                 if pkg_install kcat kcat 2>/dev/null || pkg_install kafkacat kafkacat; then
                     mark_installed kcat
@@ -340,8 +306,6 @@ install_mongosh() {
     case "$PLATFORM" in
         macos) brew_install mongosh && mark_installed mongosh || mark_failed mongosh ;;
         linux)
-            # Use a repository-signed package if configured; never execute an
-            # archive that MongoDB does not publish a detached checksum for.
             if [ -n "$PKG" ] && pkg_install mongodb-mongosh mongodb-mongosh; then
                 mark_installed mongosh
             else
@@ -358,7 +322,6 @@ install_psql() {
     case "$PLATFORM" in
         macos)
             brew_install_keg libpq && mark_installed psql || mark_failed psql
-            # libpq is keg-only and needs force-link
             ;;
         linux)
             local apt_pkg="postgresql-client" dnf_pkg="postgresql"
@@ -379,7 +342,6 @@ install_mysql() {
             brew_install_keg mysql-client && mark_installed mysql || mark_failed mysql
             ;;
         linux)
-            # apt: default-mysql-client (Ubuntu) or mariadb-client; dnf: mysql.
             local apt_pkg="default-mysql-client" dnf_pkg="mysql"
             if [ "$PKG" = apt ]; then
                 if pkg_install "$apt_pkg" "$dnf_pkg" || pkg_install mariadb-client mariadb-client; then
@@ -406,8 +368,6 @@ install_clickhouse() {
         linux)
             case "$PKG" in
                 apt)
-                    # Use ClickHouse's signed vendor repository. Install only
-                    # the client package; this workspace never runs a server.
                     local deb_arch
                     deb_arch="$(dpkg --print-architecture)"
                     if ( $SUDO apt-get update -qq >/dev/null 2>&1 \
@@ -425,7 +385,6 @@ install_clickhouse() {
                     fi
                     ;;
                 dnf)
-                    # The vendor repo enables signed repository-metadata checks.
                     if $SUDO dnf install -y -q 'dnf-command(config-manager)' >/dev/null 2>&1 \
                        && { [ -f /etc/yum.repos.d/clickhouse.repo ] \
                             || $SUDO dnf config-manager --add-repo https://packages.clickhouse.com/rpm/clickhouse.repo >/dev/null 2>&1; } \
@@ -452,8 +411,6 @@ install_kubectl() {
             brew_install kubernetes-cli && mark_installed kubectl || mark_failed kubectl
             ;;
         linux)
-            # No good distro package on apt (Ubuntu's is a snap); use the
-            # upstream stable binary into ~/.local/bin like aws/rpk/mongosh.
             local arch
             case "$ARCH" in
                 arm64|aarch64) arch="arm64" ;;
@@ -491,8 +448,6 @@ install_redis_cli() {
             brew_install redis && mark_installed redis-cli || mark_failed redis-cli
             ;;
         linux)
-            # apt ships the client alone as redis-tools; dnf only has the full
-            # redis package (client included).
             if pkg_install redis-tools redis; then
                 mark_installed redis-cli
             else
@@ -502,16 +457,10 @@ install_redis_cli() {
     esac
 }
 
-# -----------------------------------------------------------------------------
-# Custom CLIs (pinned in cli-releases.csv) — same on all platforms.
-# -----------------------------------------------------------------------------
 
 # shellcheck source=lib/go-clis.sh
 source "$RECKON_SETUP_DIR/lib/go-clis.sh"
 
-# -----------------------------------------------------------------------------
-# Bootstrap dependencies (brew on macOS, go everywhere)
-# -----------------------------------------------------------------------------
 
 ensure_brew() {
     if have brew; then
@@ -561,15 +510,10 @@ ensure_go() {
     esac
 }
 
-# -----------------------------------------------------------------------------
-# Reckon home and the reckon command
-# -----------------------------------------------------------------------------
 
 setup_workspace() {
     header "Reckon home"
     local reckon_home="${RECKON_HOME:-$HOME/.reckon}"
-    # Business data lives here, never in this checkout. Orgs, connections and
-    # their credentials are created by `reckon org add` and `reckon connect`.
     (umask 077 && mkdir -p "$reckon_home/bin")
     chmod 0700 "$reckon_home"
     ln -sfn "$(pwd)/target/release/reckon" "$reckon_home/bin/reckon"
@@ -599,9 +543,6 @@ print_next_steps() {
 NEXT
 }
 
-# -----------------------------------------------------------------------------
-# Main
-# -----------------------------------------------------------------------------
 
 main() {
     cd "$RECKON_SETUP_DIR/.."
@@ -657,9 +598,6 @@ main() {
 
     print_next_steps
 
-    # Exit non-zero only on real failures. Intentionally-skipped tools (no
-    # native package on this platform) are not failures, so a wrapper checking
-    # the exit code on Arch/openSUSE/Alpine still succeeds.
     [ "$FAILED" -eq 0 ]
 }
 

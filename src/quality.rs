@@ -224,7 +224,6 @@ fn gsc_quality(data: &Value) -> Value {
         {
             continue;
         }
-        // Keep source headers bounded; rows remain in the hashed artifact.
         let mut source = json!({"scope":scope,"timezone":"America/Los_Angeles"});
         for key in [
             "start",

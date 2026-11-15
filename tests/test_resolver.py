@@ -96,7 +96,7 @@ class ResolverTests(OrgCase):
 
     def test_an_older_cli_without_a_resolver_falls_back_to_registry_checks(self):
         self.assertEqual(self.run_("top", "queries", OLD="1").returncode, 0)
-        self.assertEqual(self.run_("auth", "token", OLD="1").returncode, 1)  # still denied by the registry
+        self.assertEqual(self.run_("auth", "token", OLD="1").returncode, 1)
 
     @unittest.skipUnless(os.environ.get("RECKON_REAL_GSC") and shutil.which(os.environ.get("RECKON_REAL_GSC", "")), "set RECKON_REAL_GSC to a gsc >= 0.1.8")
     def test_real_gsc_resolver(self):

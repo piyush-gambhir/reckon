@@ -1,4 +1,3 @@
-//! A single-vault store. Service-account tokens stay in the OS credential store.
 use crate::{
     orgs::{Context, Registry},
     process::{self, Environment},
@@ -91,7 +90,6 @@ fn ask(prompt: &str) -> Result<String> {
 }
 fn hidden(prompt: &str) -> Result<String> {
     operator()?;
-    // Hide input before showing the prompt, including immediately pasted input.
     let _echo = EchoGuard::new()
         .map_err(|_| anyhow!("hidden input is unavailable; use your own terminal"))?;
     eprint!("{prompt}");
@@ -269,7 +267,6 @@ impl Client {
             anyhow!("1Password request could not be completed; its output was suppressed")
         })?;
         if done.status != process::Status::Ok {
-            // op errors can include credentials and JSON templates. Return only a classification.
             let detail = String::from_utf8_lossy(&done.stderr).to_lowercase();
             let mut reason = "check the service-account token, permissions and network";
             for (patterns, message) in [
@@ -426,7 +423,6 @@ pub fn setup(
         done.status == process::Status::Ok && version.is_some_and(|v| v >= (2, 41, 0)),
         "1Password CLI 2.41.0 or newer (stable) is required"
     );
-    // Service-account grants are immutable. Fingerprints make token replacement fail closed.
     for (role, credential) in credentials {
         let name = Client::new(h, role, settings.clone(), Some(credential))?.scope()?;
         ensure!(
@@ -583,7 +579,6 @@ fn reference_for(vault: &str, item: &str, selected: &Value) -> String {
 }
 pub fn resolve(h: &Path, values: &Environment) -> Result<Environment> {
     let settings = required_config(h)?;
-    // Check all destinations before obtaining a token or making any network request.
     let paths = values
         .iter()
         .map(|(k, v)| Ok((k, parse_reference(v, &settings)?)))
@@ -841,7 +836,6 @@ fn put(
             ctx.org,
             conn.conn["env"].as_str().unwrap_or("shared")
         );
-        // Journal the intent first. An uncertain create must never be silently repeated.
         write_json(
             &local_path(&conn.directory, "item.json")?,
             &json!({"schema_version":SCHEMA,"pending_create":true,"title":title,"tag":tag}),

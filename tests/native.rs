@@ -310,12 +310,10 @@ fn voice_providers_read_only_and_keep_the_login_target() -> Result<()> {
                 words(&["room", "list", "--json"]),
                 words(&["room", "list", "-jq"]),
                 words(&["room", "list", "--project", "other"]),
-                // lk reads -name as --name.
                 words(&["room", "list", "-url", "http://elsewhere.invalid"]),
                 words(&["room", "list", "-api-key=x"]),
                 words(&["room", "list", "-json"]),
                 words(&["agent", "list", "-subdomain", "other"]),
-                // lk trims arguments and reads --j as -j.
                 words(&["room", "list", " --url=http://elsewhere.invalid"]),
                 words(&["room", "list", "--project=x "]),
                 words(&["agent", "list", "--j"]),
@@ -341,7 +339,6 @@ fn voice_providers_read_only_and_keep_the_login_target() -> Result<()> {
                 words(&["cloud", "agent", "status", "bot", "-oother"]),
                 words(&["cloud", "agent", "sessions", "--config-file", "x.toml"]),
                 words(&["--output", "json", "cloud", "agent", "list"]),
-                // Names and IDs go into API URL paths.
                 words(&[
                     "cloud",
                     "agent",
@@ -989,7 +986,6 @@ fn directory_listings_preserve_missing_paths_and_report_invalid_state() -> Resul
         let inaccessible = std::fs::metadata(&child).is_err();
         let result = entries(&child);
         std::fs::set_permissions(&blocked, std::fs::Permissions::from_mode(0o700))?;
-        // Privileged test runners can bypass directory permissions.
         if inaccessible {
             assert!(result.is_err());
         }
@@ -1084,7 +1080,6 @@ fn json_state_writes_respect_the_reader_limit_and_preserve_previous_data() -> Re
     assert_eq!(std::fs::metadata(&path)?.len(), maximum as u64);
     assert!(read_json(&path).is_ok());
     let before = file_sha256(&path)?;
-    // Escaping expands the encoded file beyond the input string's byte count.
     let large = json!("\"".repeat(maximum / 2));
     assert!(write_json(&path, &large).is_err());
     assert_eq!(file_sha256(&path)?, before);

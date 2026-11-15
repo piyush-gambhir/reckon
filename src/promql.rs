@@ -22,7 +22,6 @@ fn prepare_query(query: &str) -> Result<String> {
         if let Some(delimiter) = quote {
             if delimiter == '`' {
                 if ch == '`' {
-                    // The upstream lexer processes escapes in backticks; PromQL raw strings do not.
                     normalized.push_str(&serde_json::to_string(&raw)?);
                     raw.clear();
                     quote = None;
@@ -64,7 +63,6 @@ fn prepare_query(query: &str) -> Result<String> {
             ')' | ']' | '}' => depth = depth.saturating_sub(1),
             _ => {}
         }
-        // Bound parser construction and recursive AST checks before either can exhaust the stack.
         ensure!(
             tokens <= 1024 && depth <= 128,
             "metric query is too complex: at most 1024 tokens and 128 nesting levels"
@@ -119,7 +117,6 @@ fn check(expr: &Expr, keys: &[String], label: &str) -> Result<usize> {
         Expr::VectorSelector(v) => selector(v, keys, label).map(|_| 1),
         Expr::MatrixSelector(v) => selector(&v.vs, keys, label).map(|_| 1),
         Expr::Aggregate(v) => {
-            // Parameters such as topk(scalar(sum(metric)), ...) can also read data.
             let param = v
                 .param
                 .as_ref()
@@ -133,7 +130,6 @@ fn check(expr: &Expr, keys: &[String], label: &str) -> Result<usize> {
         Expr::Paren(v) => check(&v.expr, keys, label),
         Expr::Subquery(v) => check(&v.expr, keys, label),
         Expr::Call(v) => {
-            // With no second selector, info() implicitly reads unscoped target_info.
             ensure!(
                 v.func.name != "info" || v.args.args.len() == 2,
                 "info() needs an explicit selector for {label}"

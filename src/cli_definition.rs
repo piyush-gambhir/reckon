@@ -1,4 +1,3 @@
-// Command definitions preserve the existing public CLI. Business logic lives in cli.rs.
 use clap::{Arg, ArgAction, Command};
 
 pub fn command() -> Command {

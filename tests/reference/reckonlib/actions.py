@@ -22,7 +22,6 @@ from .store import identifier, local_path, lock, now, private_dir, read_json, wr
 
 EXPIRY_HOURS = 24
 
-# operation: provider, required params, optional params, (param, resource kind) bound by the connection's limits
 WRITES = {
     "github.issue.create": ("github", ("repo", "title", "body"), ("labels",), ("repo", "repo")),
     "jira.issue.create": ("jira", ("project", "type", "summary"), ("description", "labels", "parent"), None),
@@ -58,7 +57,6 @@ def validate(operation, params):
             raise ValueError("summary is one line of at most 255 characters")
         if len(params.get("description", "")) > 30000:
             raise ValueError("description is at most 30000 characters")
-        # Jira labels cannot contain spaces.
         if params.get("labels") and not re.fullmatch(r"[\w.:/-]+(,[\w.:/-]+)*", params["labels"]):
             raise ValueError("labels must be a comma-separated list of names without spaces")
         if params.get("parent") and not re.fullmatch(r"[A-Z][A-Z0-9_]{0,49}-[0-9]+", params["parent"]):
@@ -95,12 +93,9 @@ def argv(operation, params, action_id):
     takes its description only as a flag, given as one --flag=value argument so text that
     starts with a dash stays a value."""
     if operation == "gsc.sitemap.submit":
-        # Submitting is idempotent (an HTTP PUT); it asks Google to fetch the sitemap again.
         return ["gsc", "sitemaps", "submit", params["sitemap"], "--site=" + params["site"], "-o", "json"], None
     if operation == "jira.issue.create":
         text = params.get("description", "").rstrip("\n")
-        # --allow-duplicate: jira-cli would otherwise reuse a recent issue with the same summary, without this
-        # description or marker. Reckon already runs each action once.
         args = ["jira", "issue", "create", "--allow-duplicate", "--project=" + params["project"], "--type=" + params["type"],
                 "--summary=" + params["summary"], "--description=" + (text + "\n\n" if text else "") + marker(action_id, operation)]
         args += ["--label=" + label for label in params.get("labels", "").split(",") if label]
@@ -184,7 +179,6 @@ def bound(conn, operation, params):
     return None if any(test(value, p) for p in allowed) else (rule[1], value, allowed)
 
 
-# Settings that choose where a write lands (GH_HOST, JIRA_URL); secrets are never part of the fingerprint.
 TARGET_KEY = re.compile(r"HOST|URL|SERVER|SITE|DOMAIN|ENDPOINT|ORG|PROJECT|ACCOUNT|REGION|PROFILE|TENANT|WORKSPACE|EMAIL|USER", re.I)
 
 
@@ -225,7 +219,6 @@ def preview(record, live, full=False, account=None):
              "  " + record["operation"] + " on " + record["connection"] + (" as " + printable(account) if account else "") +
              " in " + record["org"] + "/" + record["environment"] + ("  [LIVE: production or org-wide account]" if live else "")]
     for key, value in sorted(record["params"].items()):
-        # Approval shows every character; the agent-facing summary may abbreviate.
         text = printable(value if full or len(value) < 2000 else value[:2000] + "\n... (" + str(len(value)) + " characters)")
         lines.append("  " + key + ":" + ("\n    " + text.replace("\n", "\n    ") if "\n" in text else " " + text))
     return "\n".join(lines)
@@ -248,7 +241,6 @@ def prepare(h, ctx, root, operation, params, registry, session=None):
               "target_sha256": target(conn, {k: orgs.reference(k, v) for k, v in
                                              orgs.secrets(h, ctx["org"], cname, registry[provider]).items() if targeting(k)})}
     if session:
-        # The session's next review lists this write and its receipt.
         record["session"] = identifier(session)
     record["payload_sha256"] = digest(record)
     path = local_path(root, "actions", action_id)
@@ -287,13 +279,11 @@ def connection(ctx, record):
 
 def apply(h, ctx, root, action_id, registry, confirm=None):
     """Run one prepared action once. confirm(prompt) returns what the operator typed."""
-    # Enforced here, not only in the CLI, so no caller inside an agent can apply.
     if os.environ.get("RECKON_ORG"):
         raise ValueError("reckon act apply is for the operator, not a pinned agent")
     if not terminal():
         raise ValueError("reckon act apply is for the operator's own terminal")
     confirm = confirm or ask
-    # A prepared write runs its saved connection from any folder: no folder link preferences.
     ctx = dict(ctx, link=None)
     path, _ = load(root, action_id)
     with lock(path):
@@ -312,12 +302,10 @@ def apply(h, ctx, root, action_id, registry, confirm=None):
         validate(record["operation"], record["params"])
         cname, conn = connection(ctx, record)
         spec = registry[conn["provider"]]
-        # Read the settings once: the fingerprint, the account check and the write all use these.
         values = {k: orgs.reference(k, v) for k, v in orgs.secrets(h, ctx["org"], cname, spec).items()}
         if record.get("target_sha256") != target(conn, values):
             raise ValueError("connection " + cname + " changed after action " + action_id + " was prepared (its environment, resource "
                              "limits, account or target settings); prepare it again")
-        # One live read proves the connection is still logged in to the account it expects.
         account = connectors.whoami(h, ctx, cname, conn, registry, values)
         live = is_live(ctx, conn)
         print(preview(record, live, full=True, account=account), file=sys.stderr)
@@ -329,7 +317,6 @@ def apply(h, ctx, root, action_id, registry, confirm=None):
         env, values = orgs.child_env(h, ctx, cname, conn, spec, interactive=True, values=values)
         env.update(NO_COLOR="1", GH_PROMPT_DISABLED="1", JIRA_NO_INPUT="true")
         command, body = argv(record["operation"], record["params"], record["id"])
-        # Record the attempt before running, so a crash cannot hide that it may have happened.
         record.update(status="running", approved_at=now())
         write_json(path / "action.json", record)
         result = bounded(command, env=env, cwd=str(local_path(orgs.org_path(h, ctx["org"]), "runtime", cname, "tmp")),
@@ -341,7 +328,6 @@ def apply(h, ctx, root, action_id, registry, confirm=None):
         elif result["status"] == "failed":
             status = "failed"
         else:
-            # Timed out or cancelled: the server may have accepted it. Check before retrying.
             status = "unknown"
         record.update(status=status, completed_at=now(), receipt={"exit_code": result["exit_code"], "stdout": out[-2000:], "stderr": err[-2000:],
                                                                   "url": link(record["operation"], out, record["params"])})
@@ -369,12 +355,9 @@ def reconcile(h, ctx, root, action_id, registry):
         if operation == "gsc.sitemap.submit":
             where = params["sitemap"]
             command = ["gsc", "sitemaps", "get", params["sitemap"], "--site=" + params["site"], "-o", "json"]
-            # Only a submission at or after the apply began counts; an earlier one (even a minute before)
-            # proves nothing, and a clock difference leaves the outcome unknown rather than wrong.
             find = (lambda data: [console(params["site"])] if isinstance(data, dict) and submitted(data.get("lastSubmitted"), started) else [])
         elif operation == "jira.issue.create":
             where = "project " + params["project"]
-            # JQL reads dates in the user's time zone, so look back in whole days, not from a UTC time.
             days = int((datetime.now(timezone.utc) - started).total_seconds() // 86400) + 2
             command = ["jira", "issue", "search", "--jql", 'project = "' + params["project"] + '" AND creator = currentUser() AND created >= -' +
                        str(days) + "d ORDER BY created DESC", "--fields", "summary,description", "--limit", "100", "-o", "json"]

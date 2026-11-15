@@ -168,7 +168,6 @@ fn inspect(record: &Value, content: &[u8]) -> Result<Option<Value>> {
                     .get("spans")
                     .is_some_and(|spans| spans.is_null() || rows(spans, |_| true))
         }
-        // The Go renderers can serialize an empty nil slice as JSON null.
         "grafana.annotations" => {
             data.is_null() || rows(&data, |row| row["time"].as_i64().is_some())
         }
@@ -200,7 +199,6 @@ fn inspect(record: &Value, content: &[u8]) -> Result<Option<Value>> {
     Ok(None)
 }
 
-// Reinterpret successful historical records without rewriting their provenance.
 pub fn apply(record: &mut Value, content: &[u8]) {
     if text(&record["status"]) != "ok" {
         return;

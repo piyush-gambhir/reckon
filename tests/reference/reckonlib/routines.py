@@ -16,8 +16,6 @@ import shutil
 import signal
 import subprocess
 import sys
-# Imported here, not inside plist(): it pulls in urllib.request, which looks for macOS
-# proxy support whenever sys.platform says darwin (as the routine tests make it say on Linux).
 from xml.sax.saxutils import escape
 
 from . import activity, orgs, workflows, workspace
@@ -53,7 +51,6 @@ def add(h, ctx, name, recipe_id, params, at, timeout_minutes=45, production=Fals
         raise ValueError("--param values cannot contain control characters")
     if not 5 <= timeout_minutes <= 240:
         raise ValueError("--timeout-minutes must be 5-240")
-    # Fail now, not at 8 in the morning: the recipe and its parameters must start a session.
     workflows.start(orgs.workspace(h, ctx["org"]), recipe_id, params)
     routines = load(h, ctx["org"])
     if name in routines:
@@ -92,8 +89,6 @@ def prompt(routine):
 
 
 def argv(routine, binary="claude"):
-    # dontAsk: anything not in the workspace's allow rules is refused, even if the
-    # settings file were ignored; no prompts, and no user-level MCP servers.
     return [binary, "-p", prompt(routine), "--permission-mode", "dontAsk", "--permission-prompts", "none", "--strict-mcp-config"]
 
 
@@ -128,7 +123,6 @@ def attempt(h, ctx, folder, name, routine, registry):
         raise ValueError("claude is not available to scheduled runs; reinstall with reckon routine install")
     log = folder / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ") + ".log")
     with open(os.open(str(log), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w", encoding="utf-8") as out:
-        # Its own process group, so a timeout stops the agent and everything it started.
         child = subprocess.Popen(argv(routine, binary), cwd=str(root), env=workspace.agent_env(h, ctx, registry, "claude"),
                                  stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
         try:
@@ -152,15 +146,12 @@ def install(h, org, name, routines=None):
     agent = shutil.which("claude")
     if not agent:
         raise ValueError("claude is not on PATH; install Claude Code first")
-    # Schedulers start with a bare PATH; keep the one the CLIs were found on, and pin
-    # the agent binary itself (shell functions and session shims do not exist there).
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "RECKON_HOME": str(h), "RECKON_AGENT_BIN": os.path.realpath(agent)}
-    orgs.private_dir(local_path(orgs.org_path(h, org), "routines", name))  # launchd does not create its log folder
+    orgs.private_dir(local_path(orgs.org_path(h, org), "routines", name))
     label = "com.reckon." + org + "." + name
     sched = routine["schedule"]
     if sys.platform == "darwin":
         target = Path.home() / "Library" / "LaunchAgents" / (label + ".plist")
-        # A plain file in the operator's LaunchAgents; its folder's permissions are not Reckon's to change.
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(plist(label, command, env, sched, local_path(orgs.org_path(h, org), "routines", name)), encoding="utf-8")
         target.chmod(0o644)
@@ -174,7 +165,6 @@ def install(h, org, name, routines=None):
 
 
 def quote(value):
-    # cron reads an unescaped % as a newline, even inside quotes.
     return "'" + value.replace("'", "'\\''").replace("%", "\\%") + "'"
 
 

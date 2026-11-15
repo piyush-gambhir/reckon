@@ -136,9 +136,6 @@
   --radius: 8px;
   --radius-round: 8px;
 
-  /* Light elevation runs out of headroom at white, so the rungs above
-     "raised" tint downward instead of upward. Without this the ladder collapses:
-     band, card, code chip, terminal and nav all resolve to the same white. */
   --surface-page: var(--color-neutral-200);
   --surface-low: var(--color-neutral-300);
   --surface-raised: var(--color-neutral-100);
@@ -152,8 +149,6 @@
   --popover: var(--color-neutral-100);
   --popover-foreground: var(--color-neutral-900);
   --primary: var(--site-accent);
-  /* Accent used as ink (text, lines, dots): the chartreuse is near-white,
-     so on light surfaces it darkens to a readable olive ink. */
   --accent-ink: color-mix(in oklab, var(--site-accent) 48%, black);
   --primary-foreground: var(--color-neutral-900);
   --secondary: var(--color-neutral-300);
@@ -220,7 +215,6 @@
   --popover: var(--color-neutral-800);
   --popover-foreground: var(--color-neutral-200);
   --primary: var(--site-accent);
-  /* Accent as ink on dark surfaces is just the accent. */
   --accent-ink: var(--site-accent);
   --primary-foreground: var(--color-neutral-900);
   --secondary: var(--color-neutral-700);
@@ -429,7 +423,6 @@ body {
   animation: terminal-caret-blink 0.9s step-end infinite;
 }
 
-/* Floating navigation refinements */
 .nav-underline-slide {
   position: relative;
 }
@@ -489,7 +482,6 @@ body {
   }
 }
 
-/* Batch B: authored OSMO component and marketing-page treatments. */
 .osmo-button {
   position: relative;
   display: inline-flex;
@@ -613,9 +605,6 @@ body {
   text-transform: uppercase;
 }
 
-/* A viewport-locked stage. The composition is centered in what is left after
-   the floating nav and the scroll cue claim their bands, so the headline sits
-   on the optical center rather than the geometric one. */
 .osmo-home-hero {
   position: relative;
   display: flex;
@@ -825,7 +814,6 @@ body {
   to { transform: translateX(-100%); }
 }
 
-/* OSMO floating shell overrides, traced to globals.css and motion.css. */
 .nav__bg { background: rgb(0 0 0 / 30%); transition: opacity var(--duration-default-half) ease; }
 
 .nav-bar__width {
@@ -916,7 +904,6 @@ body {
 .nav-desktop-menu__col a { transition: color var(--duration-default-half) var(--cubic-default); }
 .nav-desktop-menu__col a:hover { color: var(--accent-ink); }
 
-/* OSMO footer chapter. */
 .site-footer {
   overflow: hidden;
   border-top: 1px solid var(--border);
@@ -1057,8 +1044,6 @@ body {
 @media (max-width: 767px) {
   .osmo-home-hero__title { font-size: 4em; }
   .osmo-section__title { font-size: 3em; }
-  /* minmax(0, …) not 1fr: a bare 1fr keeps min-width:auto, so a nowrap code
-     snippet sets the track's min-content width and blows the page sideways. */
   .osmo-card-grid--steps,
   .osmo-card-grid--features { grid-template-columns: minmax(0, 1fr); }
   .osmo-card { min-height: 0; }
@@ -1150,7 +1135,6 @@ html[data-lenis] {
   scroll-behavior: auto;
 }
 
-/* Osmo action-button mechanics: layered background and duplicated rolling label. */
 .action-button {
   position: relative;
   display: inline-flex;
@@ -1213,7 +1197,6 @@ html[data-lenis] {
 .action-button:disabled { cursor: not-allowed; opacity: 0.45; }
 .action-button .button-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; }
 
-/* Landing-page capabilities: intentionally dark in both site themes. */
 .capabilities-band {
   color: oklch(0.985 0 0);
   background: oklch(0.205 0 0);
@@ -1319,7 +1302,6 @@ html[data-lenis] {
   }
 }
 
-/* Ported Osmo floating shell. Colors, fonts and content are project-specific. */
 .nav {
   position: fixed;
   z-index: 100;
@@ -1449,8 +1431,6 @@ html[data-lenis] {
 .nav[data-nav-status='active'] .nav-menu__label.is--close { transform: translateY(0); }
 
 .nav-bar__logo {
-  /* In flow (not absolutely centered): the bar is too narrow for the buttons
-     group plus a dead-center logo, and overlap defaces the wordmark. */
   margin-inline: auto;
   padding-inline: 0.75em;
 }
@@ -1568,7 +1548,6 @@ html[data-lenis] {
 .nav-desktop-menu__col a:hover { color: var(--accent-ink); }
 
 
-/* Osmo-inspired closing chapter. */
 .site-footer {
   position: relative;
   overflow: hidden;
@@ -1860,7 +1839,6 @@ html[data-lenis] {
 }
 
 
-/* Marketing-shell specificity keeps the Batch B shell above legacy site rules. */
 .marketing-shell .nav__bg {
   background: rgb(0 0 0 / 30%);
   transition: opacity 0.4s ease;
@@ -2165,7 +2143,6 @@ html[data-lenis] {
   }
 }
 
-/* Doctrine v2: borderless tonal surfaces with Reckon's terminal-native identity. */
 ::selection {
   color: var(--color-neutral-900);
   background: var(--site-accent);
@@ -2237,7 +2214,7 @@ button:focus-visible {
 }
 
 .osmo-home-hero__cursor {
-  display: inline-block; /* inline ignores width, so the block cursor was 0px wide */
+  display: inline-block;
   width: 0.13em;
   height: 0.72em;
   margin-left: 0.1em;
@@ -2295,9 +2272,6 @@ button:focus-visible {
   margin-top: 0;
 }
 
-/* No min-height: content sits top (the base margin-top:auto is overridden
-   below), so a fixed height just pools dead space under every card. Grid
-   stretch already equalises heights across a row. */
 .marketing-shell .osmo-card {
   min-height: 0;
   padding: 1.75em;
@@ -2314,10 +2288,6 @@ button:focus-visible {
   background: var(--surface-top);
 }
 
-/* Light reuses --surface-top for both code chips and the features band, so a
-   hovered card would land on exactly the band colour and disappear. There is no
-   tone above white to step to either, so the card holds its fill and lifts
-   instead. Dark has headroom and keeps the shared value. */
 :root:not(.dark) .marketing-shell .osmo-card {
   transition:
     background-color var(--duration-default-half) var(--cubic-default),
@@ -2526,7 +2496,6 @@ button:focus-visible {
   }
 }
 
-/* Hide-on-scroll navigation: bar slides away scrolling down, returns scrolling up. */
 .nav-bar__wrap {
   transition: transform var(--duration-m) var(--cubic-default);
 }
@@ -2540,7 +2509,6 @@ button:focus-visible {
   .nav-bar__wrap { transition-duration: 0s; }
 }
 
-/* Reckon keeps its existing compatibility, feature-subtitle, and closing CTA copy. */
 .marketing-shell .osmo-section--compatible {
   padding-block: var(--padding-xs);
   background: var(--surface-page);
@@ -2619,7 +2587,6 @@ button:focus-visible {
   }
 }
 
-/* Batch 2: Reckon home scroll choreography. */
 .js .reveal {
   opacity: 1;
   transform: none;
@@ -2645,11 +2612,6 @@ button:focus-visible {
   z-index: 1;
 }
 
-/* The field: the live investigation transcript, full bleed behind the type at
-   texture strength. It is the product's own output doing the work a decorative
-   background would otherwise do. */
-/* Annotates the clone command from below, where nothing else is competing for
-   the space. Above it would land on the button row. */
 .marketing-shell .osmo-home-hero__scribble {
   top: calc(100% + 0.5em);
   right: 0.25em;
@@ -2740,9 +2702,6 @@ button:focus-visible {
   z-index: 0;
   top: 1.5em;
   bottom: 1.5em;
-  /* Centered under the index pills: the pill is 3em of the eyebrow's 0.6875em
-     type (2.0625em here), so its midline is 1.03125em; subtract half the line
-     width. The old 1.5em assumed the pill was sized in this em context. */
   left: calc(1.03125em - 0.09375em);
   width: 0.1875em;
   border-radius: 3em;
@@ -2923,7 +2882,6 @@ button:focus-visible {
 
 }
 
-/* Batch 3: Reckon signature set-pieces. */
 .marketing-shell .toolbelt-slider {
   position: relative;
   overflow: hidden;
@@ -3051,7 +3009,6 @@ button:focus-visible {
   border-radius: 8px;
   color: var(--foreground);
   background: var(--surface-raised);
-  /* Recessed but still readable: depth comes from scale/rotate, not illegibility. */
   opacity: 0.72;
   transform: scale(0.88) rotate(4deg);
   transition:
@@ -3309,9 +3266,6 @@ button:focus-visible {
   background: var(--surface-raised);
 }
 
-/* Continuous vertical spine through the dot column so the panel reads as one
-   timeline rather than four disconnected rows. Segments overshoot the row gap
-   to bridge it; first/last rows are trimmed to the dot. */
 .incident-signal__time::after {
   position: absolute;
   top: -0.5em;
@@ -3474,7 +3428,6 @@ button:focus-visible {
   background: var(--surface-hover);
 }
 
-/* Batch 1: session boot, route entry, and root-level smooth scrolling. */
 .route-entry {
   display: flex;
   min-height: 100vh;
@@ -3532,8 +3485,6 @@ body.booting {
   transform: translateY(100%);
 }
 
-/* The first log line reveals via CSS alone, before hydration, so the boot
-   plate never sits blank while JS loads. GSAP sequences the rest. */
 .js[data-boot='pending'] .boot-sequence__line.is--first,
 .js[data-boot='running'] .boot-sequence__line.is--first {
   animation: boot-line-in 0.5s var(--cubic-default) 0.2s both;
@@ -3552,9 +3503,6 @@ body.booting {
   }
 }
 
-/* Failsafe: if scripting dies mid-boot, the overlay clears itself and the
-   server-rendered page underneath becomes usable. GSAP normally hides the
-   overlay long before this fires. */
 .js[data-boot='pending'] .boot-sequence,
 .js[data-boot='running'] .boot-sequence {
   animation: boot-failsafe 0.4s ease 6s forwards;
@@ -3590,7 +3538,6 @@ body.booting {
   animation: loadingRotate 500ms linear infinite;
 }
 
-/* Terminal identity details from the approved pilot navigation. */
 .nav-logo__cursor {
   display: inline-block;
   animation: nav-cursor-blink 1.1s steps(1, end) infinite;
@@ -3634,7 +3581,6 @@ body.booting {
 
 }
 
-/* Full-route design coverage: docs, search, legal pages, and the global 404. */
 .compatible-heading {
   color: var(--foreground);
   font-family: var(--font-inter), Arial, sans-serif;
@@ -4109,11 +4055,8 @@ body.booting {
   }
 }
 
-/* The hero cursor stays glued to the final word so it never orphans on wrap. */
 .osmo-home-hero__tail { white-space: nowrap; }
 
-/* Investigation-step command chips: real invocations that fill the wide cards
-   with terminal texture, mirroring the CLI-site step snippets. */
 .reckon-step__snippet {
   display: block;
   overflow: hidden;
@@ -4130,8 +4073,6 @@ body.booting {
   color: var(--accent-ink);
 }
 
-/* Light theme: white cards on the near-white page need a whisper of lift to
-   read as surfaces at all (tonal steps alone collapse at this lightness). */
 :root:not(.dark) .marketing-shell .osmo-card,
 :root:not(.dark) .marketing-shell .reckon-step,
 :root:not(.dark) .marketing-shell .toolbelt-card,
@@ -4141,7 +4082,6 @@ body.booting {
     0 10px 28px rgb(28 30 26 / 7%);
 }
 
-/* Live investigation terminal: typing caret, resting prompt, session pulse. */
 .hero-terminal__caret {
   display: inline-block;
   width: 0.55em;
@@ -4174,8 +4114,6 @@ body.booting {
   55% { box-shadow: 0 0 0 0.45em transparent; }
 }
 
-/* "went wrong." carries the phosphor accent: the terminal's answer in the
-   terminal's color. */
 .osmo-home-hero__accent {
   color: var(--accent-ink);
 }
@@ -4197,7 +4135,6 @@ body.booting {
 
 .osmo-home-hero__install { position: relative; }
 
-/* Gutter ticks: a quiet admission that the stage sits on a grid. */
 .osmo-home-hero__tick {
   position: absolute;
   z-index: 1;
@@ -4214,7 +4151,6 @@ body.booting {
 .osmo-home-hero__tick.is--start { left: var(--container-padding); }
 .osmo-home-hero__tick.is--end { right: var(--container-padding); }
 
-/* One cue, bottom center, sitting in the band the stage reserved for it. */
 .osmo-home-hero__cue {
   position: absolute;
   z-index: 1;
@@ -4246,9 +4182,6 @@ body.booting {
   outline-offset: 4px;
 }
 
-/* Mobile: the headline sizes so its longest word always fits the viewport, the
-   field thins out so the type keeps its contrast, and no hero child can exceed
-   the container. */
 @media (max-width: 991px) {
   .marketing-shell .osmo-home-hero__title,
   .osmo-home-hero__title {
@@ -4272,8 +4205,6 @@ body.booting {
   }
 }
 
-/* The field is decoration; reduced motion should not animate it, and the cue
-   should not translate on hover. */
 @media (prefers-reduced-motion: reduce) {
   .osmo-home-hero__cue { transition: none; }
   .osmo-home-hero__cue:hover { transform: translateX(-50%); }

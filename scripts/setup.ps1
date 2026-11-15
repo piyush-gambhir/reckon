@@ -1,20 +1,4 @@
 #Requires -Version 5.1
-<#
-.SYNOPSIS
-    reckon setup for Windows (native PowerShell).
-
-.DESCRIPTION
-    Installs every CLI that has a working native Windows port via winget,
-    plus the custom CLIs from their release zips. Tools without good native Windows support
-    (kcat, rpk) are skipped with a clear message. For the full
-    experience use WSL2 + scripts/setup.sh.
-
-    Idempotent: re-running installs what's missing and upgrades a custom CLI
-    older than its pin.
-
-.EXAMPLE
-    PS> .\scripts\setup.ps1
-#>
 
 [CmdletBinding()]
 param()
@@ -26,9 +10,6 @@ $Script:Already   = 0
 $Script:Failed    = 0
 $Script:Skipped   = 0
 
-# ---------------------------------------------------------------------------
-# Output helpers
-# ---------------------------------------------------------------------------
 
 function Write-Ok      { param($Msg) Write-Host "  ✓ $Msg" -ForegroundColor Green }
 function Write-Info    { param($Msg) Write-Host "  → $Msg" -ForegroundColor Blue }
@@ -50,9 +31,6 @@ function Mark-Skipped   {
     $Script:Skipped++
 }
 
-# ---------------------------------------------------------------------------
-# Pre-flight
-# ---------------------------------------------------------------------------
 
 function Test-Preflight {
     Write-Header 'Pre-flight'
@@ -78,9 +56,6 @@ function Test-Preflight {
     Write-Warn 'After install, create an org: .\scripts\reckon.ps1 org add <org>'
 }
 
-# ---------------------------------------------------------------------------
-# Install helpers
-# ---------------------------------------------------------------------------
 
 function Install-Winget {
     param(
@@ -94,10 +69,6 @@ function Install-Winget {
     }
     Write-Info "$DisplayName — installing via winget ($Id)..."
     try {
-        # Native stderr lines become ErrorRecords under EAP=Stop on Windows
-        # PowerShell 5.1 (winget prints progress to stderr), which would throw
-        # NativeCommandError mid-install. Force Continue around the native call
-        # and rely on $LASTEXITCODE for success/failure.
         $prevEAP = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         winget install --id $Id `
@@ -106,10 +77,8 @@ function Install-Winget {
             --accept-package-agreements `
             --source winget 2>&1 | Out-Null
         $ErrorActionPreference = $prevEAP
-        # winget exits 0 for new install, -1978335189 if already installed.
         if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189) {
             Mark-Installed $DisplayName
-            # Refresh PATH for the current session so the new bin is callable.
             $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + `
                         [System.Environment]::GetEnvironmentVariable('Path', 'User')
         } else {
@@ -120,8 +89,6 @@ function Install-Winget {
     }
 }
 
-# The x.y.z a CLI reports: the number after "version" (gsc also prints the
-# latest release it knows of), else the first one in its output.
 function Get-CliVersion {
     param([Parameter(Mandatory)] [string] $Bin)
     $previousEAP = $ErrorActionPreference
@@ -142,9 +109,6 @@ function Get-CliVersion {
     return $null
 }
 
-# Each CLI installs from its release zip, checked against the release's
-# checksums.txt: release builds carry settings a source build lacks (gsc's
-# built-in OAuth client). go install is the fallback where no zip fits.
 function Install-GoCli {
     param(
         [Parameter(Mandatory)] [string] $Module,
@@ -156,10 +120,8 @@ function Install-GoCli {
     $destination = $null
     if (Test-Command $Bin) {
         $current = Get-CliVersion $Bin
-        # A copy that does not say its version is left alone.
         if (-not $current -or $current -ge [version]$Release.TrimStart('v')) { Mark-Already $Bin; return }
         Write-Info "$Bin — $current is older than the pinned $Release, upgrading..."
-        # Replace it where it is, so an old copy cannot shadow the new one.
         $destination = Split-Path -Parent (Get-Command $Bin).Source
     }
     $previousGoBin = $env:GOBIN
@@ -182,7 +144,6 @@ function Install-GoCli {
         $url = "https://github.com/$repo/releases/download/$Release"
         Write-Info "$Bin — installing $Release from github.com/$repo..."
         try {
-            # PowerShell 5.1 may default to TLS 1.0, which GitHub refuses; its progress bar slows downloads.
             [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
             $ProgressPreference = 'SilentlyContinue'
             Invoke-WebRequest -Uri "$url/$zip" -OutFile (Join-Path $stage $zip) -UseBasicParsing
@@ -201,8 +162,6 @@ function Install-GoCli {
             Write-Warn "$Bin — could not install the release zip ($($_.Exception.Message)), building from source (gsc then needs your own OAuth client)"
         }
         $env:GOBIN = $stage
-        # PowerShell 5.1 treats native stderr as ErrorRecord; Go writes normal
-        # download progress there. Use its exit code, restoring state in finally.
         $ErrorActionPreference = 'Continue'
         & go install -ldflags "-X $Module/$VersionPackage.Version=$($Release.TrimStart('v'))" "$Module@$Version" 2>&1 | Out-Null
         $installExitCode = $LASTEXITCODE
@@ -220,15 +179,10 @@ function Install-GoCli {
     }
 }
 
-# ---------------------------------------------------------------------------
-# Reckon home
-# ---------------------------------------------------------------------------
 
 function Setup-Workspace {
     Write-Header 'Reckon home'
     $home_ = if ($env:RECKON_HOME) { $env:RECKON_HOME } else { Join-Path $HOME '.reckon' }
-    # Business data lives here, never in this checkout. reckon org add and
-    # reckon connect create orgs, connections and their credential files.
     New-Item -ItemType Directory -Path $home_ -Force | Out-Null
     $reckonBin = Join-Path $home_ 'bin'
     New-Item -ItemType Directory -Path $reckonBin -Force | Out-Null
@@ -256,9 +210,6 @@ function Show-NextSteps {
 '@ | Write-Host
 }
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 function Main {
     $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')

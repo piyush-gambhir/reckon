@@ -28,7 +28,6 @@ class OrgCase(unittest.TestCase):
         self.home = self.dir / "home"
         self.bin = self.dir / "bin"
         self.bin.mkdir()
-        # Agent transcripts are read by reckon spend; never the real ones.
         self.agents = {"CLAUDE_CONFIG_DIR": str(self.dir / "claude"), "CODEX_HOME": str(self.dir / "codex")}
         patcher = mock.patch.dict(os.environ, dict(self.agents, RECKON_HOME=str(self.home), PATH=str(self.bin) + ":/usr/bin:/bin"))
         patcher.start()
@@ -39,8 +38,6 @@ class OrgCase(unittest.TestCase):
 
     def fake(self, source, binary="cubeapm"):
         path = self.bin / binary
-        # Fakes behave like releases without the agent-contract resolver unless a test
-        # implements "commands resolve" itself.
         guard = ("import sys as _sys\nif _sys.argv[1:3] == ['commands', 'resolve'] and 'resolve' not in " + repr(source) +
                  ":\n    _sys.stderr.write('Error: unknown command \"commands\"\\n'); _sys.exit(1)\n")
         path.write_text("#!" + sys.executable + "\n" + guard + source)

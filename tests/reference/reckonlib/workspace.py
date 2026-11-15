@@ -79,12 +79,10 @@ def settings(h, ctx, registry):
         mode = registry[conn["provider"]].get("mode")
         rules = ["Bash(reckon run " + cname + ":*)", "Bash(reckon run " + conn["provider"] + ":*)"]
         (ask if mode == "approval" else allow if mode in ("own", "allowlist") else []).extend(rules)
-    # Claude Code reads "//path" as an absolute path.
     secrets = "/" + str(h / "orgs") + "/*/secrets/**"
     log = "/" + str(h / "orgs") + "/*/activity.jsonl"
     deny = ["Bash(reckon act apply:*)", "Bash(reckon login:*)", "Bash(reckon use:*)", "Bash(reckon connect:*)", "Bash(reckon org:*)", "Bash(reckon migrate:*)",
             "Bash(reckon brief --all-orgs:*)", "Bash(reckon log --all-envs:*)", "Bash(reckon routine:*)", "Bash(reckon watch:*)", "Bash(reckon spend --all-orgs:*)",
-            # Secret references are read by reckon run, never by the agent.
             "Bash(security:*)", "Bash(/usr/bin/security:*)", "Bash(secret-tool:*)", "Bash(op:*)",
             "Edit(" + log + ")", "Write(" + log + ")",
             "Read(" + secrets + ")", "Edit(" + secrets + ")", "Write(" + secrets + ")"]
@@ -129,7 +127,6 @@ def agent_env(h, ctx, registry, runtime):
     """The operator's environment minus every provider credential, plus the pinned context.
     RECKON_RUNTIME tells reckon run whether Claude Code's ask rules guard approval connections."""
     prefixes = tuple(p for spec in registry.values() for p in spec["prefixes"])
-    # Credentials some CLIs read under their own names, outside the provider prefixes.
     named = {"KUBECONFIG", "XDG_CONFIG_HOME"} | {k for spec in registry.values() for k in spec.get("agent_scrub", [])}
     env = {k: v for k, v in os.environ.items() if not k.startswith(prefixes) and not k.startswith("RECKON_") and k not in named}
     env.update(RECKON_HOME=str(h), RECKON_ORG=ctx["org"], RECKON_ENV=ctx["env"], RECKON_RUNTIME=runtime)

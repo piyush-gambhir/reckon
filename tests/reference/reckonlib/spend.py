@@ -38,9 +38,7 @@ def inside(cwd, folders):
 def claude(root, since):
     base = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "projects"
     folders = roots(root)
-    # Claude Code names a project folder after its path with every other character replaced by "-".
     prefixes = {re.sub(r"[^A-Za-z0-9]", "-", f) for f in folders}
-    # One line per content block, each with the message's usage so far: keep the largest per message.
     messages = {}
     for project in sorted(base.iterdir()) if base.is_dir() else []:
         if not any(project.name.startswith(p) for p in prefixes):

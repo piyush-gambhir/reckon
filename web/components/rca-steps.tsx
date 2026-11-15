@@ -49,9 +49,6 @@ export function RcaSteps() {
       );
       if (!root || !connector) return;
 
-      // Draw once when the section enters view. A scroll-scrubbed line parks
-      // mid-draw at most scroll positions and reads as broken, so the full
-      // draw plays a single time instead.
       gsap.set(connector, { scaleY: 0, transformOrigin: 'top' });
       const tween = gsap.to(connector, {
         scaleY: 1,

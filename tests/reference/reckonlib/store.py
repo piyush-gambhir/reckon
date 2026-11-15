@@ -67,7 +67,6 @@ def validate_tree(root):
 def private_dir(path):
     if path.is_symlink():
         raise ValueError("local state directories must not be symlinks")
-    # mkdir(parents=True) uses the umask for intermediate directories, not mode.
     if not path.parent.exists():
         private_dir(path.parent)
     path.mkdir(mode=0o700, exist_ok=True)
@@ -244,7 +243,6 @@ def evidence(path):
         if not directory.is_dir():
             raise ValueError("unexpected file in evidence directory")
         p = local_path(path, "evidence", directory.name, "record.json")
-        # A process can stop between allocating a directory and starting a read.
         if not p.exists() and not any(directory.iterdir()):
             continue
         record = read_json(p)

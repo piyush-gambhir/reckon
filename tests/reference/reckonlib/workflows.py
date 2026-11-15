@@ -96,7 +96,6 @@ def start(root, recipe_id, given):
         params[key] = value
     if given:
         raise ValueError(recipe_id + " has no parameter " + ", ".join(sorted(given)) + "; it takes: " + ", ".join(recipe.get("params", {})))
-    # One pass, so a value containing {other} is kept as written.
     question = re.sub(r"\{([a-z0-9][a-z0-9-]*)\}", lambda m: params.get(m.group(1), m.group(0)), recipe["question"])
     snapshot = {k: recipe[k] for k in ("id", "title", "checks", "report", "series", "source") if k in recipe}
     snapshot["params"] = params
@@ -122,8 +121,7 @@ def previous(root, env, snapshot):
                 continue
             actions = [{"id": n["id"], "text": n["text"]} for n in live(notes) if n.get("kind") == "action"]
         except (ValueError, KeyError, TypeError, AttributeError, OSError):
-            continue  # unreadable or malformed sessions never stop a new run
-        # Creation time to the microsecond: two runs started in the same second still order correctly.
+            continue
         if best is None or str(data.get("created_at", "")) > best[0]:
             best = (str(data.get("created_at", "")), {"session": data["id"], "actions": actions})
     return best[1] if best else None
@@ -159,7 +157,6 @@ def progress(session, records, available, registry=None):
     for check in recipe["checks"]:
         row = {"id": check["id"], "text": check["text"]}
         if check.get("findings") is not None:
-            # Findings cannot be skipped: a review that found nothing records that as a finding.
             row["status"] = "met" if findings >= check["findings"] else "todo"
         else:
             hits = [r["id"] for r in records if any(met(w, r, registry) for w in check["any"])]

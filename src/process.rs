@@ -108,7 +108,6 @@ pub fn run_bounded(
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x00000200);
     }
-    // Cancellation can arrive while the operator is still at an approval prompt.
     if CANCELLED.load(Ordering::SeqCst) {
         return Ok(Output {
             status: Status::Cancelled,
@@ -212,7 +211,6 @@ pub fn run_bounded(
             break;
         }
     }
-    // A parent can exit while descendants still own its pipes. Reap its process group too.
     #[cfg(unix)]
     unsafe {
         libc::kill(-(child.id() as i32), libc::SIGKILL);

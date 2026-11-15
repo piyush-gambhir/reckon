@@ -25,7 +25,7 @@ class PinnedAgentTests(OrgCase):
         refused = self.agent(*read, RECKON_RUNTIME="codex")
         self.assertEqual(refused.returncode, 1)
         self.assertIn("needs Claude Code", refused.stderr)
-        self.assertEqual(self.agent(*read).returncode, 1)  # pinned with no runtime named: refused too
+        self.assertEqual(self.agent(*read).returncode, 1)
         self.assertEqual(self.agent(*read, RECKON_RUNTIME="claude").returncode, 0)
         operator = self.cli("run", "db", "--org", "acme", "--env", "staging", "--", "-c", "SELECT 1")
         self.assertEqual(operator.returncode, 0, operator.stderr)
@@ -39,7 +39,6 @@ class PinnedAgentTests(OrgCase):
             self.assertEqual(result.returncode, 1, command)
             self.assertIn("session belongs to acme/uat", result.stderr)
         self.assertEqual(self.agent("note", uat["id"], "--kind", "question", "--text", "q", env="uat").returncode, 0)
-        # The operator may still work on another environment's session.
         self.assertEqual(self.cli("note", uat["id"], "--org", "acme", "--env", "staging", "--kind", "question", "--text", "q").returncode, 0)
 
     def test_listings_show_only_the_pinned_org_and_environment(self):

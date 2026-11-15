@@ -40,7 +40,6 @@ def add(h, ctx, name, target, args, items, key, title=None, registry=None, produ
     spec = (registry or orgs.providers())[conn["provider"]]
     if spec.get("mode") == "approval":
         raise ValueError(conn["provider"] + " asks before every run; it cannot be watched unattended")
-    # The read must pass reckon run's checks now, not first at 3 a.m.
     connectors.check(conn["provider"], spec, args)
     watches = load(h, ctx["org"])
     if name in watches:
@@ -75,7 +74,6 @@ def fingerprint(watch):
 
 
 def poll(h, org, name, watch, registry):
-    # A saved watch reads its own connection from any folder: no folder link preferences.
     ctx = dict(orgs.context(h, org, watch["environment"], registry), link=None)
     folder = local_path(orgs.org_path(h, org), "runtime", "watches", name)
     try:
@@ -90,7 +88,6 @@ def poll(h, org, name, watch, registry):
 
 
 def check(h, ctx, folder, name, watch, registry):
-    # The saved connection itself, or nothing: a removed one must not turn into a tool name that resolves elsewhere.
     if watch["connection"] not in ctx["data"]["connections"]:
         raise ValueError(name + ": connection " + watch["connection"] + " no longer exists; remove the watch and add it again")
     outcome = connectors.run(h, ctx, watch["connection"], watch["args"], registry, timeout=60)
@@ -109,7 +106,6 @@ def check(h, ctx, folder, name, watch, registry):
         raise ValueError(name + ": no item has a " + watch["key"] + " field; set --key")
     state_path = folder / "state.json"
     state = read_json(state_path) if state_path.is_file() else None
-    # A changed watch (other connection, environment or read) starts again from a baseline.
     if state and state.get("fingerprint") != fingerprint(watch):
         state = None
     order = list(state["seen"]) if state else []
@@ -124,14 +120,12 @@ def check(h, ctx, folder, name, watch, registry):
         text = str(title) if title is not None else str(ident)
         fresh.append({"id": actions.printable(str(ident))[:200], "title": actions.printable(text.replace("\n", " "))[:200]})
     if state is not None and fresh:
-        # Deliver first, then remember: a failed write leaves the items to be found again.
         inbox = local_path(orgs.workspace(h, ctx["org"]), "inbox.jsonl")
         fd = os.open(str(inbox), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
         with os.fdopen(fd, "a", encoding="utf-8") as out:
             for item in fresh:
                 out.write(json.dumps({"at": now(), "watch": name, "environment": ctx["env"], "connection": watch["connection"],
                                       "id": item["id"], "title": item["title"]}, ensure_ascii=False) + "\n")
-    # Oldest first, so the cap forgets the oldest ids.
     write_json(state_path, {"fingerprint": fingerprint(watch), "seen": order[-SEEN_LIMIT:], "checked_at": now()})
     if state is None:
         return {"watch": name, "status": "baseline", "items": len(found), "new": 0}

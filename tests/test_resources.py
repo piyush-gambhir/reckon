@@ -57,7 +57,6 @@ class ResourceTests(OrgCase):
                                         ("https://acme.com:8443/page", "https://acme.com/", False),
                                         ("https://evil.invalid#.acme.com/", "sc-domain:acme.com", False),
                                         ("https://WWW.ACME.COM./page", "sc-domain:acme.com", True),
-                                        # IDNA2003 would read faß.de as fass.de, another domain.
                                         ("https://faß.de/", "https://fass.de/", False),
                                         ("https://faß.de/", "https://faß.de/", False),
                                         ("sc-domain:faß.de", "sc-domain:fass.de", False),

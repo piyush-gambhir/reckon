@@ -156,7 +156,6 @@ class GoalTests(OrgCase):
     def test_a_missing_number_or_a_bad_file_is_reported(self):
         self.read({"current": {"clicks": "n/a"}})
         self.assertEqual(goals.report(self.root, "staging", self.registry)[0]["status"], "unreadable")
-        # Another environment's reads never count.
         self.assertEqual(goals.report(self.root, "uat", self.registry)[0]["status"], "no reading")
         write_json(self.root / "knowledge" / "_shared" / "goals.json", {"goals": [{"id": "x", "title": "x", "provider": "gsc",
                                                                                    "command": ["performance"], "path": "a b", "target": 1}]})

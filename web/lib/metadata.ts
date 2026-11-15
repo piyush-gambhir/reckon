@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { site } from '@/lib/site';
 import { siteUrl } from '@/lib/shared';
 
-/** Social card for the site root. Rendered by app/og/home/image.png/route.tsx. */
 export const homeSocialImage = {
   url: `${siteUrl}/og/home/image.png`,
   width: 1200,
@@ -17,21 +16,15 @@ export function absoluteUrl(path: string): string {
   return `${siteUrl}${path}`;
 }
 
-/** Expands a short page summary into this site's full description voice. */
 export function describePage(summary: string): string {
   return `${summary.trim()} Works with Claude Code and Codex.`;
 }
 
 export interface PageMetadataOptions {
-  /** Page title. Used bare for <title>, suffixed with the site name socially. */
   title: string;
-  /** Page description, used for <meta name="description">. */
   description: string;
-  /** Optional distinct description for OG/Twitter. Defaults to `description`. */
   socialDescription?: string;
-  /** Site-relative path, e.g. '/docs/quickstart'. */
   path: string;
-  /** Site-relative social image path. */
   image?: string;
   type?: 'article' | 'website';
 }

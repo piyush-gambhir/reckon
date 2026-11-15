@@ -5,12 +5,10 @@ import unittest
 from helpers import OrgCase
 from reckonlib import activity, orgs, workspace
 
-# Fake keychain (macOS security, Linux secret-tool) and 1Password readers.
 STORE = ("import sys\nfound = {'jenkins-token': 'kc-secret-1', 'op://Ops/Jenkins/token': 'op-secret-2'}\n"
          "key = sys.argv[-2] if sys.argv[1] == 'find-generic-password' else sys.argv[-1]\n"
          "if key not in found: sys.exit(44)\n"
          "print(found[key])\n")
-# Jenkins echoes its token so the test can see what reached the child, and that it is redacted.
 JENKINS = "import os\nprint('token=' + os.environ['JENKINS_TOKEN'])\n"
 
 
@@ -38,7 +36,6 @@ class ActivityTests(OrgCase):
         result = self.cli("run", "jenkins", "--org", "acme", "--env", "staging", "--", "job", "list")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("kc-secret-1", result.stdout)
-        # A missing item is an error that names the setting, never a fallback to the reference text.
         self.secret("acme", "jenkins-staging", ["JENKINS_URL=https://ci.fixture.invalid", "JENKINS_USER=tester",
                                                 "JENKINS_TOKEN=keychain:missing"])
         missing = self.cli("run", "jenkins", "--org", "acme", "--env", "staging", "--", "job", "list")
@@ -62,7 +59,6 @@ class ActivityTests(OrgCase):
         self.assertEqual(oct(activity.path(self.home, "acme").stat().st_mode & 0o777), "0o600")
         log = self.cli("log", "--org", "acme", "--env", "staging", "--event", "refused", "--json")
         self.assertEqual(len(json.loads(log.stdout)), 2)
-        # The brief reports refusals so a wrong-context attempt is seen the next morning.
         brief = json.loads(self.cli("brief", "--org", "acme", "--env", "staging", "--json").stdout)
         self.assertEqual((len(brief["refused_runs"]), brief["runs"]), (2, 1))
 
@@ -100,7 +96,6 @@ class ActivityTests(OrgCase):
             refused = self.cli(*args, RECKON_ORG="acme", RECKON_ENV="staging")
             self.assertEqual(refused.returncode, 1, args)
             self.assertIn("pinned agent", refused.stderr)
-        # Clearing the variables does not unpin.
         cleared = self.cli("brief", "--all-orgs", RECKON_ORG="", RECKON_ENV="")
         self.assertEqual(cleared.returncode, 1)
         self.assertIn("pinned agent", cleared.stderr)

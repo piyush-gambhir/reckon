@@ -233,7 +233,6 @@ def connect(h, args, registry):
             raise ValueError("unknown connection: " + args.name)
         del data["connections"][args.name]
         orgs.save(h, data, registry)
-        # A connection added later under this name starts unchecked.
         checks = checks_path(h, ctx["org"], args.name)
         if checks.is_file():
             checks.unlink()
@@ -280,7 +279,6 @@ def connect(h, args, registry):
         ready = orgs.configured(h, ctx["org"], args.name, spec)
     except ValueError:
         ready = False
-    # Name the org and an environment the connection serves: the saved default may be another org.
     env = next((e for e in [ctx["env"]] + data["environments"] if e and orgs.applies(conn, e)), data["environments"][0])
     target = args.name + " --org " + ctx["org"] + " --env " + env
     return {"org": ctx["org"], "connection": args.name, "provider": conn["provider"], "environment": conn.get("env") or "all",
@@ -461,7 +459,7 @@ def approval_gate(ctx, target, registry):
     try:
         conn = orgs.resolve(ctx, target)[1]
     except ValueError:
-        return  # connectors.run explains an unknown connection
+        return
     if registry[conn["provider"]].get("mode") == "approval":
         raise ValueError(target + " runs only after you approve each command, which needs Claude Code (reckon open " + ctx["org"] + "/" +
                          ctx["env"] + " claude); otherwise run it yourself in your own terminal")
@@ -473,7 +471,6 @@ def execute(args):
     name = args.command
     if activity.pinned() and (name in ("use", "link", "unlink", "connect", "login", "migrate", "open", "routine", "watch") or name == "org" and args.action == "add"
                                          or name == "act" and args.action == "apply"):
-        # An agent started by reckon open works only inside its pinned org and environment.
         raise ValueError("reckon " + name + " is for the operator's own terminal, not a pinned agent")
     if name == "org":
         if args.action == "add":
@@ -483,7 +480,6 @@ def execute(args):
             data = orgs.create(h, args.org, args.name, envs, production, registry)
             templates = []
             if source:
-                # Same tools, new accounts: the layout carries over, credentials and resource limits never do.
                 for cname, conn in source["connections"].items():
                     copied = {k: conn[k] for k in ("provider", "env", "env_labels") if k in conn}
                     if copied.get("env", envs[0]) in envs and all(e in envs for e in copied.get("env_labels", {})):
@@ -497,7 +493,6 @@ def execute(args):
                     "connections": sorted(data["connections"]), "fill_in": templates,
                     "next": "fill in each credentials file, then reckon verify --org " + args.org + " --env " + envs[0] if templates else
                             "reckon connect <name> --org " + args.org + " --provider <tool> [--for-env <env>]"}
-        # A pinned agent sees its own org only, never the operator's other businesses.
         own = os.environ.get("RECKON_ORG") if activity.pinned() else None
         if args.action == "list":
             return [{"org": o, "name": orgs.load(h, o, registry)["name"], "environments": orgs.load(h, o, registry)["environments"]}
@@ -579,7 +574,6 @@ def execute(args):
         return done
 
     if name == "routine" and args.action != "add":
-        # The routine names its environment; only the org is needed here.
         from reckonlib import routines
         org = args.org or orgs.context(h, registry=registry)["org"]
         orgs.load(h, org, registry)
@@ -623,7 +617,6 @@ def execute(args):
             if activity.pinned():
                 raise ValueError("a pinned agent sees only its own org; run reckon spend --all-orgs in your own terminal")
             return [spend.report(h, org, args.days) for org in orgs.orgs(h)]
-        # A pinned agent sees only its own org's spend.
         org = orgs.context(h, args.org, os.environ.get("RECKON_ENV"), registry)["org"] if activity.pinned() else \
             args.org or orgs.context(h, registry=registry)["org"]
         orgs.load(h, org, registry)
@@ -797,7 +790,6 @@ def execute(args):
         return entries
     if name == "capabilities":
         readiness = {}
-        # Typed operations run in sessions, which ignore folder link preferences.
         plain = dict(ctx, link=None)
         for provider in sorted({v[0] for v in OPERATIONS.values()}):
             readiness[provider] = (work.source(h, plain, provider, registry)[3] or "ready") if provider != "git" else "local"
@@ -812,13 +804,10 @@ def execute(args):
         work.report(root, args.session)
         return result
     if name in ("resume", "report", "note", "promote") and activity.pinned():
-        # A pinned agent's saved work stays in its environment, like every read that made it.
-        # The operator may still open another environment's session with --env.
         work.matching(session_path(root, args.session)[1], ctx)
     if name == "resume":
         return work.resume(root, args.session)
     if name == "check":
-        # Checks are judged in the session's own environment, never another one where tools look unavailable.
         work.matching(session_path(root, args.session)[1], ctx)
         return work.check(root, args.session, available(h, ctx, registry), registry)
     if name == "report":
@@ -931,7 +920,6 @@ def main():
     if sys.version_info < (3, 9):
         print("reckon requires Python 3.9 or newer", file=sys.stderr)
         return 1
-    # Everything after the first "--" belongs to the tool (run) or the agent runtime (open).
     argv = sys.argv[1:]
     cut = argv.index("--") if "--" in argv else len(argv)
     args = parser().parse_args(argv[:cut])
@@ -949,7 +937,7 @@ def main():
         if args.command == "verify" and any(r["status"] not in ("ok", "skipped") for r in result):
             return 1
         if args.command == "collect" and any(r["status"] not in ("ok", "reused") for r in result):
-            return 2  # explicit partial collection; successful artifacts remain available
+            return 2
         if isinstance(result, dict) and result.get("collection") and result["collection"]["partial"]:
             return 2
         if args.command in ("doctor", "check") and result["problems"]:

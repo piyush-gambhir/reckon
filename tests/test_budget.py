@@ -19,7 +19,6 @@ class BudgetTests(OrgCase):
                 content = json.dumps(dict(original, budget=budget))
                 path.write_text(content)
                 for args in (("run", "jenkins", "--session", sid, "--", "job", "list"), ("collect", sid)):
-                    # Global context precedes passthrough arguments for run.
                     prefix = ("--org", "acme", "--env", "staging")
                     result = self.cli(args[0], *prefix, *args[1:])
                     self.assertEqual(result.returncode, 1, result.stderr)
@@ -60,8 +59,8 @@ class BudgetTests(OrgCase):
         third = self.cli("run", "jenkins", "--org", "acme", "--env", "staging", "--session", sid, "--", "job", "list")
         self.assertEqual(third.returncode, 1)
         self.assertIn("budget of 2 reads reached", third.stderr)
-        self.assertEqual(len(self.counter.read_text()), 2)  # the third read never ran
-        self.assertEqual(self.cli("run", "jenkins", "--org", "acme", "--env", "staging", "--", "job", "list").returncode, 0)  # outside the session
+        self.assertEqual(len(self.counter.read_text()), 2)
+        self.assertEqual(self.cli("run", "jenkins", "--org", "acme", "--env", "staging", "--", "job", "list").returncode, 0)
 
     def test_sessions_without_a_budget_are_unlimited_and_bad_budgets_refused(self):
         sid = json.loads(self.cli("task", "--question", "q", "--org", "acme", "--env", "staging", "--json").stdout)["session"]
